@@ -1,0 +1,264 @@
+{
+  "metadata": {
+    "source_type": "php",
+    "source_file": "/home/claude/antigravity/tests/sample_controller.php",
+    "controller_name": "User",
+    "extracted_at": "2026-01-24T12:21:57.342046",
+    "extractor_version": "0.1.0",
+    "confidence_score": 1.0
+  },
+  "entry_points": [
+    {
+      "name": "index",
+      "original_name": "indexAction",
+      "visibility": "public",
+      "parameters": [],
+      "route_pattern": "/",
+      "http_methods": [
+        "GET"
+      ],
+      "raw_code": "public function indexAction()\n    {\n        $page = $this->_getParam('page', 1);\n        $limit = $this->_getParam('limit', 20);\n        \n        $db = Zend_Db_Table::getDefaultAdapter();\n        $users = $db->fetchAll(\"SELECT * FROM users WHERE status = 'active' ORDER BY created_at DESC\");\n        \n        $this->view->users = $users;\n        $this->view->currentPage = $page;\n    }",
+      "start_line": 21,
+      "end_line": 31,
+      "operation_ids": []
+    },
+    {
+      "name": "edit",
+      "original_name": "editAction",
+      "visibility": "public",
+      "parameters": [],
+      "route_pattern": "/edit",
+      "http_methods": [
+        "GET",
+        "POST"
+      ],
+      "raw_code": "public function editAction()\n    {\n        $id = $this->_getParam('id');\n        \n        if (!$id) {\n            $this->_redirect('/user/index');\n            return;\n        }\n        \n        // Vérifier les permissions\n        if ($_SESSION['user']['role'] != 'admin') {\n            $this->_redirect('/error/forbidden');\n            return;\n        }\n        \n        $db = Zend_Db_Table::getDefaultAdapter();\n        $user = $db->fetchRow(\"SELECT * FROM users WHERE id = ?\", array($id));\n        \n        if ($this->getRequest()->isPost()) {\n            $email = $_POST['email'];\n            $name = $_POST['name'];\n            $role = $_POST['role'];\n            \n            // Validation basique\n            if (empty($email) || empty($name)) {\n                $this->view->error = \"Tous les champs sont obligatoires\";\n            } else {\n                $db->update('users', array(\n                    'email' => $email,\n                    'name' => $name,\n                    'role' => $role,\n                    'updated_at' => date('Y-m-d H:i:s')\n                ), \"id = \" . (int)$id);\n                \n                $this->_helper->flashMessenger('Utilisateur mis à jour');\n                $this->_redirect('/user/index');\n                return;\n            }\n        }\n        \n        $this->view->user = $user;\n        $this->render('edit');\n    }",
+      "start_line": 36,
+      "end_line": 78,
+      "operation_ids": []
+    },
+    {
+      "name": "delete",
+      "original_name": "deleteAction",
+      "visibility": "public",
+      "parameters": [],
+      "route_pattern": "/delete",
+      "http_methods": [
+        "POST"
+      ],
+      "raw_code": "public function deleteAction()\n    {\n        $id = $this->_getParam('id');\n        \n        if ($_SESSION['user']['role'] != 'admin') {\n            $this->_redirect('/error/forbidden');\n            return;\n        }\n        \n        if ($id) {\n            $db = Zend_Db_Table::getDefaultAdapter();\n            $db->delete('users', 'id = ' . (int)$id);\n        }\n        \n        $this->_redirect('/user/index');\n    }",
+      "start_line": 83,
+      "end_line": 98,
+      "operation_ids": []
+    },
+    {
+      "name": "create",
+      "original_name": "createAction",
+      "visibility": "public",
+      "parameters": [],
+      "route_pattern": "/create",
+      "http_methods": [
+        "GET",
+        "POST"
+      ],
+      "raw_code": "public function createAction()\n    {\n        if ($this->getRequest()->isPost()) {\n            $email = $_POST['email'];\n            $name = $_POST['name'];\n            $password = $_POST['password'];\n            \n            // Vérifier si l'email existe déjà\n            $db = Zend_Db_Table::getDefaultAdapter();\n            $existing = $db->fetchRow(\"SELECT id FROM users WHERE email = ?\", array($email));\n            \n            if ($existing) {\n                $this->view->error = \"Cet email est déjà utilisé\";\n            } else {\n                $db->insert('users', array(\n                    'email' => $email,\n                    'name' => $name,\n                    'password' => md5($password),\n                    'role' => 'user',\n                    'status' => 'active',\n                    'created_at' => date('Y-m-d H:i:s')\n                ));\n                \n                // Envoyer email de bienvenue\n                $mail = new Zend_Mail();\n                $mail->setBodyText(\"Bienvenue $name !\");\n                $mail->setFrom('noreply@example.com');\n                $mail->addTo($email);\n                $mail->setSubject('Bienvenue');\n                $mail->send();\n                \n                $this->_redirect('/user/index');\n                return;\n            }\n        }\n        \n        $this->render('create');\n    }\n}\n",
+      "start_line": 103,
+      "end_line": 141,
+      "operation_ids": []
+    }
+  ],
+  "operations": [
+    {
+      "id": "op_1",
+      "type": "db_read",
+      "details": "SELECT * FROM users WHERE status =",
+      "source_line": 27,
+      "raw_code": null
+    },
+    {
+      "id": "op_2",
+      "type": "db_read",
+      "details": "SELECT * FROM users WHERE id = ?",
+      "source_line": 52,
+      "raw_code": null
+    },
+    {
+      "id": "op_3",
+      "type": "db_read",
+      "details": "SELECT id FROM users WHERE email = ?",
+      "source_line": 112,
+      "raw_code": null
+    },
+    {
+      "id": "op_4",
+      "type": "db_write",
+      "details": "INSERT INTO users",
+      "source_line": 117,
+      "raw_code": null
+    },
+    {
+      "id": "op_5",
+      "type": "db_write",
+      "details": "UPDATE users",
+      "source_line": 63,
+      "raw_code": null
+    },
+    {
+      "id": "op_6",
+      "type": "db_delete",
+      "details": "DELETE FROM users",
+      "source_line": 94,
+      "raw_code": null
+    },
+    {
+      "id": "op_7",
+      "type": "redirect",
+      "details": "/user/index",
+      "source_line": 41,
+      "raw_code": null
+    },
+    {
+      "id": "op_8",
+      "type": "redirect",
+      "details": "/error/forbidden",
+      "source_line": 47,
+      "raw_code": null
+    },
+    {
+      "id": "op_9",
+      "type": "redirect",
+      "details": "/user/index",
+      "source_line": 71,
+      "raw_code": null
+    },
+    {
+      "id": "op_10",
+      "type": "redirect",
+      "details": "/error/forbidden",
+      "source_line": 88,
+      "raw_code": null
+    },
+    {
+      "id": "op_11",
+      "type": "redirect",
+      "details": "/user/index",
+      "source_line": 97,
+      "raw_code": null
+    },
+    {
+      "id": "op_12",
+      "type": "redirect",
+      "details": "/user/index",
+      "source_line": 134,
+      "raw_code": null
+    },
+    {
+      "id": "op_13",
+      "type": "render",
+      "details": "edit",
+      "source_line": 77,
+      "raw_code": null
+    },
+    {
+      "id": "op_14",
+      "type": "render",
+      "details": "create",
+      "source_line": 139,
+      "raw_code": null
+    }
+  ],
+  "control_flow": [
+    {
+      "id": "block_1",
+      "condition": "!$id",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": []
+    },
+    {
+      "id": "block_2",
+      "condition": "$_SESSION['user']['role'] != 'admin'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": []
+    },
+    {
+      "id": "block_3",
+      "condition": "$this->getRequest()->isPost()",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": []
+    },
+    {
+      "id": "block_4",
+      "condition": "empty($email) || empty($name)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": []
+    },
+    {
+      "id": "block_5",
+      "condition": "$_SESSION['user']['role'] != 'admin'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": []
+    },
+    {
+      "id": "block_6",
+      "condition": "$id",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": []
+    },
+    {
+      "id": "block_7",
+      "condition": "$this->getRequest()->isPost()",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": []
+    },
+    {
+      "id": "block_8",
+      "condition": "$existing",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": []
+    }
+  ],
+  "data_flow": {
+    "inputs": [
+      "email",
+      "id",
+      "limit",
+      "name",
+      "page",
+      "password",
+      "role"
+    ],
+    "outputs": [
+      "redirect",
+      "render",
+      "view.currentPage",
+      "view.error",
+      "view.user",
+      "view.users"
+    ],
+    "session_reads": [
+      "user"
+    ],
+    "session_writes": []
+  },
+  "dependencies": [
+    {
+      "name": "Application_Model_User",
+      "type": "instantiation",
+      "suggested_symfony": null
+    },
+    {
+      "name": "_helper",
+      "type": "service",
+      "suggested_symfony": "_HelperService"
+    }
+  ],
+  "unparsed_sections": []
+}
