@@ -56,27 +56,6 @@ print(prompt)
 pip install pydantic
 ```
 
-## 📊 Exemple de résultat
-
-**Entrée :** `UserController.php` (Zend Framework 1)
-
-**Sortie :** 4 fichiers `.md` prêts pour l'IA
-- `User_index_migration.md`
-- `User_edit_migration.md`
-- `User_delete_migration.md`
-- `User_create_migration.md`
-
-## 🎯 Pour ta migration des 61 contrôleurs
-
-```bash
-# 1. Copie tes contrôleurs dans un dossier
-cp /chemin/vers/zend/controllers/*.php ./controllers/
-
-# 2. Lance l'extraction en batch (à créer)
-python batch_extract.py ./controllers/ ./output/
-
-# 3. Utilise les prompts générés avec Claude/Gemini
-```
 
 ## 📈 Roadmap
 
