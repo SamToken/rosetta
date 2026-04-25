@@ -14,6 +14,24 @@ from typing import Optional
 from ir.schema import IRSchema, Flag, LLMInsight
 from analyzers.llm_enricher import TokenUsage, PRICING
 
+# Traductions fragment technique → terme métier (dans l'ordre de priorité)
+TECH_TO_BUSINESS: list[tuple[str, str]] = [
+    (r"\$_SESSION\s*\['user'\]\s*\['role'\]\s*!=\s*'admin'", "vérification habilitation Administrateur"),
+    (r"\$_SESSION\s*\['user'\]\s*\['role'\]\s*!=\s*'([^']+)'", r"vérification habilitation \1"),
+    (r"\$_SESSION\s*\['user'\]\s*\['role'\]", "habilitation de l'agent connecté"),
+    (r"\$_SESSION\b[^;]*", "données de l'agent connecté"),
+    (r"\$_POST\s*\[\s*'email'\s*\][^;]*", "saisie de l'adresse de contact"),
+    (r"\$_POST\s*\[\s*'name'\s*\][^;]*", "saisie de la dénomination"),
+    (r"\$_POST\s*\[\s*'password'\s*\][^;]*", "saisie du secret d'authentification"),
+    (r"\$_POST\s*\[\s*'role'\s*\][^;]*", "saisie du niveau d'habilitation"),
+    (r"\$_POST\s*\[\s*'([^']+)'\s*\][^;]*", r"saisie du champ « \1 »"),
+    (r"'password'\s*=>\s*md5\s*\([^)]+\)[^,;]*", "sécurisation legacy du secret d'authentification"),
+    (r"\$db\s*->\s*delete\s*\(\s*'([^']+)'[^)]*\)", r"suppression définitive dans « \1 »"),
+    (r"SELECT \* FROM (\w+)", r"chargement complet de la liste « \1 »"),
+    (r"\$db\s*->\s*insert\s*\([^)]*\)", "enregistrement d'un nouveau dossier"),
+    (r"\$db\s*->\s*update\s*\([^)]*\)", "modification du dossier existant"),
+]
+
 
 class BusinessDocGenerator:
     """Génère la documentation métier depuis un IRSchema enrichi."""
@@ -57,33 +75,37 @@ class BusinessDocGenerator:
             security_flags = [f for f in ep_flags if f.type == "security_risk"]
             business_flags = [f for f in ep_flags if f.type == "business_logic_unclear"]
 
-            # --- Risques identifiés (déterministe + LLM si dispo) ---
+            # --- Points d'attention ---
             if security_flags:
-                lines.append("### Risques identifiés")
+                lines.append("### Points d'attention")
                 for flag in security_flags:
-                    lines.append(f"- 🔴 [déterministe] `{flag.fragment}`")
+                    business_label = _translate_fragment(flag.fragment)
                     insight = insights_by_flag.get(flag.id)
                     if insight:
-                        label = _insight_label(insight)
-                        lines.append(f"  - {label} {insight.business_rule}")
+                        conf_pct = f"{insight.confidence:.0%}"
+                        lines.append(f"- 🔴 **{business_label}** *(confiance {conf_pct})*")
+                        lines.append(f"  - {insight.business_rule}")
+                    else:
+                        lines.append(f"- 🔴 **{business_label}**")
+                        lines.append(f"  - {flag.question}")
                 lines.append("")
 
-            # --- Règles métier (LLM ou non enrichi) ---
+            # --- Règles métier ---
             if business_flags:
                 lines.append("### Règles métier")
                 for flag in business_flags:
                     insight = insights_by_flag.get(flag.id)
                     if insight:
-                        label = _insight_label(insight)
-                        lines.append(f"- {label} {insight.business_rule}")
+                        conf_pct = f"{insight.confidence:.0%}"
+                        lines.append(f"- ✅ *(confiance {conf_pct})* {insight.business_rule}")
                     else:
-                        lines.append(f"- ❓ [non enrichi] {flag.question}")
+                        lines.append(f"- ❓ {flag.question}")
                 lines.append("")
 
-            # --- À valider par un humain ---
+            # --- Questions ouvertes pour arbitrage ---
             to_validate = _build_validation_list(ep_flags, insights_by_flag)
             if to_validate:
-                lines.append("### À valider par un humain")
+                lines.append("### Questions ouvertes pour arbitrage")
                 for item in to_validate:
                     lines.append(f"- [ ] {item}")
                 lines.append("")
@@ -102,7 +124,7 @@ class BusinessDocGenerator:
             and f.location.startswith("block_")
         ]
         if cf_flags:
-            lines.append("## Flux de contrôle — Zones ambiguës")
+            lines.append("## Points de décision — Comportements non définis")
             seen_cf: set[tuple] = set()
             for flag in cf_flags:
                 key = (flag.type, flag.fragment.strip())
@@ -110,44 +132,45 @@ class BusinessDocGenerator:
                     continue
                 seen_cf.add(key)
                 insight = insights_by_flag.get(flag.id)
-                type_label = "branche manquante" if flag.type == "missing_branch" else "valeur magique"
-                lines.append(f"- ⚠️ [{type_label}] `{flag.fragment}`")
+                type_label = "Gap de logique" if flag.type == "missing_branch" else "Valeur de référence"
+                lines.append(f"- ⚠️ **{type_label}**")
                 lines.append(f"  - {flag.question}")
                 if insight:
-                    label = _insight_label(insight)
-                    lines.append(f"  - {label} {insight.business_rule}")
+                    conf_pct = f"{insight.confidence:.0%}"
+                    lines.append(f"  - *(confiance {conf_pct})* {insight.business_rule}")
             lines.append("")
 
-        # Opérations DB avec pagination manquante
+        # Volumes non bornés
         pagination_flags = [
             f for f in ir.flags
             if f.type == "business_logic_unclear" and f.location.startswith("op_")
         ]
         if pagination_flags:
-            lines.append("## Requêtes DB — Volume non maîtrisé")
+            lines.append("## Volumes non bornés — Règle de limitation à préciser")
             for flag in pagination_flags:
                 insight = insights_by_flag.get(flag.id)
-                lines.append(f"- ⚠️ `{flag.fragment}`")
+                business_label = _translate_fragment(flag.fragment)
+                lines.append(f"- ⚠️ **{business_label}**")
                 lines.append(f"  - {flag.question}")
                 if insight:
-                    label = _insight_label(insight)
-                    lines.append(f"  - {label} {insight.business_rule}")
+                    conf_pct = f"{insight.confidence:.0%}"
+                    lines.append(f"  - *(confiance {conf_pct})* {insight.business_rule}")
             lines.append("")
 
-        # Dépendances non mappées
+        # Services tiers non documentés
         dep_flags = [f for f in ir.flags if f.type == "unmapped_dep"]
         if dep_flags:
-            lines.append("## Dépendances non mappées")
+            lines.append("## Services tiers non documentés")
             for flag in dep_flags:
                 insight = insights_by_flag.get(flag.id)
-                lines.append(f"- ❓ `{flag.location}` — {flag.question}")
+                lines.append(f"- ❓ **{flag.location}** — {flag.question}")
                 if insight:
-                    label = _insight_label(insight)
-                    lines.append(f"  - {label} {insight.business_rule}")
+                    conf_pct = f"{insight.confidence:.0%}"
+                    lines.append(f"  - *(confiance {conf_pct})* {insight.business_rule}")
             lines.append("")
 
         lines.append("---")
-        lines.append("**Légende :** ✅ Déterministe (confiance 1.0) | 🤖 LLM (confiance variable) | 🔴 Risque sécurité | ❓ Non enrichi")
+        lines.append("**Légende :** ✅ Règle confirmée | 🔴 Point d'attention | ⚠️ Gap à arbitrer | ❓ Service à documenter")
         lines.append("")
 
         if usage is not None:
@@ -170,11 +193,11 @@ class BusinessDocGenerator:
 
         # Grouper par type pour faciliter la lecture
         groups = {
-            "security_risk": ("🔴 Risques sécurité", []),
-            "missing_branch": ("⚠️ Branches manquantes", []),
-            "magic_value": ("🔍 Valeurs magiques", []),
-            "business_logic_unclear": ("❓ Logique métier ambiguë", []),
-            "unmapped_dep": ("📦 Dépendances non mappées", []),
+            "security_risk": ("🔴 Points d'attention", []),
+            "missing_branch": ("⚠️ Gaps de logique — Comportements non définis", []),
+            "magic_value": ("🔍 Valeurs de référence non documentées", []),
+            "business_logic_unclear": ("❓ Règles métier à préciser", []),
+            "unmapped_dep": ("📦 Services tiers non documentés", []),
         }
 
         for flag in ir.flags:
@@ -243,9 +266,31 @@ def _first_sentence(text: str, max_len: int = 80) -> str:
     return text[:max_len].strip()
 
 
-def _insight_label(insight: LLMInsight) -> str:
-    status = "validé" if insight.validated else "non validé"
-    return f"🤖 [LLM - {insight.confidence:.2f} - {status}]"
+def _translate_fragment(fragment: str) -> str:
+    """Traduit un fragment technique en terme métier lisible par un PO."""
+    for pattern_str, replacement in TECH_TO_BUSINESS:
+        try:
+            result = re.sub(pattern_str, replacement, fragment, flags=re.IGNORECASE)
+            if result != fragment:
+                return _clean_translated(result)
+        except re.error:
+            continue
+    # Fallback : nettoyer les artefacts PHP les plus visibles
+    clean = re.sub(r'\$_POST\s*\[', 'saisie[', fragment)
+    clean = re.sub(r'\$_SESSION\s*\[', 'session[', clean)
+    clean = re.sub(r'\$(\w+)', r'\1', clean)
+    return _clean_translated(clean)
+
+
+def _clean_translated(text: str) -> str:
+    """Retire les artefacts d'affectation PHP autour d'une traduction."""
+    # Retirer les préfixes d'affectation : $var = ... ; → ...
+    text = re.sub(r'^\$\w+\s*=\s*', '', text.strip())
+    # Retirer les suffixes techniques (;, ,, {, })
+    text = text.rstrip(' ;,{').strip()
+    # Retirer les résidus de variable non traduits en début
+    text = re.sub(r'^\$\w+\s*', '', text)
+    return text.strip()
 
 
 def _build_validation_list(
@@ -279,26 +324,26 @@ def _field_and_question(flag: Flag) -> tuple[str, str]:
         if 'SELECT' in frag.upper():
             return 'select_all', "volume borné ou pagination nécessaire ?"
 
-    # $_POST['field'] → field, validation en aval ?
+    # $_POST['field'] → field, règle de validation ?
     m = re.search(r"\$_POST\s*\[\s*'(\w+)'", frag)
     if m:
-        return m.group(1), "validation ou sanitisation en aval ?"
+        return m.group(1), "une règle de validation est-elle définie pour cette donnée ?"
 
     # md5(
     if re.search(r'\bmd5\s*\(', frag):
-        return 'md5', "contrainte legacy documentée ou migration bcrypt prévue ?"
+        return 'md5', "cette méthode de protection est-elle une contrainte documentée ?"
 
-    # DELETE + SQL concat → cascade ?
+    # DELETE + SQL concat → effets sur données liées ?
     if re.search(r'->delete\s*\(', frag):
-        return 'delete', "cascade sur clés étrangères ?"
+        return 'delete', "la suppression entraîne-t-elle des effets sur les données liées ?"
 
     # SQL concat "id = " . ou 'id = ' .
     if re.search(r"""['"]id\s*=\s*['"]\s*\.""", frag):
-        return 'sql_concat', "requête préparée possible ici ?"
+        return 'recherche_id', "la protection de cette recherche est-elle conforme aux standards prévus ?"
 
     # $_SESSION
     if '$_SESSION' in frag:
-        return 'session', "accès via un service d'authentification possible ?"
+        return 'session', "l'habilitation est-elle vérifiée par un service centralisé ?"
 
     # Fallback : premier $var du fragment
     m = re.search(r'\$(\w+)', frag)

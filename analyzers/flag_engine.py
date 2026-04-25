@@ -10,11 +10,63 @@ from ir.schema import IRSchema, Flag, OperationType
 
 
 SECURITY_PATTERNS = [
-    (r'md5\s*\(', "md5 — algorithme de hachage obsolète pour les mots de passe"),
-    (r'\$_POST\s*\[', "$_POST direct — pas de validation Zend/Symfony"),
-    (r'\$_SESSION\s*\[', "Session accédée directement — à abstraire"),
-    (r'"id\s*=\s*"\s*\.', "Concaténation SQL directe — risque injection"),
-    (r"'id\s*=\s*'\s*\.", "Concaténation SQL directe — risque injection"),
+    (r'md5\s*\(', "sécurisation legacy du secret d'authentification"),
+    (r'\$_POST\s*\[', "saisie utilisateur"),
+    (r'\$_SESSION\s*\[', "données de session"),
+    (r'"id\s*=\s*"\s*\.', "construction dynamique de recherche par identifiant"),
+    (r"'id\s*=\s*'\s*\.", "construction dynamique de recherche par identifiant"),
+]
+
+# Questions PO pour chaque pattern de risque sécurité
+SECURITY_QUESTIONS = {
+    r'md5\s*\(': (
+        "Cette méthode de protection du secret d'authentification est ancienne et non conforme aux standards actuels. "
+        "S'agit-il d'une contrainte documentée ou cette protection est-elle prévue pour évoluer lors de la migration ?"
+    ),
+    r'\$_POST\s*\[': (
+        "Cette donnée saisie par l'utilisateur n'est pas validée à ce stade. "
+        "Quelle règle métier définit le format ou les contraintes attendues pour cette donnée ?"
+    ),
+    r'\$_SESSION\s*\[': (
+        "L'identité de l'agent connecté est lue directement depuis la session. "
+        "L'habilitation est-elle vérifiée par un service centralisé ou uniquement à cet endroit ?"
+    ),
+    r'"id\s*=\s*"\s*\.': (
+        "La recherche d'un dossier par identifiant est construite dynamiquement. "
+        "Les standards de sécurité prévus dans la cible imposent-ils une protection paramétrique ?"
+    ),
+    r"'id\s*=\s*'\s*\.": (
+        "La recherche d'un dossier par identifiant est construite dynamiquement. "
+        "Les standards de sécurité prévus dans la cible imposent-ils une protection paramétrique ?"
+    ),
+}
+
+# Traduction des conditions techniques en termes métier pour les Decision Points
+CONDITION_TRANSLATIONS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"\$_SESSION\s*\['user'\]\s*\['role'\]\s*!=\s*'admin'"),
+     "l'agent connecté n'a pas l'habilitation Administrateur"),
+    (re.compile(r"\$_SESSION\s*\['user'\]\s*\['role'\]\s*!=\s*'supervisor'"),
+     "l'agent connecté n'a pas l'habilitation Superviseur"),
+    (re.compile(r"\$_SESSION\s*\['user'\]\s*\['role'\]\s*==\s*'([^']+)'"),
+     "l'agent connecté a le rôle « \\1 »"),
+    (re.compile(r"\$_SESSION\s*\['user'\]\s*\['role'\]"),
+     "le rôle de l'agent connecté"),
+    (re.compile(r"empty\s*\(\s*\$email\s*\)\s*\|\|\s*empty\s*\(\s*\$name\s*\)"),
+     "l'adresse email ou le nom est absent"),
+    (re.compile(r"empty\s*\(\s*\$([^)]+)\s*\)"),
+     "le champ « \\1 » est vide"),
+    (re.compile(r"\$this\s*->\s*getRequest\s*\(\s*\)\s*->\s*isPost\s*\(\s*\)"),
+     "le formulaire est soumis par l'utilisateur"),
+    (re.compile(r"!\s*\$id\b"),
+     "aucun identifiant d'entité fourni"),
+    (re.compile(r"^\$id$"),
+     "un identifiant d'entité est présent"),
+    (re.compile(r"^\$existing$"),
+     "un enregistrement correspondant existe déjà"),
+    (re.compile(r"^\$user$"),
+     "un compte utilisateur correspondant est trouvé"),
+    (re.compile(r"^\$result$"),
+     "un résultat a été obtenu"),
 ]
 
 MAGIC_VALUE_PATTERNS = [
@@ -72,19 +124,14 @@ class FlagEngine:
             if not block.condition:
                 continue
             if block.true_branch is None or block.false_branch is None:
-                missing = []
-                if block.true_branch is None:
-                    missing.append("branche vraie")
-                if block.false_branch is None:
-                    missing.append("branche fausse")
+                condition_business = _translate_condition(block.condition)
                 flags.append(Flag(
                     id=self._next_id("missing_branch"),
                     type="missing_branch",
                     location=block.id,
                     fragment=block.condition,
                     question=(
-                        f"La condition « {block.condition} » n'a pas de "
-                        f"{' ni '.join(missing)} explicite dans le graphe de contrôle. "
+                        f"Point de décision — {condition_business}. "
                         f"Quel est le comportement attendu dans le cas contraire ?"
                     ),
                 ))
@@ -109,15 +156,16 @@ class FlagEngine:
                     if key in seen:
                         continue
                     seen.add(key)
+                    condition_business = _translate_condition(block.condition)
                     flags.append(Flag(
                         id=self._next_id("magic_value"),
                         type="magic_value",
                         location=block.id,
                         fragment=block.condition,
                         question=(
-                            f"La valeur littérale '{value}' apparaît directement dans la condition. "
-                            f"D'où vient cette valeur ? Est-elle définie dans une constante, "
-                            f"un enum ou une table de référence ?"
+                            f"Valeur de référence non documentée — La décision « {condition_business} » "
+                            f"repose sur la valeur '{value}'. "
+                            f"D'où vient cette valeur ? Fait-elle partie d'une liste de référence définie dans le cahier des charges ?"
                         ),
                     ))
 
@@ -138,8 +186,9 @@ class FlagEngine:
                         location=op.id,
                         fragment=op.details,
                         question=(
-                            f"La valeur '{value}' est filtrée directement dans la requête SQL. "
-                            f"Quelle est la règle métier derrière ce filtre ?"
+                            f"La valeur '{value}' est utilisée comme filtre de sélection des données. "
+                            f"Quelle est la règle métier derrière ce filtre ? "
+                            f"Cette valeur est-elle susceptible d'évoluer ?"
                         ),
                     ))
 
@@ -164,15 +213,16 @@ class FlagEngine:
                     if key in seen:
                         continue
                     seen.add(key)
+                    question = SECURITY_QUESTIONS.get(pattern_str, (
+                        f"Ce point d'attention ({description}) a été identifié. "
+                        f"Existe-t-il une règle métier documentée qui justifie ce comportement ?"
+                    ))
                     flags.append(Flag(
                         id=self._next_id("security"),
                         type="security_risk",
                         location=ep.name,
                         fragment=fragment,
-                        question=(
-                            f"Risque sécurité : {description}. "
-                            f"Quelle contrainte métier ou technique justifie ce code ?"
-                        ),
+                        question=question,
                     ))
 
         return flags
@@ -191,8 +241,9 @@ class FlagEngine:
                     location=dep.name,
                     fragment=f"{dep.type}: {dep.name}",
                     question=(
-                        f"La dépendance '{dep.name}' (type : {dep.type}) n'a pas "
-                        f"de correspondance Symfony connue. Quel est son rôle fonctionnel ?"
+                        f"Service tiers non documenté — Le composant '{dep.name}' est utilisé "
+                        f"dans ce périmètre sans équivalent identifié dans la cible. "
+                        f"Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?"
                     ),
                 ))
         return flags
@@ -216,9 +267,9 @@ class FlagEngine:
                     location=op.id,
                     fragment=op.details,
                     question=(
-                        f"Cette requête retourne potentiellement tous les enregistrements "
-                        f"({op.details}). Quelle est la règle métier sur le volume attendu ? "
-                        f"Une pagination est-elle nécessaire ?"
+                        f"Volume non borné — Ce chargement ramène potentiellement l'intégralité des données "
+                        f"sans limitation de volume. Quelle est la règle métier sur le nombre d'éléments attendus ? "
+                        f"Un affichage paginé ou un export par lot est-il prévu ?"
                     ),
                 ))
         return flags
@@ -254,9 +305,9 @@ class FlagEngine:
                         location=ep.name,
                         fragment=fragment,
                         question=(
-                            f"Après une opération d'écriture en base, {email_desc}. "
-                            f"Est-ce synchrone par design ou une contrainte legacy ? "
-                            f"Que se passe-t-il si cet effet de bord échoue ?"
+                            f"Notification automatique — Après l'enregistrement des données, {email_desc}. "
+                            f"Si cette notification ne peut pas être envoyée, l'opération est-elle annulée ou "
+                            f"considérée comme réussie malgré tout ?"
                         ),
                     ))
                     break  # une seule flag par (entry_point, write_op)
@@ -282,3 +333,27 @@ class FlagEngine:
         start = code.rfind('\n', 0, pos) + 1
         lines = code[start:].split('\n')
         return '\n'.join(line.rstrip() for line in lines[:max_lines])
+
+
+# =============================================================================
+# Helpers module-level
+# =============================================================================
+
+def _translate_condition(condition: str) -> str:
+    """Traduit une condition technique en formulation métier pour un PO."""
+    cond = condition.strip()
+    for pattern, translation in CONDITION_TRANSLATIONS:
+        m = pattern.search(cond)
+        if m:
+            try:
+                return pattern.sub(translation, cond)
+            except re.error:
+                return translation
+    # Fallback : retirer les signes $ et simplifier
+    clean = re.sub(r'\$_(?:POST|GET|SESSION|REQUEST)\s*\[[^\]]+\]', 'donnée saisie', cond)
+    clean = re.sub(r'\$(\w+)', r'« \1 »', clean)
+    clean = re.sub(r'\s*!=\s*', ' différent de ', clean)
+    clean = re.sub(r'\s*==\s*', ' égal à ', clean)
+    clean = re.sub(r'\s*\|\|\s*', ' ou ', clean)
+    clean = re.sub(r'\s*&&\s*', ' et ', clean)
+    return clean
