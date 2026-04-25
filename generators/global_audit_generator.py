@@ -13,10 +13,14 @@ Structure du livrable :
      4.2 Services Tiers Identifiés
 """
 
+import re
 from datetime import datetime
 from typing import Optional
-from aggregators.business_aggregator import AggregatedInsights
+from aggregators.business_aggregator import AggregatedInsights, DecisionGap
 from analyzers.llm_enricher import TokenUsage, PRICING
+
+_TECHNICAL_NOISE = [r'\$_POST', r'\bmd5\b', r'SELECT\s*\*']
+_PRIORITY_KEYWORDS = ("oceane", "adelia", "oceaneassistant")
 
 
 class GlobalAuditGenerator:
@@ -155,11 +159,11 @@ class GlobalAuditGenerator:
         return lines
 
     # =========================================================================
-    # 3. Gaps de Documentation — CRITIQUE
+    # 3. Décisions requises avant migration (vue PO — top 5 par contrôleur)
     # =========================================================================
 
     def _section_decision_gaps(self, ins: AggregatedInsights) -> list[str]:
-        lines = ["## 3. Gaps de Documentation — CRITIQUE", ""]
+        lines = ["## 3. Décisions requises avant migration", ""]
 
         if not ins.decision_gaps:
             lines.append("*Aucun gap de logique identifié sur ce périmètre.*")
@@ -169,29 +173,96 @@ class GlobalAuditGenerator:
             return lines
 
         lines.append(
-            "> **Ces points nécessitent un arbitrage métier avant de commencer le développement "
-            "dans la cible.** Chaque ligne correspond à un comportement du système actuel dont "
-            "le cas contraire n'est pas documenté."
+            "> Ces questions nécessitent un arbitrage métier "
+            "avant tout développement dans la cible."
         )
         lines.append("")
-        lines.append("| # | Contrôleur | Question métier | Statut |")
-        lines.append("|---|-----------|----------------|--------|")
-        for i, gap in enumerate(ins.decision_gaps, 1):
-            # Extraire la question lisible depuis le champ question du flag
-            question = gap.condition_business.replace("\n", " ").strip()
-            # Tronquer si trop long
-            if len(question) > 120:
-                question = question[:117] + "…"
-            lines.append(f"| {i} | {gap.controller} | {question} | ⬜ À arbitrer |")
-        lines.append("")
+
+        # Comptage des gaps missing_branch par contrôleur
+        gap_counts: dict[str, int] = {}
+        for gap in ins.decision_gaps:
+            gap_counts[gap.controller] = gap_counts.get(gap.controller, 0) + 1
+
+        # Pool de tous les flags par contrôleur (pour la sélection top-5)
+        pool = ins.all_flags if ins.all_flags else ins.decision_gaps
+        flags_by_ctrl: dict[str, list[DecisionGap]] = {}
+        for f in pool:
+            flags_by_ctrl.setdefault(f.controller, []).append(f)
+
+        for controller in sorted(gap_counts, key=lambda c: gap_counts[c], reverse=True):
+            count = gap_counts[controller]
+            badge = "🔴" if count > 15 else ("🟡" if count > 5 else "🟢")
+            lines.append(f"### {badge} {controller} — {count} comportement(s) à définir")
+            lines.append("**Top 5 questions prioritaires :**")
+
+            top5 = self._select_top5(flags_by_ctrl.get(controller, []))
+            for i, gap in enumerate(top5, 1):
+                question = gap.condition_business.replace("\n", " ").strip()
+                if len(question) > 160:
+                    question = question[:157] + "…"
+                lines.append(f"{i}. {question}")
+            lines.append("")
+
         lines.append(
-            f"*{len(ins.decision_gaps)} gap(s) identifié(s) — chaque case ⬜ représente "
-            "une décision à prendre avant migration.*"
+            f"*(Voir `details/gaps_complets.md` pour la liste exhaustive "
+            f"des {ins.gap_count} gap(s))*"
         )
         lines.append("")
         lines.append("---")
         lines.append("")
         return lines
+
+    @staticmethod
+    def _gap_priority(gap: DecisionGap) -> tuple:
+        text = (gap.condition_fragment + " " + gap.condition_business).lower()
+        return (
+            0 if gap.confidence > 0.6 else 1,
+            0 if gap.flag_type == "business_logic_unclear" else 1,
+            0 if any(kw in text for kw in _PRIORITY_KEYWORDS) else 1,
+            0 if gap.flag_type == "magic_value" else 1,
+        )
+
+    @staticmethod
+    def _is_technical_noise(gap: DecisionGap) -> bool:
+        text = gap.condition_fragment + " " + gap.condition_business
+        return any(re.search(p, text, re.IGNORECASE) for p in _TECHNICAL_NOISE)
+
+    def _select_top5(self, flags: list[DecisionGap]) -> list[DecisionGap]:
+        filtered = [f for f in flags if not self._is_technical_noise(f)]
+        if not filtered:
+            filtered = flags
+        filtered.sort(key=self._gap_priority)
+        return filtered[:5]
+
+    # =========================================================================
+    # gaps_complets.md — liste exhaustive (vue dev)
+    # =========================================================================
+
+    def generate_gaps_detail(self, ins: AggregatedInsights) -> str:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+        lines = [
+            "# Gaps de Documentation — Liste Exhaustive",
+            "",
+            f"*Généré le {now} — {ins.gap_count} comportement(s) à définir "
+            f"sur {len(ins.controllers)} contrôleur(s)*",
+            "",
+            "> Chaque ligne correspond à un comportement du système actuel dont "
+            "le cas contraire n'est pas documenté.",
+            "",
+            "| # | Contrôleur | Question métier | Statut |",
+            "|---|-----------|----------------|--------|",
+        ]
+        for i, gap in enumerate(ins.decision_gaps, 1):
+            question = gap.condition_business.replace("\n", " ").strip()
+            if len(question) > 120:
+                question = question[:117] + "…"
+            lines.append(f"| {i} | {gap.controller} | {question} | ⬜ À arbitrer |")
+        lines.append("")
+        lines.append(
+            f"*{ins.gap_count} gap(s) — chaque case ⬜ représente "
+            "une décision à prendre avant migration.*"
+        )
+        return "\n".join(lines)
 
     # =========================================================================
     # 4. Cartographie du Domaine

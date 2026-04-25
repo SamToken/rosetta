@@ -50,11 +50,14 @@ class CommonDependency:
 
 @dataclass
 class DecisionGap:
-    """Gap de logique (branche manquante) nécessitant un arbitrage PO."""
+    """Gap de logique nécessitant un arbitrage PO."""
     condition_fragment: str   # condition technique brute
     condition_business: str   # formulation métier (question du flag)
     controller: str
     location: str
+    flag_type: str = "missing_branch"
+    flag_id: str = ""
+    confidence: float = 0.0   # confiance LLM (0 si pas d'insight)
 
 
 @dataclass
@@ -80,7 +83,8 @@ class AggregatedInsights:
     duplicate_rules: list[DuplicateRule] = field(default_factory=list)
     glossary: list[GlossaryEntry] = field(default_factory=list)
     common_deps: list[CommonDependency] = field(default_factory=list)
-    decision_gaps: list[DecisionGap] = field(default_factory=list)
+    decision_gaps: list[DecisionGap] = field(default_factory=list)  # missing_branch uniquement
+    all_flags: list[DecisionGap] = field(default_factory=list)      # tous types, pour top-5 PO
     controller_summaries: list[ControllerSummary] = field(default_factory=list)
 
     health_score: float = 100.0    # score global 0-100
@@ -114,6 +118,7 @@ class BusinessAggregator:
         result.glossary = self._build_glossary(irs)
         result.common_deps = self._map_common_deps(irs)
         result.decision_gaps = self._collect_decision_gaps(irs)
+        result.all_flags = self._collect_all_flags(irs)
         result.controller_summaries = self._build_summaries(irs)
 
         result.risk_count = sum(
@@ -245,10 +250,11 @@ class BusinessAggregator:
     # -------------------------------------------------------------------------
 
     def _collect_decision_gaps(self, irs: list[IRSchema]) -> list[DecisionGap]:
-        """Collecte tous les points de décision sans branche définie."""
+        """Collecte tous les points de décision sans branche définie (missing_branch)."""
         gaps = []
         for ir in irs:
             controller = ir.metadata.controller_name
+            confidence_map = {ins.flag_id: ins.confidence for ins in ir.llm_insights}
             for flag in ir.flags:
                 if flag.type != "missing_branch":
                     continue
@@ -257,8 +263,29 @@ class BusinessAggregator:
                     condition_business=flag.question,
                     controller=controller,
                     location=flag.location,
+                    flag_type=flag.type,
+                    flag_id=flag.id,
+                    confidence=confidence_map.get(flag.id, 0.0),
                 ))
         return gaps
+
+    def _collect_all_flags(self, irs: list[IRSchema]) -> list[DecisionGap]:
+        """Collecte tous les flags (tous types) avec leur confiance LLM, pour le top-5 PO."""
+        flags = []
+        for ir in irs:
+            controller = ir.metadata.controller_name
+            confidence_map = {ins.flag_id: ins.confidence for ins in ir.llm_insights}
+            for flag in ir.flags:
+                flags.append(DecisionGap(
+                    condition_fragment=flag.fragment,
+                    condition_business=flag.question,
+                    controller=controller,
+                    location=flag.location,
+                    flag_type=flag.type,
+                    flag_id=flag.id,
+                    confidence=confidence_map.get(flag.id, 0.0),
+                ))
+        return flags
 
     # -------------------------------------------------------------------------
     # 5. Résumés par contrôleur

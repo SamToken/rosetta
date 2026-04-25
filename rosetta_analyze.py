@@ -224,6 +224,10 @@ def main() -> None:
     global_out.write_text(global_audit, encoding="utf-8")
     print(f"   ✓ {global_out}")
 
+    gaps_out = details_dir / "gaps_complets.md"
+    gaps_out.write_text(global_gen.generate_gaps_detail(insights), encoding="utf-8")
+    print(f"   ✓ {gaps_out}")
+
     # ------------------------------------------------------------------
     # Résumé console
     # ------------------------------------------------------------------
