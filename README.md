@@ -1,79 +1,85 @@
-# ?? Rosetta
+# ğŸš€ Rosetta
 
-**Hybrid Analysis pour migrer PHP Legacy vers Symfony avec extraction de logique métier et enrichissement LLM sécurisé.**
+**Rosetta est un outil professionnel de migration PHP Legacy vers Symfony, strictement dÃ©diÃ© Ã  l'extraction de la logique mÃ©tier.**
 
-## Why Rosetta?
+Cette branche se concentre sur la traduction du code legacy en spÃ©cifications fonctionnelles lisibles pour les Product Owners et les stakeholders. Le principal livrable est le Business Doc Generator : un document mÃ©tier Markdown produit Ã  partir des fragments de code analysÃ©s.
 
-Le legacy PHP d?Astro contient de la logique métier enfouie dans des contrôleurs, des branches conditionnelles et des requêtes SQL peu lisibles. Rosetta transforme ce code en une base d?analyse fiable en combinant :
-
-- une extraction statique déterministe pour capturer l?IR métier sans interprétation aléatoire,
-- un enrichissement LLM ciblé pour expliquer l?intention métier des fragments les plus ambigus.
-
-## How it works
-
-Rosetta s?exécute comme un pipeline de migration hybride :
-
-1. **Extract**
-   - Parse un fichier PHP (contrôleur, service, repository, etc.) et génère une représentation intermédiaire JSON (IR).
-2. **Flag**
-   - Détecte les fragments suspects avec le Flag Engine : valeurs magiques, branches manquantes, SQL unsafe, dépendances non mappées, etc.
-3. **Enrich**
-   - Envoie uniquement les fragments flaggés à Claude Sonnet 3.5/4.
-   - Le fichier PHP complet ne sort jamais : souveraineté des données garantie.
-4. **Report**
-   - Génère une documentation Markdown orientée PO et un schéma JSON exploitable par les développeurs.
-
-## Key Features
-
-- ? **Hybrid Analysis** : déterministe par défaut, probabiliste par nécessité.
-- ?? **Extraction PHP ? IR** : parseur dédié, format JSON structuré.
-- ?? **Flag Engine** : 6 règles déterministes pour détecter :
-  - valeurs magiques,
-  - branches manquantes,
-  - requêtes SQL dangereuses,
-  - dépendances non mappées,
-  - conditions non couvertes,
-  - fragments métier non explicites.
-- ?? **Coût maîtrisé** : prompt caching intensif pour réduire les frais LLM de ~66%.
-- ??? **Auditabilité** : chaque insight LLM est accompagné d?un score de confiance et reste soumis à validation humaine.
-- ?? **Outputs professionnels** : documentation business en Markdown + IR JSON pour les développeurs.
-
-## Developer Experience
-
-Rosetta est conçu pour être simple à utiliser en CLI :
+## Installation
 
 ```bash
-cd /home/nixos/projects/rosetta
-source .venv/bin/activate
-python rosetta_analyze.py tests/AdminAiguillageController.php --output-dir ./output
+git clone <repo-url>
+cd rosetta
+python -m venv .venv
+source .venv/bin/activate  # ou .venv\Scripts\activate sur Windows
+pip install -r requirements.txt
 ```
 
-Tu peux analyser n'importe quel fichier PHP de legacy : contrôleur, service, repository, etc.
+## Usage
 
 ```bash
-python rosetta_analyze.py src/Service/SampleService.php --output-dir ./output
-python rosetta_analyze.py src/Repository/ContractRepository.php --output-dir ./output
+python rosetta_analyze.py <target_file.php> --output-dir ./output
 ```
 
-### Options clés
+Options importantes :
 
-- `--output-dir ./output` : dossier de sortie pour JSON et Markdown
-- `--no-llm` : exécute le pipeline déterministe sans appel Claude
+- `--output-dir ./output` : dossier de sortie pour les JSON et Markdown
+- `--no-llm` : exÃ©cute uniquement l'analyse dÃ©terministe, sans appel Ã  Claude
+- `--model <model-name>` : sÃ©lectionne le modÃ¨le LLM Ã  utiliser pour l'enrichissement
 
-## Security & Data Privacy
+## Business Doc Generator
 
-Rosetta est construit autour de la sécurité des données :
+Le Business Doc Generator est le livrable principal de Rosetta sur cette branche. Il produit un document Markdown orientÃ© mÃ©tier qui traduit les fragments PHP legacy en spÃ©cifications fonctionnelles comprÃ©hensibles par les PO et les parties prenantes.
 
-- seul le fragment de code flaggé est transmis au modèle,
-- le contrôleur complet ne quitte jamais le périmètre local,
-- l?enrichissement LLM est réservé aux zones nécessitant une interprétation métier.
+Le JSON IR reste un artefact technique secondaire, utile pour les dÃ©veloppeurs et pour les flux de migration automatisÃ©e.
+
+## Architecture du pipeline
+
+Rosetta fonctionne en deux phases complÃ©mentaires :
+
+1. **Analyse dÃ©terministe**
+   - Le moteur statique parse le fichier PHP et construit une reprÃ©sentation intermÃ©diaire (IR).
+   - Le Flag Engine applique des rÃ¨gles dÃ©terministes pour dÃ©tecter les problÃ¨mes Ã©vidents.
+2. **Enrichissement probabiliste**
+   - Le LLM Enricher ne traite que les fragments flaggÃ©s.
+   - Seuls les extraits concernÃ©s sont envoyÃ©s Ã  l'API, jamais le fichier complet.
+
+## Flag Engine
+
+Le Flag Engine analyse le code selon 6 rÃ¨gles dÃ©terministes :
+
+- valeurs magiques
+- branches manquantes
+- sÃ©curitÃ© SQL (SQL unsafe)
+- dÃ©pendances non mappÃ©es
+- conditions non couvertes
+- fragments mÃ©tier non explicites
+
+## Architecture du rapport
+
+Le Business Doc Generator structure les sorties mÃ©tier pour faciliter l'audit et la prise de dÃ©cision :
+
+- ğŸ”´ **Risques** : Ã©lÃ©ments Ã  prioriser et Ã  corriger rapidement.
+- âš ï¸ **AmbiguÃ¯tÃ©s / Branches manquantes** : zones oÃ¹ la logique conditionnelle est partielle ou incertaine.
+- ğŸ¤– **Insights LLM** : commentaires mÃ©tier gÃ©nÃ©rÃ©s par l'IA avec score de confiance.
+
+## Sovereignty / Privacy-First
+
+Rosetta est conÃ§u pour protÃ©ger les donnÃ©es :
+
+- seuls les fragments flaggÃ©s sont transmis Ã  l'API LLM,
+- le fichier PHP complet reste toujours local,
+- l'enrichissement est rÃ©servÃ© aux zones nÃ©cessitant une interprÃ©tation mÃ©tier.
+
+## Performance & coÃ»t
+
+Pour les projets volumineux, Rosetta optimise les coÃ»ts avec :
+
+- prompt caching Anthropic,
+- rÃ©duction des appels LLM d'environ 66%,
+- priorisation de l'analyse dÃ©terministe pour les cas simples.
 
 ## Philosophy
 
-**Déterministe par défaut, probabiliste par nécessité.**
+**Deterministic by default, Probabilistic by necessity.**
 
-Rosetta privilégie d?abord l?analyse locale 100% fiable, puis applique l?IA de manière ciblée pour compléter les zones où la sémantique métier reste incertaine.
-
----
-
-**Rosetta ? Décoder l?intention métier du legacy PHP, avec rigueur et confiance.**
+Rosetta privilÃ©gie d'abord une analyse locale fiable, puis applique l'intelligence artificielle uniquement lorsque le contexte mÃ©tier l'exige.
