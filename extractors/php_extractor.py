@@ -465,20 +465,27 @@ class PHPExtractor:
     # =========================================================================
     
     def _extract_control_flow(self, content: str) -> list[ControlBlock]:
-        """Extrait un control flow simplifié."""
+        """Extrait un control flow simplifié avec numéro de ligne et contexte."""
         blocks = []
-        
-        # Pour l'instant, on extrait juste les conditions principales
+        all_lines = content.split('\n')
+
         for match in self.PATTERN_IF.finditer(content):
             condition = match.group(1).strip()
-            # Nettoyer la condition
-            condition = ' '.join(condition.split())  # Normaliser les espaces
-            
+            condition = ' '.join(condition.split())
+
+            line_num = content[:match.start()].count('\n') + 1
+            line_idx = line_num - 1  # 0-indexed
+            ctx_start = max(0, line_idx - 2)
+            ctx_end = min(len(all_lines), line_idx + 4)
+            raw_context = '\n'.join(all_lines[ctx_start:ctx_end])
+
             blocks.append(ControlBlock(
                 id=self._next_block_id(),
-                condition=condition
+                condition=condition,
+                source_line=line_num,
+                raw_context=raw_context,
             ))
-        
+
         return blocks
     
     # =========================================================================

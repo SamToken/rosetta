@@ -339,19 +339,52 @@ class GlobalAuditGenerator:
             "> Chaque ligne correspond à un comportement du système actuel dont "
             "le cas contraire n'est pas documenté.",
             "",
-            "| # | Contrôleur | Question métier | Statut |",
-            "|---|-----------|----------------|--------|",
+            "| # | Contrôleur | Question métier | Ligne | Statut |",
+            "|---|-----------|----------------|-------|--------|",
         ]
         for i, gap in enumerate(ins.decision_gaps, 1):
             question = gap.condition_business.replace("\n", " ").strip()
             if len(question) > 120:
                 question = question[:117] + "…"
-            lines.append(f"| {i} | {gap.controller} | {question} | ⬜ À arbitrer |")
+            line_col = str(gap.source_line) if gap.source_line else "—"
+            lines.append(f"| {i} | {gap.controller} | {question} | {line_col} | ⬜ À arbitrer |")
         lines.append("")
         lines.append(
             f"*{ins.gap_count} gap(s) — chaque case ⬜ représente "
             "une décision à prendre avant migration.*"
         )
+        lines.append("")
+
+        # Blocs Copilot — un par gap ayant un contexte de code
+        copilot_blocks = [g for g in ins.decision_gaps if g.source_line and g.context_lines]
+        if copilot_blocks:
+            lines.append("---")
+            lines.append("")
+            lines.append("## Contexte Code — Copier dans Copilot")
+            lines.append("")
+            for i, gap in enumerate(ins.decision_gaps, 1):
+                if not gap.source_line or not gap.context_lines:
+                    continue
+                question = gap.condition_business.replace("\n", " ").strip()
+                lines.append(
+                    f"<details>"
+                    f"<summary>Gap #{i} — {gap.source_file}:{gap.source_line} "
+                    f"({gap.controller})</summary>"
+                )
+                lines.append("")
+                lines.append(f"**Copier dans Copilot :**")
+                lines.append(f"Fichier : `{gap.source_file}` | Ligne {gap.source_line}")
+                lines.append("")
+                lines.append("Contexte :")
+                lines.append("```php")
+                lines.append(gap.context_lines)
+                lines.append("```")
+                lines.append("")
+                lines.append(f"> Question : {question}")
+                lines.append("")
+                lines.append("</details>")
+                lines.append("")
+
         return "\n".join(lines)
 
     # =========================================================================

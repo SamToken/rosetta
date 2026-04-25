@@ -134,6 +134,8 @@ class FlagEngine:
                         f"Point de décision — {condition_business}. "
                         f"Quel est le comportement attendu dans le cas contraire ?"
                     ),
+                    source_line=block.source_line,
+                    context_lines=block.raw_context,
                 ))
         return flags
 
@@ -167,6 +169,8 @@ class FlagEngine:
                             f"repose sur la valeur '{value}'. "
                             f"D'où vient cette valeur ? Fait-elle partie d'une liste de référence définie dans le cahier des charges ?"
                         ),
+                        source_line=block.source_line,
+                        context_lines=block.raw_context,
                     ))
 
         # Scan les details des opérations DB (SQL partiel)
@@ -217,12 +221,16 @@ class FlagEngine:
                         f"Ce point d'attention ({description}) a été identifié. "
                         f"Existe-t-il une règle métier documentée qui justifie ce comportement ?"
                     ))
+                    abs_line = (ep.start_line or 0) + ep.raw_code[:match.start()].count('\n')
+                    context = self._extract_context_lines(ep.raw_code, match.start(), max_lines=7)
                     flags.append(Flag(
                         id=self._next_id("security"),
                         type="security_risk",
                         location=ep.name,
                         fragment=fragment,
                         question=question,
+                        source_line=abs_line if ep.start_line else None,
+                        context_lines=context,
                     ))
 
         return flags

@@ -86,6 +86,8 @@ class ControlBlock(BaseModel):
     true_branch: Optional[str] = None
     false_branch: Optional[str] = None
     operations: list[str] = Field(default_factory=list)  # IDs des opérations
+    source_line: Optional[int] = None    # ligne du if dans le fichier source
+    raw_context: Optional[str] = None   # ±3 lignes autour pour le contexte
 
 
 class DataFlow(BaseModel):
@@ -132,6 +134,8 @@ class Flag(BaseModel):
     location: str  # nom de l'entry_point, block_id, op_id ou dep_name
     fragment: str  # le code brut minimal concerné
     question: str  # question précise à poser au LLM ou à un humain
+    source_line: Optional[int] = None   # ligne absolue dans le fichier source
+    context_lines: Optional[str] = None # ±3 lignes autour pour copier dans Copilot
 
 
 class LLMInsight(BaseModel):

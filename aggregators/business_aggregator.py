@@ -65,6 +65,9 @@ class DecisionGap:
     flag_type: str = "missing_branch"
     flag_id: str = ""
     confidence: float = 0.0   # confiance LLM (0 si pas d'insight)
+    source_file: str = ""     # nom du fichier PHP source
+    source_line: Optional[int] = None
+    context_lines: Optional[str] = None
 
 
 @dataclass
@@ -310,9 +313,11 @@ class BusinessAggregator:
 
     def _collect_decision_gaps(self, irs: list[IRSchema]) -> list[DecisionGap]:
         """Collecte tous les points de décision sans branche définie (missing_branch)."""
+        from pathlib import Path
         gaps = []
         for ir in irs:
             controller = ir.metadata.controller_name
+            source_file = Path(ir.metadata.source_file).name
             confidence_map = {ins.flag_id: ins.confidence for ins in ir.llm_insights}
             for flag in ir.flags:
                 if flag.type != "missing_branch":
@@ -325,14 +330,19 @@ class BusinessAggregator:
                     flag_type=flag.type,
                     flag_id=flag.id,
                     confidence=confidence_map.get(flag.id, 0.0),
+                    source_file=source_file,
+                    source_line=flag.source_line,
+                    context_lines=flag.context_lines,
                 ))
         return gaps
 
     def _collect_all_flags(self, irs: list[IRSchema]) -> list[DecisionGap]:
         """Collecte tous les flags (tous types) avec leur confiance LLM, pour le top-5 PO."""
+        from pathlib import Path
         flags = []
         for ir in irs:
             controller = ir.metadata.controller_name
+            source_file = Path(ir.metadata.source_file).name
             confidence_map = {ins.flag_id: ins.confidence for ins in ir.llm_insights}
             for flag in ir.flags:
                 flags.append(DecisionGap(
@@ -343,6 +353,9 @@ class BusinessAggregator:
                     flag_type=flag.type,
                     flag_id=flag.id,
                     confidence=confidence_map.get(flag.id, 0.0),
+                    source_file=source_file,
+                    source_line=flag.source_line,
+                    context_lines=flag.context_lines,
                 ))
         return flags
 
