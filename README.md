@@ -163,5 +163,3 @@ output/
         └── <Contrôleur>_flags.md
         └── <Contrôleur>_business_logic.json
 ```
-
-Le dossier `output/` est exclu du dépôt git (`.gitignore`).
