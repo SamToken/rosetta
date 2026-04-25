@@ -137,3 +137,6 @@ dmypy.json
 
 # Project specific
 tests/generated_prompts/*.md
+output/
+/tmp/rosetta_*/
+../rosetta-memory/

@@ -12,6 +12,10 @@ Usage :
     python rosetta_analyze.py ./controllers/
     python rosetta_analyze.py ./controllers/ --output-dir ./audit --model claude-sonnet-4-6
 
+    # Avec archivage automatique
+    python rosetta_analyze.py ./controllers/ --archive
+    python rosetta_analyze.py ./controllers/ --archive --contexte "Avant MEP US-1234"
+
 Sorties (fichier unique) :
     <Nom>_business_logic.json   IR enrichi avec flags et insights LLM
     <Nom>_business_doc.md       Documentation lisible par un PO
@@ -22,11 +26,18 @@ Sorties (mode batch) :
     details/<Nom>_flags.md
     details/<Nom>_business_logic.json
     global_audit.md                Synthèse globale lisible par un PO
+
+Archive (--archive) :
+    ~/rosetta-memory/audits/<date>_<contrôleurs>/
+    ~/rosetta-memory/index.md
 """
 
 import argparse
+import json
 import os
+import shutil
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -47,6 +58,109 @@ from analyzers.flag_engine import FlagEngine
 from generators.business_doc_generator import BusinessDocGenerator
 from ir.schema import IRSchema
 
+
+# =============================================================================
+# Archive — fonctions utilitaires
+# =============================================================================
+
+def generate_archive_name(controller_names: list[str]) -> str:
+    date = datetime.now().strftime("%Y-%m-%d_%Hh%M")
+    controllers = "-".join(controller_names[:3])
+    if len(controller_names) > 3:
+        controllers += f"-et{len(controller_names) - 3}autres"
+    return f"{date}_{controllers}"
+
+
+def _health_emoji(score: float) -> str:
+    if score >= 70:
+        return "🟢"
+    if score >= 40:
+        return "🟡"
+    return "🔴"
+
+
+def _format_cost(usage, model: str) -> str:
+    if not usage:
+        return "$0.00"
+    try:
+        return f"${usage.total_cost(model):.2f}"
+    except Exception:
+        return "$0.00"
+
+
+def _update_index(memory_base: Path, meta: dict) -> None:
+    """Ajoute une ligne dans ~/rosetta-memory/index.md."""
+    index_path = memory_base / "index.md"
+
+    dt = datetime.fromisoformat(meta["date"])
+    date_str = dt.strftime("%Y-%m-%d %Hh%M")
+
+    controllers = meta["controleurs"]
+    controllers_str = ", ".join(controllers[:3])
+    if len(controllers) > 3:
+        controllers_str += f"... (+{len(controllers) - 3})"
+
+    stats = meta["stats"]
+    score = stats["score_sante_moyen"]
+    emoji = _health_emoji(score)
+    contexte = meta.get("contexte") or "—"
+
+    new_row = (
+        f"| {date_str} | {contexte} | {controllers_str} "
+        f"| {stats['gaps_total']} | {emoji} {score} | {stats['cout_llm']} |"
+    )
+
+    header = (
+        "# Rosetta Memory — Index des Audits\n\n"
+        "| Date | Contexte | Contrôleurs | Gaps | Score | Coût |\n"
+        "|------|----------|-------------|------|-------|------|\n"
+    )
+
+    if not index_path.exists():
+        index_path.write_text(header + new_row + "\n", encoding="utf-8")
+    else:
+        existing = index_path.read_text(encoding="utf-8")
+        index_path.write_text(existing.rstrip() + "\n" + new_row + "\n", encoding="utf-8")
+
+
+def _do_archive(
+    output_dir: Path,
+    archive_name: str,
+    meta: dict,
+    memory_base: Optional[Path] = None,
+) -> Path:
+    """Copie output_dir dans ~/rosetta-memory/audits/<archive_name>/ et met à jour index.md."""
+    if memory_base is None:
+        memory_base = Path.home() / "rosetta-memory"
+
+    archive_dir = memory_base / "audits" / archive_name
+    archive_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copier tous les fichiers générés
+    for item in output_dir.iterdir():
+        dest = archive_dir / item.name
+        if item.is_dir():
+            if dest.exists():
+                shutil.rmtree(dest)
+            shutil.copytree(item, dest)
+        else:
+            shutil.copy2(item, dest)
+
+    # Écrire meta.json
+    (archive_dir / "meta.json").write_text(
+        json.dumps(meta, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    # Mettre à jour l'index
+    _update_index(memory_base, meta)
+
+    return archive_dir
+
+
+# =============================================================================
+# Analyse d'un fichier PHP
+# =============================================================================
 
 def _analyze_single(
     php_path: Path,
@@ -124,13 +238,16 @@ def _print_usage_summary(usage, model: str) -> None:
     if not usage:
         print("💰 Coût LLM : $0.00 (--no-llm)")
         return
-    from analyzers.llm_enricher import PRICING
     total = usage.total_cost(model)
     _, _, cache_economy = usage.costs(model)
     print(f"💰 Coût LLM estimé : ${total:.4f}")
     if usage.cache_read_tokens:
         print(f"⚡ Tokens cache : {usage.cache_read_tokens:,} (économie : ~${cache_economy:.4f})")
 
+
+# =============================================================================
+# Point d'entrée
+# =============================================================================
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -156,6 +273,17 @@ def main() -> None:
         default="claude-sonnet-4-6",
         help="Modèle LLM Anthropic à utiliser (défaut : claude-sonnet-4-6)",
     )
+    parser.add_argument(
+        "--archive",
+        action="store_true",
+        help="Archiver les résultats dans ~/rosetta-memory/",
+    )
+    parser.add_argument(
+        "--contexte",
+        default="",
+        metavar="TEXT",
+        help="Contexte de l'audit pour l'archivage (ex: 'Avant MEP US-1234')",
+    )
 
     args = parser.parse_args()
     input_path = Path(args.input)
@@ -177,6 +305,31 @@ def main() -> None:
         print(f"📄 3 fichiers générés dans {output_dir}/")
         print(f"🤖 {len(ir.llm_insights)} flags enrichis / {usage.skipped_flags if usage else 0} skippés")
         _print_usage_summary(usage, args.model)
+
+        if args.archive:
+            controller_names = [ir.metadata.controller_name]
+            archive_name = generate_archive_name(controller_names)
+            gap_count = len([f for f in ir.flags if f.type == "missing_branch"])
+            dep_count = len([f for f in ir.flags if f.type == "unmapped_dep"])
+            risk_count = len([f for f in ir.flags if f.type == "security_risk"])
+            health = max(0.0, round(100.0 - risk_count * 3 - gap_count * 4 - dep_count * 2, 1))
+            meta = {
+                "date": datetime.now().isoformat(timespec="seconds"),
+                "contexte": args.contexte,
+                "controleurs": controller_names,
+                "stats": {
+                    "gaps_total": gap_count,
+                    "services_tiers": dep_count,
+                    "score_sante_moyen": health,
+                    "cout_llm": _format_cost(usage, args.model),
+                },
+                "modele": "--no-llm" if args.no_llm else args.model,
+                "mode": "--no-llm" if args.no_llm else "llm",
+                "fichiers_analyses": [str(input_path)],
+            }
+            archive_dir = _do_archive(output_dir, archive_name, meta)
+            print(f"📦 Archivé → {archive_dir}")
+
         return
 
     # ======================================================================
@@ -241,11 +394,34 @@ def main() -> None:
     print(f"⚠️  {insights.gap_count} gap(s) de logique à arbitrer")
 
     if any(u for u in all_usages):
-        # Résumé coût agrégé
         if insights.total_usage:
             _print_usage_summary(insights.total_usage, args.model)
     else:
         print("💰 Coût LLM : $0.00 (--no-llm)")
+
+    # ------------------------------------------------------------------
+    # Archivage (--archive)
+    # ------------------------------------------------------------------
+    if args.archive:
+        controller_names = [ir.metadata.controller_name for ir in all_irs]
+        archive_name = generate_archive_name(controller_names)
+        cost = _format_cost(insights.total_usage, args.model)
+        meta = {
+            "date": datetime.now().isoformat(timespec="seconds"),
+            "contexte": args.contexte,
+            "controleurs": controller_names,
+            "stats": {
+                "gaps_total": insights.gap_count,
+                "services_tiers": insights.dep_count,
+                "score_sante_moyen": insights.health_score,
+                "cout_llm": cost,
+            },
+            "modele": "--no-llm" if args.no_llm else args.model,
+            "mode": "--no-llm" if args.no_llm else "llm",
+            "fichiers_analyses": [str(p) for p in php_files],
+        }
+        archive_dir = _do_archive(output_dir, archive_name, meta)
+        print(f"📦 Archivé → {archive_dir}")
 
 
 if __name__ == "__main__":
