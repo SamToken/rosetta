@@ -1,92 +1,79 @@
-# ğŸª¨ Rosetta
+# ?? Rosetta
 
-**Migrateur PHP Legacy â†’ Symfony avec IR (Intermediate Representation)**
+**Hybrid Analysis pour migrer PHP Legacy vers Symfony avec extraction de logique métier et enrichissement LLM sécurisé.**
 
-Comme la pierre de Rosette qui a permis de dÃ©chiffrer les hiÃ©roglyphes, Rosetta traduit ton code legacy en Symfony moderne.
+## Why Rosetta?
 
-## ğŸ¯ Concept
+Le legacy PHP d?Astro contient de la logique métier enfouie dans des contrôleurs, des branches conditionnelles et des requêtes SQL peu lisibles. Rosetta transforme ce code en une base d?analyse fiable en combinant :
 
-```
-PHP Legacy â†’ [Extracteur] â†’ IR JSON â†’ [GÃ©nÃ©rateur] â†’ Prompt â†’ [IA] â†’ Symfony
-     ğŸ›ï¸           ğŸ”            ğŸ“‹          âœ¨          ğŸ¤–         ğŸš€
-```
+- une extraction statique déterministe pour capturer l?IR métier sans interprétation aléatoire,
+- un enrichissement LLM ciblé pour expliquer l?intention métier des fragments les plus ambigus.
 
-**Pourquoi ?**
-- L'IA comprend mieux un prompt structurÃ© qu'un fichier PHP de 800 lignes
-- Tu gardes le contrÃ´le sur l'extraction (pas de magie noire)
-- ZÃ©ro perte de logique mÃ©tier (le code brut est inclus)
+## How it works
 
-## ğŸ“¦ Structure
+Rosetta s?exécute comme un pipeline de migration hybride :
 
-```
-rosetta/
-â”œâ”€â”€ extractors/
-â”‚   â””â”€â”€ php_extractor.py    # Parse PHP â†’ IR (sans IA, juste regex)
-â”œâ”€â”€ ir/
-â”‚   â””â”€â”€ schema.py           # Le format pivot (Pydantic)
-â”œâ”€â”€ generators/
-â”‚   â””â”€â”€ symfony_generator.py # IR â†’ Prompts Symfony
-â””â”€â”€ tests/
-    â”œâ”€â”€ sample_controller.php
-    â””â”€â”€ demo_full_workflow.py
-```
+1. **Extract**
+   - Parse un fichier PHP (contrôleur, service, repository, etc.) et génère une représentation intermédiaire JSON (IR).
+2. **Flag**
+   - Détecte les fragments suspects avec le Flag Engine : valeurs magiques, branches manquantes, SQL unsafe, dépendances non mappées, etc.
+3. **Enrich**
+   - Envoie uniquement les fragments flaggés à Claude Sonnet 3.5/4.
+   - Le fichier PHP complet ne sort jamais : souveraineté des données garantie.
+4. **Report**
+   - Génère une documentation Markdown orientée PO et un schéma JSON exploitable par les développeurs.
 
-## ğŸš€ Utilisation rapide
+## Key Features
 
-```python
-from extractors.php_extractor import extract_php
-from generators.symfony_generator import generate_migration_prompt
+- ? **Hybrid Analysis** : déterministe par défaut, probabiliste par nécessité.
+- ?? **Extraction PHP ? IR** : parseur dédié, format JSON structuré.
+- ?? **Flag Engine** : 6 règles déterministes pour détecter :
+  - valeurs magiques,
+  - branches manquantes,
+  - requêtes SQL dangereuses,
+  - dépendances non mappées,
+  - conditions non couvertes,
+  - fragments métier non explicites.
+- ?? **Coût maîtrisé** : prompt caching intensif pour réduire les frais LLM de ~66%.
+- ??? **Auditabilité** : chaque insight LLM est accompagné d?un score de confiance et reste soumis à validation humaine.
+- ?? **Outputs professionnels** : documentation business en Markdown + IR JSON pour les développeurs.
 
-# 1. Extraire l'IR
-ir = extract_php('mon_controller.php')
+## Developer Experience
 
-# 2. Voir le rÃ©sumÃ©
-print(ir.summary())
-
-# 3. GÃ©nÃ©rer un prompt pour une action
-prompt = generate_migration_prompt(ir, 'edit')
-
-# 4. Copier-coller dans Claude/Gemini
-print(prompt)
-```
-
-## ğŸ”§ Installation
+Rosetta est conçu pour être simple à utiliser en CLI :
 
 ```bash
-pip install pydantic
+cd /home/nixos/projects/rosetta
+source .venv/bin/activate
+python rosetta_analyze.py tests/AdminAiguillageController.php --output-dir ./output
 ```
 
-## ğŸ“Š Exemple de rÃ©sultat
-
-**EntrÃ©e :** `UserController.php` (Zend Framework 1)
-
-**Sortie :** 4 fichiers `.md` prÃªts pour l'IA
-- `User_index_migration.md`
-- `User_edit_migration.md`
-- `User_delete_migration.md`
-- `User_create_migration.md`
-
-## ğŸ¯ Pour ta migration des 61 contrÃ´leurs
+Tu peux analyser n'importe quel fichier PHP de legacy : contrôleur, service, repository, etc.
 
 ```bash
-# 1. Copie tes contrÃ´leurs dans un dossier
-cp /chemin/vers/zend/controllers/*.php ./controllers/
-
-# 2. Lance l'extraction en batch (Ã  crÃ©er)
-python batch_extract.py ./controllers/ ./output/
-
-# 3. Utilise les prompts gÃ©nÃ©rÃ©s avec Claude/Gemini
+python rosetta_analyze.py src/Service/SampleService.php --output-dir ./output
+python rosetta_analyze.py src/Repository/ContractRepository.php --output-dir ./output
 ```
 
-## ğŸ“ˆ Roadmap
+### Options clés
 
-- [x] Extracteur PHP basique
-- [x] SchÃ©ma IR Pydantic
-- [x] GÃ©nÃ©rateur de prompts Symfony
-- [ ] CLI avec Typer
-- [ ] Mode batch (plusieurs contrÃ´leurs)
-- [ ] Support des modÃ¨les Doctrine
+- `--output-dir ./output` : dossier de sortie pour JSON et Markdown
+- `--no-llm` : exécute le pipeline déterministe sans appel Claude
+
+## Security & Data Privacy
+
+Rosetta est construit autour de la sécurité des données :
+
+- seul le fragment de code flaggé est transmis au modèle,
+- le contrôleur complet ne quitte jamais le périmètre local,
+- l?enrichissement LLM est réservé aux zones nécessitant une interprétation métier.
+
+## Philosophy
+
+**Déterministe par défaut, probabiliste par nécessité.**
+
+Rosetta privilégie d?abord l?analyse locale 100% fiable, puis applique l?IA de manière ciblée pour compléter les zones où la sémantique métier reste incertaine.
 
 ---
 
-**ğŸª¨ Rosetta â€” DÃ©chiffre ton code legacy**
+**Rosetta ? Décoder l?intention métier du legacy PHP, avec rigueur et confiance.**
