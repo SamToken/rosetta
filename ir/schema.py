@@ -125,6 +125,26 @@ class UnparsedSection(BaseModel):
     raw_code: str
 
 
+class Flag(BaseModel):
+    """Zone ambiguë détectée mécaniquement — source déterministe, confiance 1.0."""
+    id: str
+    type: str  # missing_branch | magic_value | security_risk | unmapped_dep | business_logic_unclear
+    location: str  # nom de l'entry_point, block_id, op_id ou dep_name
+    fragment: str  # le code brut minimal concerné
+    question: str  # question précise à poser au LLM ou à un humain
+
+
+class LLMInsight(BaseModel):
+    """Enrichissement LLM d'un flag — confiance < 1.0, toujours à valider."""
+    flag_id: str
+    business_rule: str  # explication en français pour le PO
+    confidence: float  # jamais 1.0
+    source: str = "llm"
+    needs_human_validation: bool = True
+    validated: bool = False
+    validated_by: Optional[str] = None
+
+
 class IRSchema(BaseModel):
     """
     Intermediate Representation complète d'un contrôleur.
@@ -140,7 +160,13 @@ class IRSchema(BaseModel):
     
     # Ce qu'on n'a pas pu parser (pour passe IA ultérieure)
     unparsed_sections: list[UnparsedSection] = Field(default_factory=list)
-    
+
+    # Zones ambiguës détectées mécaniquement (déterministe, confiance 1.0)
+    flags: list[Flag] = Field(default_factory=list)
+
+    # Enrichissements LLM (confiance < 1.0, toujours séparés)
+    llm_insights: list[LLMInsight] = Field(default_factory=list)
+
     # ==========================================================================
     # Méthodes utilitaires
     # ==========================================================================
@@ -170,6 +196,8 @@ class IRSchema(BaseModel):
             "operations": len(self.operations),
             "db_operations": len([o for o in self.operations if o.type in [OperationType.DB_READ, OperationType.DB_WRITE, OperationType.DB_DELETE]]),
             "unparsed": len(self.unparsed_sections),
+            "flags": len(self.flags),
+            "llm_insights": len(self.llm_insights),
             "confidence": self.metadata.confidence_score,
             "estimated_tokens": self.token_estimate()
         }

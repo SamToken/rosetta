@@ -1,9 +1,9 @@
 {
   "metadata": {
     "source_type": "php",
-    "source_file": "/home/claude/antigravity/tests/sample_controller.php",
+    "source_file": "/home/nixos/projects/rosetta/tests/sample_controller.php",
     "controller_name": "User",
-    "extracted_at": "2026-01-24T12:21:57.342046",
+    "extracted_at": "2026-04-25T08:09:04.073205",
     "extractor_version": "0.1.0",
     "confidence_score": 1.0
   },
@@ -260,5 +260,7 @@
       "suggested_symfony": "_HelperService"
     }
   ],
-  "unparsed_sections": []
+  "unparsed_sections": [],
+  "flags": [],
+  "llm_insights": []
 }
