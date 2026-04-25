@@ -16,6 +16,13 @@ from typing import Optional
 from ir.schema import IRSchema, Flag, LLMInsight
 from analyzers.llm_enricher import TokenUsage
 
+_GLOSSARY_GENERIC = frozenset({
+    'data', 'result', 'this', 'value', 'type', 'key', 'label', 'val', 'id',
+    'name', 'error', 'return', 'action', 'status', 'objet', 'objets', 'ok',
+    'true', 'false', 'null', 'class', 'message', 'count', 'item', 'obj',
+    'date', 'time', 'code', 'info', 'user', 'text', 'url', 'list', 'tab',
+})
+
 
 # =============================================================================
 # Structures de données agrégées
@@ -82,6 +89,7 @@ class AggregatedInsights:
 
     duplicate_rules: list[DuplicateRule] = field(default_factory=list)
     glossary: list[GlossaryEntry] = field(default_factory=list)
+    magic_glossary: list[GlossaryEntry] = field(default_factory=list)
     common_deps: list[CommonDependency] = field(default_factory=list)
     decision_gaps: list[DecisionGap] = field(default_factory=list)  # missing_branch uniquement
     all_flags: list[DecisionGap] = field(default_factory=list)      # tous types, pour top-5 PO
@@ -116,6 +124,7 @@ class BusinessAggregator:
 
         result.duplicate_rules = self._find_duplicate_rules(irs)
         result.glossary = self._build_glossary(irs)
+        result.magic_glossary = self._build_magic_glossary(irs)
         result.common_deps = self._map_common_deps(irs)
         result.decision_gaps = self._collect_decision_gaps(irs)
         result.all_flags = self._collect_all_flags(irs)
@@ -215,6 +224,56 @@ class BusinessAggregator:
             ))
 
         return sorted(entries, key=lambda e: e.count, reverse=True)
+
+    # -------------------------------------------------------------------------
+    # 2b. Glossaire des termes métier (constantes, variables business)
+    # -------------------------------------------------------------------------
+
+    def _build_magic_glossary(self, irs: list[IRSchema]) -> list[GlossaryEntry]:
+        """Extrait les constantes et variables métier depuis les flags."""
+        term_map: dict[str, dict] = {}
+
+        def _add(term: str, ctrl: str, frag: str) -> None:
+            if term.lower() in _GLOSSARY_GENERIC or len(term) < 3:
+                return
+            if term not in term_map:
+                term_map[term] = {"controllers": set(), "contexts": []}
+            term_map[term]["controllers"].add(ctrl)
+            if frag and frag[:60] not in term_map[term]["contexts"]:
+                term_map[term]["contexts"].append(frag[:60])
+
+        for ir in irs:
+            ctrl = ir.metadata.controller_name
+            for flag in ir.flags:
+                if flag.type not in ("magic_value", "missing_branch"):
+                    continue
+                frag = flag.fragment
+                # Valeurs UPPERCASE comparées : == 'DSLAM', == 'GTR'
+                for m in re.finditer(r"(?:==|!=|!==|===)\s*['\"]([A-Z][A-Z0-9_]{2,})['\"]", frag):
+                    _add(m.group(1), ctrl, frag)
+                # Clés de tableau UPPERCASE : ['GTR'], ['ADELIA_MANUEL']
+                for m in re.finditer(r"\['([A-Z][A-Z0-9_]{2,})'\]", frag):
+                    _add(m.group(1), ctrl, frag)
+                # Constantes de classe : self::DSLAM
+                for m in re.finditer(r"self::([A-Z][A-Z0-9_]{2,})", frag):
+                    _add(m.group(1), ctrl, frag)
+                # Variables camelCase métier (≥ 5 chars)
+                for m in re.finditer(r"\$([a-z][a-z0-9]*[A-Z][a-zA-Z0-9]*)", frag):
+                    var = m.group(1)
+                    if len(var) >= 5 and var.lower() not in _GLOSSARY_GENERIC:
+                        _add(var, ctrl, frag)
+
+        entries = []
+        for term, data in sorted(term_map.items()):
+            controllers = sorted(data["controllers"])
+            if len(controllers) >= 2:
+                entries.append(GlossaryEntry(
+                    field_name=term,
+                    controllers=controllers,
+                    count=len(controllers),
+                    contexts=data["contexts"][:2],
+                ))
+        return sorted(entries, key=lambda e: (-e.count, e.field_name))
 
     # -------------------------------------------------------------------------
     # 3. Dépendances communes

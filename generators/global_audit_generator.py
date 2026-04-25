@@ -22,6 +22,46 @@ from analyzers.llm_enricher import TokenUsage, PRICING
 _TECHNICAL_NOISE = [r'\$_POST', r'\bmd5\b', r'SELECT\s*\*']
 _PRIORITY_KEYWORDS = ("oceane", "adelia", "oceaneassistant")
 
+# Correction 2 — traduction des termes techniques → langage PO
+# L'ordre compte : les patterns combinés avant les patterns simples
+_PO_CONDITION_TRANSLATIONS = [
+    (r"is_array\(«\s*[^»]+\s*»\)\s*et\s*count\(«\s*[^»]+\s*»\)\s*>\s*0",
+     "plusieurs éléments existent"),
+    (r"gettype\(«\s*[^»]+\s*»\)\s*différent de\s*['\"]boolean['\"]",
+     "la valeur reçue est invalide"),
+    (r"is_null\(«\s*[^»]+\s*»\)",
+     "l'information est absente"),
+    (r"«\s*[^»]+\s*»\s*égal à null",
+     "l'information est absente"),
+    (r"«\s*[^»]+\s*»\s*différent de null",
+     "l'information est présente"),
+    (r"is_array\(«\s*[^»]+\s*»\)",
+     "plusieurs éléments sont présents"),
+    (r"count\(«\s*[^»]+\s*»\)\s*>\s*0",
+     "des éléments existent"),
+    (r"count\(«\s*[^»]+\s*»\)",
+     "le nombre d'éléments"),
+    (r"key_exists\('(\w+)',\s*«\s*[^»]+\s*»\)",
+     r"l'information '\1' est disponible"),
+    (r"property_exists\(«\s*[^»]+\s*»,\s*'(\w+)'\)",
+     r"l'objet contient '\1'"),
+    (r"isset\(«\s*[^»]+\s*»\)",
+     "la valeur est définie"),
+    (r"!([A-Z][a-zA-Z0-9]+)::[a-zA-Z]+\([^)]*\)",
+     r"le service \1 ne répond pas"),
+    (r"([A-Z][a-zA-Z0-9]+)::[a-zA-Z]+\([^)]*\)",
+     r"le service \1 répond"),
+    (r"!«\s*([^»]+?)\s*»->[a-zA-Z]+\([^)]*\)",
+     r"le service \1 ne répond pas"),
+    (r"«\s*([^»]+?)\s*»->[a-zA-Z]+\([^)]*\)",
+     r"le service \1 répond"),
+    (r"strpos\([^)]+\)\s*!==\s*false", "la valeur est trouvée"),
+    (r"strpos\([^)]+\)\s*===\s*false", "la valeur n'est pas trouvée"),
+    (r"intval\(([^()]+)\)", r"\1"),
+    (r"strtolower\(([^()]+)\)", r"\1"),
+    (r"strlen\(([^()]+)\)", r"\1"),
+]
+
 
 class GlobalAuditGenerator:
     """Génère le rapport d'audit global lisible par un Product Owner."""
@@ -196,11 +236,14 @@ class GlobalAuditGenerator:
             lines.append("**Top 5 questions prioritaires :**")
 
             top5 = self._select_top5(flags_by_ctrl.get(controller, []))
-            for i, gap in enumerate(top5, 1):
-                question = gap.condition_business.replace("\n", " ").strip()
-                if len(question) > 160:
-                    question = question[:157] + "…"
-                lines.append(f"{i}. {question}")
+            for i, (gap, occ) in enumerate(top5, 1):
+                question = self._po_translate_question(
+                    gap.condition_business.replace("\n", " ").strip()
+                )
+                if len(question) > 180:
+                    question = question[:177] + "…"
+                suffix = f" *({occ}×)*" if occ > 1 else ""
+                lines.append(f"{i}. {question}{suffix}")
             lines.append("")
 
         lines.append(
@@ -227,12 +270,44 @@ class GlobalAuditGenerator:
         text = gap.condition_fragment + " " + gap.condition_business
         return any(re.search(p, text, re.IGNORECASE) for p in _TECHNICAL_NOISE)
 
-    def _select_top5(self, flags: list[DecisionGap]) -> list[DecisionGap]:
+    @staticmethod
+    def _po_translate_question(question: str) -> str:
+        """Traduit la condition technique d'un 'Point de décision' en langage PO."""
+        prefix = "Point de décision — "
+        if not question.startswith(prefix):
+            return question
+        rest = question[len(prefix):]
+        suffix = "Quel est le comportement attendu dans le cas contraire ?"
+        if suffix in rest:
+            condition = rest[:rest.index(suffix)].rstrip(". ")
+            tail = " " + suffix
+        else:
+            condition = rest
+            tail = ""
+        for pattern, replacement in _PO_CONDITION_TRANSLATIONS:
+            condition = re.sub(pattern, replacement, condition, flags=re.IGNORECASE)
+        condition = condition.strip().rstrip(".")
+        return f"{prefix}{condition}.{tail}" if tail else f"{prefix}{condition}"
+
+    def _select_top5(self, flags: list[DecisionGap]) -> list[tuple[DecisionGap, int]]:
+        """Retourne jusqu'à 5 gaps dédupliqués, triés par priorité, avec comptage."""
         filtered = [f for f in flags if not self._is_technical_noise(f)]
         if not filtered:
             filtered = flags
         filtered.sort(key=self._gap_priority)
-        return filtered[:5]
+        # Déduplication par texte normalisé, en conservant le compte
+        from collections import Counter
+        counts: Counter = Counter(f.condition_business.strip()[:120] for f in filtered)
+        seen: set[str] = set()
+        result: list[tuple[DecisionGap, int]] = []
+        for gap in filtered:
+            key = gap.condition_business.strip()[:120]
+            if key not in seen:
+                seen.add(key)
+                result.append((gap, counts[key]))
+                if len(result) >= 5:
+                    break
+        return result
 
     # =========================================================================
     # gaps_complets.md — liste exhaustive (vue dev)
@@ -271,19 +346,36 @@ class GlobalAuditGenerator:
     def _section_domain_mapping(self, ins: AggregatedInsights) -> list[str]:
         lines = ["## 4. Cartographie du Domaine", ""]
 
-        # 4.1 Glossaire métier unifié
-        lines.append("### 4.1 Glossaire Métier Unifié")
+        # 4.1 Termes métier non documentés (constantes, variables business)
+        lines.append("### 4.1 Termes Métier non documentés")
         lines.append("")
-        if not ins.glossary:
-            lines.append("*Aucun terme de glossaire extrait sur ce périmètre.*")
+        if not ins.magic_glossary:
+            lines.append("*Aucun terme métier transverse identifié sur ce périmètre.*")
         else:
             lines.append(
-                "Les termes suivants apparaissent dans les échanges de données du système. "
-                "Un même terme utilisé dans plusieurs contrôleurs doit avoir une définition "
-                "stable et partagée dans la cible."
+                "Ces termes apparaissent dans la logique conditionnelle de plusieurs contrôleurs. "
+                "Chacun doit être défini dans le référentiel métier de la cible."
             )
             lines.append("")
-            lines.append("| Terme | Contrôleurs | Occurrences |")
+            lines.append("| Terme | Contrôleurs | Signification probable |")
+            lines.append("|-------|------------|----------------------|")
+            for entry in ins.magic_glossary:
+                controllers_str = ", ".join(entry.controllers)
+                lines.append(f"| `{entry.field_name}` | {controllers_str} | ❓ À documenter |")
+        lines.append("")
+
+        # 4.2 Champs de données partagés (POST fields + SQL)
+        lines.append("### 4.2 Champs de données partagés")
+        lines.append("")
+        if not ins.glossary:
+            lines.append("*Aucun champ partagé extrait sur ce périmètre.*")
+        else:
+            lines.append(
+                "Ces champs de saisie et colonnes de données sont utilisés dans plusieurs contrôleurs. "
+                "Leur définition doit être stable et partagée dans la cible."
+            )
+            lines.append("")
+            lines.append("| Champ | Contrôleurs | Occurrences |")
             lines.append("|------|------------|-------------|")
             for entry in ins.glossary:
                 controllers_str = ", ".join(entry.controllers)
@@ -291,8 +383,8 @@ class GlobalAuditGenerator:
                 lines.append(f"| `{entry.field_name}` | {controllers_str} | {entry.count}{marker} |")
         lines.append("")
 
-        # 4.2 Services tiers
-        lines.append("### 4.2 Services Tiers Identifiés")
+        # 4.3 Services tiers
+        lines.append("### 4.3 Services Tiers Identifiés")
         lines.append("")
         if not ins.common_deps:
             lines.append("*Aucun service tiers non documenté identifié.*")
