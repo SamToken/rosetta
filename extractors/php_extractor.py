@@ -33,9 +33,11 @@ class PHPExtractor:
     PATTERN_ACTION = re.compile(r'(public|protected|private)?\s*function\s+(\w+)Action\s*\(([^)]*)\)')
     
     # Base de données (Zend_Db style)
-    PATTERN_SQL_QUERY = re.compile(r'->query\s*\(\s*["\'](.+?)["\']', re.DOTALL)
-    PATTERN_SQL_FETCHALL = re.compile(r'->fetchAll\s*\(\s*["\'](.+?)["\']', re.DOTALL)
-    PATTERN_SQL_FETCHROW = re.compile(r'->fetchRow\s*\(\s*["\'](.+?)["\']', re.DOTALL)
+    # Backreference \1 garantit que le même type de quote ouvre et ferme la chaîne,
+    # évitant la troncature sur les quotes internes du SQL (ex: WHERE status = 'active').
+    PATTERN_SQL_QUERY = re.compile(r'->query\s*\(\s*(["\'])(.*?)\1', re.DOTALL)
+    PATTERN_SQL_FETCHALL = re.compile(r'->fetchAll\s*\(\s*(["\'])(.*?)\1', re.DOTALL)
+    PATTERN_SQL_FETCHROW = re.compile(r'->fetchRow\s*\(\s*(["\'])(.*?)\1', re.DOTALL)
     PATTERN_SQL_INSERT = re.compile(r'->insert\s*\(\s*["\'](\w+)["\']')
     PATTERN_SQL_UPDATE = re.compile(r'->update\s*\(\s*["\'](\w+)["\']')
     PATTERN_SQL_DELETE = re.compile(r'->delete\s*\(\s*["\'](\w+)["\']')
@@ -302,7 +304,7 @@ class PHPExtractor:
         # Opérations DB - SELECT
         for pattern in [self.PATTERN_SQL_QUERY, self.PATTERN_SQL_FETCHALL, self.PATTERN_SQL_FETCHROW]:
             for match in pattern.finditer(content):
-                sql = match.group(1).strip()
+                sql = match.group(2).strip()  # group 1 = quote char, group 2 = SQL
                 operations.append(Operation(
                     id=self._next_op_id(),
                     type=OperationType.DB_READ,
