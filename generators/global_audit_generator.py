@@ -25,28 +25,31 @@ _PRIORITY_KEYWORDS = ("oceane", "adelia", "oceaneassistant")
 # Correction 2 — traduction des termes techniques → langage PO
 # L'ordre compte : les patterns combinés avant les patterns simples
 _PO_CONDITION_TRANSLATIONS = [
-    (r"is_array\(«\s*[^»]+\s*»\)\s*et\s*count\(«\s*[^»]+\s*»\)\s*>\s*0",
-     "plusieurs éléments existent"),
+    # Combinés d'abord
+    (r"is_array\(«\s*([^»]+?)\s*»\)\s*et\s*count\(«\s*[^»]+\s*»\)\s*>\s*0",
+     r"plusieurs '\1' existent"),
     (r"gettype\(«\s*[^»]+\s*»\)\s*différent de\s*['\"]boolean['\"]",
      "la valeur reçue est invalide"),
-    (r"is_null\(«\s*[^»]+\s*»\)",
-     "l'information est absente"),
-    (r"«\s*[^»]+\s*»\s*égal à null",
-     "l'information est absente"),
-    (r"«\s*[^»]+\s*»\s*différent de null",
-     "l'information est présente"),
-    (r"is_array\(«\s*[^»]+\s*»\)",
-     "plusieurs éléments sont présents"),
-    (r"count\(«\s*[^»]+\s*»\)\s*>\s*0",
-     "des éléments existent"),
-    (r"count\(«\s*[^»]+\s*»\)",
-     "le nombre d'éléments"),
+    # is_null / null — conserver le nom de l'entité
+    (r"is_null\(«\s*([^»]+?)\s*»\)",
+     r"l'information '\1' est absente"),
+    (r"«\s*([^»]+?)\s*»\s*égal à null",
+     r"l'information '\1' est absente"),
+    (r"«\s*([^»]+?)\s*»\s*différent de null",
+     r"l'information '\1' est présente"),
+    # is_array / count — conserver le nom de l'entité
+    (r"is_array\(«\s*([^»]+?)\s*»\)",
+     r"plusieurs '\1' sont présents"),
+    (r"count\(«\s*([^»]+?)\s*»\)\s*>\s*0",
+     r"des '\1' existent"),
+    (r"count\(«\s*([^»]+?)\s*»\)",
+     r"le nombre de '\1'"),
     (r"key_exists\('(\w+)',\s*«\s*[^»]+\s*»\)",
      r"l'information '\1' est disponible"),
     (r"property_exists\(«\s*[^»]+\s*»,\s*'(\w+)'\)",
      r"l'objet contient '\1'"),
-    (r"isset\(«\s*[^»]+\s*»\)",
-     "la valeur est définie"),
+    (r"isset\(«\s*([^»]+?)\s*»\)",
+     r"'\1' est défini"),
     (r"!([A-Z][a-zA-Z0-9]+)::[a-zA-Z]+\([^)]*\)",
      r"le service \1 ne répond pas"),
     (r"([A-Z][a-zA-Z0-9]+)::[a-zA-Z]+\([^)]*\)",
@@ -240,8 +243,7 @@ class GlobalAuditGenerator:
                 question = self._po_translate_question(
                     gap.condition_business.replace("\n", " ").strip()
                 )
-                if len(question) > 180:
-                    question = question[:177] + "…"
+                question = self._truncate_sentence(question, 300)
                 suffix = f" *({occ}×)*" if occ > 1 else ""
                 lines.append(f"{i}. {question}{suffix}")
             lines.append("")
@@ -288,6 +290,19 @@ class GlobalAuditGenerator:
             condition = re.sub(pattern, replacement, condition, flags=re.IGNORECASE)
         condition = condition.strip().rstrip(".")
         return f"{prefix}{condition}.{tail}" if tail else f"{prefix}{condition}"
+
+    @staticmethod
+    def _truncate_sentence(text: str, limit: int) -> str:
+        """Tronque au dernier '?' ou '.' avant la limite, sinon coupe net."""
+        if len(text) <= limit:
+            return text
+        # Chercher le dernier terminateur de phrase dans la fenêtre
+        window = text[:limit]
+        for sep in ("?", "."):
+            pos = window.rfind(sep)
+            if pos > limit // 2:
+                return text[:pos + 1]
+        return window.rstrip() + "…"
 
     def _select_top5(self, flags: list[DecisionGap]) -> list[tuple[DecisionGap, int]]:
         """Retourne jusqu'à 5 gaps dédupliqués, triés par priorité, avec comptage."""
