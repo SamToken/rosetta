@@ -67,6 +67,8 @@ class DecisionGap:
     confidence: float = 0.0   # confiance LLM (0 si pas d'insight)
     source_file: str = ""     # nom du fichier PHP source
     source_line: Optional[int] = None
+    method_name: str = ""     # méthode PHP contenant le flag
+    method_original_name: str = ""
     context_lines: Optional[str] = None
 
 
@@ -332,6 +334,8 @@ class BusinessAggregator:
                     confidence=confidence_map.get(flag.id, 0.0),
                     source_file=source_file,
                     source_line=flag.source_line,
+                    method_name=flag.method_name or "",
+                    method_original_name=flag.method_original_name or "",
                     context_lines=flag.context_lines,
                 ))
         return gaps
@@ -355,6 +359,8 @@ class BusinessAggregator:
                     confidence=confidence_map.get(flag.id, 0.0),
                     source_file=source_file,
                     source_line=flag.source_line,
+                    method_name=flag.method_name or "",
+                    method_original_name=flag.method_original_name or "",
                     context_lines=flag.context_lines,
                 ))
         return flags

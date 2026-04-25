@@ -115,6 +115,19 @@ class FlagEngine:
         return flags
 
     # =========================================================================
+    # Helpers
+    # =========================================================================
+
+    @staticmethod
+    def _find_method_for_line(source_line: int, entry_points) -> tuple[str, str]:
+        """Retourne (name, original_name) de l'entry_point qui contient source_line."""
+        for ep in entry_points:
+            if (ep.start_line and ep.end_line
+                    and ep.start_line <= source_line <= ep.end_line):
+                return ep.name, ep.original_name
+        return "unknown", "unknown"
+
+    # =========================================================================
     # Règle 1 — Branches manquantes dans control_flow
     # =========================================================================
 
@@ -125,6 +138,10 @@ class FlagEngine:
                 continue
             if block.true_branch is None or block.false_branch is None:
                 condition_business = _translate_condition(block.condition)
+                method_name, method_orig = (
+                    self._find_method_for_line(block.source_line, ir.entry_points)
+                    if block.source_line else ("unknown", "unknown")
+                )
                 flags.append(Flag(
                     id=self._next_id("missing_branch"),
                     type="missing_branch",
@@ -135,6 +152,8 @@ class FlagEngine:
                         f"Quel est le comportement attendu dans le cas contraire ?"
                     ),
                     source_line=block.source_line,
+                    method_name=method_name,
+                    method_original_name=method_orig,
                     context_lines=block.raw_context,
                 ))
         return flags
@@ -159,6 +178,10 @@ class FlagEngine:
                         continue
                     seen.add(key)
                     condition_business = _translate_condition(block.condition)
+                    method_name, method_orig = (
+                        self._find_method_for_line(block.source_line, ir.entry_points)
+                        if block.source_line else ("unknown", "unknown")
+                    )
                     flags.append(Flag(
                         id=self._next_id("magic_value"),
                         type="magic_value",
@@ -170,6 +193,8 @@ class FlagEngine:
                             f"D'où vient cette valeur ? Fait-elle partie d'une liste de référence définie dans le cahier des charges ?"
                         ),
                         source_line=block.source_line,
+                        method_name=method_name,
+                        method_original_name=method_orig,
                         context_lines=block.raw_context,
                     ))
 
@@ -230,6 +255,8 @@ class FlagEngine:
                         fragment=fragment,
                         question=question,
                         source_line=abs_line if ep.start_line else None,
+                        method_name=ep.name,
+                        method_original_name=ep.original_name,
                         context_lines=context,
                     ))
 

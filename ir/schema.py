@@ -134,8 +134,10 @@ class Flag(BaseModel):
     location: str  # nom de l'entry_point, block_id, op_id ou dep_name
     fragment: str  # le code brut minimal concerné
     question: str  # question précise à poser au LLM ou à un humain
-    source_line: Optional[int] = None   # ligne absolue dans le fichier source
-    context_lines: Optional[str] = None # ±3 lignes autour pour copier dans Copilot
+    source_line: Optional[int] = None        # ligne absolue dans le fichier source
+    method_name: Optional[str] = None        # nom de la méthode contenant le flag
+    method_original_name: Optional[str] = None  # nom PHP original (ex: editAction)
+    context_lines: Optional[str] = None     # ±3 lignes autour pour copier dans Copilot
 
 
 class LLMInsight(BaseModel):

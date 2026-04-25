@@ -339,15 +339,19 @@ class GlobalAuditGenerator:
             "> Chaque ligne correspond à un comportement du système actuel dont "
             "le cas contraire n'est pas documenté.",
             "",
-            "| # | Contrôleur | Question métier | Ligne | Statut |",
-            "|---|-----------|----------------|-------|--------|",
+            "| # | Contrôleur | Méthode | Ligne | Question métier | Contexte | Statut |",
+            "|---|-----------|---------|-------|----------------|----------|--------|",
         ]
         for i, gap in enumerate(ins.decision_gaps, 1):
             question = gap.condition_business.replace("\n", " ").strip()
             if len(question) > 120:
                 question = question[:117] + "…"
-            line_col = str(gap.source_line) if gap.source_line else "—"
-            lines.append(f"| {i} | {gap.controller} | {question} | {line_col} | ⬜ À arbitrer |")
+            line_col = f"L.{gap.source_line}" if gap.source_line else "—"
+            method_col = f"`{gap.method_name}()`" if gap.method_name and gap.method_name != "unknown" else "—"
+            has_ctx = "[voir bloc]" if gap.source_line and gap.context_lines else "—"
+            lines.append(
+                f"| {i} | {gap.controller} | {method_col} | {line_col} | {question} | {has_ctx} | ⬜ |"
+            )
         lines.append("")
         lines.append(
             f"*{ins.gap_count} gap(s) — chaque case ⬜ représente "
@@ -356,33 +360,34 @@ class GlobalAuditGenerator:
         lines.append("")
 
         # Blocs Copilot — un par gap ayant un contexte de code
-        copilot_blocks = [g for g in ins.decision_gaps if g.source_line and g.context_lines]
+        copilot_blocks = [(i, g) for i, g in enumerate(ins.decision_gaps, 1)
+                          if g.source_line and g.context_lines]
         if copilot_blocks:
             lines.append("---")
             lines.append("")
             lines.append("## Contexte Code — Copier dans Copilot")
             lines.append("")
-            for i, gap in enumerate(ins.decision_gaps, 1):
-                if not gap.source_line or not gap.context_lines:
-                    continue
+            for i, gap in copilot_blocks:
                 question = gap.condition_business.replace("\n", " ").strip()
-                lines.append(
-                    f"<details>"
-                    f"<summary>Gap #{i} — {gap.source_file}:{gap.source_line} "
-                    f"({gap.controller})</summary>"
+                method_display = (
+                    f"{gap.method_name}() — ligne {gap.source_line}"
+                    if gap.method_name and gap.method_name != "unknown"
+                    else f"ligne {gap.source_line}"
                 )
+                lines.append("---")
                 lines.append("")
-                lines.append(f"**Copier dans Copilot :**")
-                lines.append(f"Fichier : `{gap.source_file}` | Ligne {gap.source_line}")
+                lines.append(f"**Gap #{i} — {gap.controller}**")
                 lines.append("")
-                lines.append("Contexte :")
+                lines.append("**→ Copier dans Copilot**")
+                lines.append("")
+                lines.append(f"Fichier    : {gap.source_file}")
+                lines.append(f"Méthode    : {method_display}")
+                lines.append("Contexte   :")
                 lines.append("```php")
                 lines.append(gap.context_lines)
                 lines.append("```")
                 lines.append("")
-                lines.append(f"> Question : {question}")
-                lines.append("")
-                lines.append("</details>")
+                lines.append(f"Question métier : {question}")
                 lines.append("")
 
         return "\n".join(lines)
