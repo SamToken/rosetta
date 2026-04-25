@@ -48,13 +48,13 @@ CONDITION_TRANSLATIONS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\$_SESSION\s*\['user'\]\s*\['role'\]\s*!=\s*'supervisor'"),
      "l'agent connecté n'a pas l'habilitation Superviseur"),
     (re.compile(r"\$_SESSION\s*\['user'\]\s*\['role'\]\s*==\s*'([^']+)'"),
-     "l'agent connecté a le rôle « \\1 »"),
+     "l'agent connecté a le rôle '\\1'"),
     (re.compile(r"\$_SESSION\s*\['user'\]\s*\['role'\]"),
      "le rôle de l'agent connecté"),
     (re.compile(r"empty\s*\(\s*\$email\s*\)\s*\|\|\s*empty\s*\(\s*\$name\s*\)"),
      "l'adresse email ou le nom est absent"),
     (re.compile(r"empty\s*\(\s*\$([^)]+)\s*\)"),
-     "le champ « \\1 » est vide"),
+     "le champ '\\1' est vide"),
     (re.compile(r"\$this\s*->\s*getRequest\s*\(\s*\)\s*->\s*isPost\s*\(\s*\)"),
      "le formulaire est soumis par l'utilisateur"),
     (re.compile(r"!\s*\$id\b"),
@@ -386,7 +386,7 @@ def _translate_condition(condition: str) -> str:
                 return translation
     # Fallback : retirer les signes $ et simplifier
     clean = re.sub(r'\$_(?:POST|GET|SESSION|REQUEST)\s*\[[^\]]+\]', 'donnée saisie', cond)
-    clean = re.sub(r'\$(\w+)', r'« \1 »', clean)
+    clean = re.sub(r'\$(\w+)', r"'\1'", clean)
     clean = re.sub(r'\s*!=\s*', ' différent de ', clean)
     clean = re.sub(r'\s*==\s*', ' égal à ', clean)
     clean = re.sub(r'\s*\|\|\s*', ' ou ', clean)
