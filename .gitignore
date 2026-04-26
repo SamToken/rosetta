@@ -136,7 +136,10 @@ dmypy.json
 *.swo
 
 # Project specific
-tests/generated_prompts/*.md
 output/
+output_validation/
+output_tests/
+.venv-tree-sitter/
 /tmp/rosetta_*/
 ../rosetta-memory/
+tests/
