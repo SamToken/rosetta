@@ -415,7 +415,7 @@ class FlagEngine:
                     )
                     flags.append(Flag(
                         id=self._next_id("side_effect"),
-                        type="business_logic_unclear",
+                        type="side_effect",
                         location=ep.name,
                         fragment=fragment,
                         question=(
@@ -515,7 +515,7 @@ class FlagEngine:
                 if not match:
                     continue
                 if self._has_final_else(ep.raw_code, match.start()):
-                    break  # chaîne couverte par un else → pas de flag
+                    continue  # ce pattern est couvert par un else → passer au suivant
                 segment = ep.raw_code[match.start():match.start() + 1000]
                 covered = re.findall(r"===?\s*['\"]([^'\"]+)['\"]", segment)
                 covered_str = ", ".join(f"'{v}'" for v in covered[:5]) if covered else "?"

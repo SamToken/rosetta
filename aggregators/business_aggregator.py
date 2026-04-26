@@ -97,7 +97,7 @@ class AggregatedInsights:
     glossary: list[GlossaryEntry] = field(default_factory=list)
     magic_glossary: list[GlossaryEntry] = field(default_factory=list)
     common_deps: list[CommonDependency] = field(default_factory=list)
-    decision_gaps: list[DecisionGap] = field(default_factory=list)  # missing_branch uniquement
+    decision_gaps: list[DecisionGap] = field(default_factory=list)  # tous types, triés par impact
     all_flags: list[DecisionGap] = field(default_factory=list)      # tous types, pour top-5 PO
     controller_summaries: list[ControllerSummary] = field(default_factory=list)
 
@@ -329,16 +329,19 @@ class BusinessAggregator:
     # -------------------------------------------------------------------------
 
     def _collect_decision_gaps(self, irs: list[IRSchema]) -> list[DecisionGap]:
-        """Collecte tous les points de décision sans branche définie (missing_branch)."""
+        """Collecte tous les flags (tous types), triés par sévérité d'impact."""
         from pathlib import Path
+        _priority = {
+            ImpactCategory.CRITICAL_CORRUPTION.value: 0,
+            ImpactCategory.API_OVERLOAD.value: 1,
+            ImpactCategory.LOGIC_GAP.value: 2,
+        }
         gaps = []
         for ir in irs:
             controller = ir.metadata.controller_name
             source_file = Path(ir.metadata.source_file).name
             confidence_map = {ins.flag_id: ins.confidence for ins in ir.llm_insights}
             for flag in ir.flags:
-                if flag.type != "missing_branch":
-                    continue
                 gaps.append(DecisionGap(
                     condition_fragment=flag.fragment,
                     condition_business=flag.question,
@@ -354,7 +357,7 @@ class BusinessAggregator:
                     context_lines=flag.context_lines,
                     impact_category=flag.impact_category.value,
                 ))
-        return gaps
+        return sorted(gaps, key=lambda g: _priority.get(g.impact_category, 3))
 
     def _collect_all_flags(self, irs: list[IRSchema]) -> list[DecisionGap]:
         """Collecte tous les flags (tous types) avec leur confiance LLM, pour le top-5 PO."""
@@ -392,7 +395,7 @@ class BusinessAggregator:
             risk = len([f for f in ir.flags if f.type == "security_risk"])
             gap = len([f for f in ir.flags if f.type == "missing_branch"])
             dep = len([f for f in ir.flags if f.type == "unmapped_dep"])
-            score = max(0.0, 100.0 - risk * 4 - gap * 5 - dep * 2)
+            score = max(0.0, 100.0 - min(risk * 4, 30) - min(gap * 2, 40) - min(dep * 2, 20))
             summaries.append(ControllerSummary(
                 controller_name=ir.metadata.controller_name,
                 source_file=ir.metadata.source_file,
@@ -412,8 +415,10 @@ class BusinessAggregator:
     def _compute_health(ins: AggregatedInsights) -> float:
         if not ins.controllers:
             return 100.0
-        score = 100.0 - ins.risk_count * 3 - ins.gap_count * 4 - ins.dep_count * 2
-        return round(max(0.0, score), 1)
+        risk_penalty = min(ins.risk_count * 3, 30)
+        gap_penalty  = min(ins.gap_count  * 2, 40)
+        dep_penalty  = min(ins.dep_count  * 1, 20)
+        return round(max(0.0, 100.0 - risk_penalty - gap_penalty - dep_penalty), 1)
 
     # -------------------------------------------------------------------------
     # 7. Cumul des usages LLM
@@ -441,7 +446,6 @@ class BusinessAggregator:
 def _normalize_rule(rule: str) -> str:
     """Clé de normalisation pour détecter des règles similaires."""
     clean = rule.lower()
-    clean = re.sub(r'\[contexte manquant.*?\]', '', clean)
     clean = re.sub(r'\s+', ' ', clean)
     clean = re.sub(r'[^\w\s]', '', clean)
     return clean[:60].strip()

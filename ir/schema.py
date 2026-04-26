@@ -25,20 +25,24 @@ class ImpactCategory(str, Enum):
     LOGIC_GAP           = "LOGIC_GAP"
 
 
-FLAG_TYPES = [
-    "missing_branch",
-    "magic_value",
-    "security_risk",
-    "unmapped_dep",
-    "business_logic_unclear",
-    "side_effect",
-    "dynamic_session_key",       # Astro — clé session dynamique (stale data)
-    "chained_api_call",          # Astro — appels API séquentiels sans validation
-    "situation_coverage",        # Astro — situation Oracle non couverte (pas de else)
-    "oceane_state_dependency",   # Astro — lecture état Oceane sans fallback
-    "module_execution_gap",      # Astro — modules séquentiels sans vérification d'échec
-    "hardcoded_situation_code",  # Astro — code situation hardcodé (désync Oracle)
-]
+class FlagType(str, Enum):
+    """Types de flag — validation Pydantic garantit qu'aucun type inconnu ne peut être créé."""
+
+    def __str__(self) -> str:
+        return self.value
+
+    MISSING_BRANCH          = "missing_branch"
+    MAGIC_VALUE             = "magic_value"
+    SECURITY_RISK           = "security_risk"
+    UNMAPPED_DEP            = "unmapped_dep"
+    BUSINESS_LOGIC_UNCLEAR  = "business_logic_unclear"
+    SIDE_EFFECT             = "side_effect"
+    DYNAMIC_SESSION_KEY     = "dynamic_session_key"
+    CHAINED_API_CALL        = "chained_api_call"
+    SITUATION_COVERAGE      = "situation_coverage"
+    OCEANE_STATE_DEPENDENCY = "oceane_state_dependency"
+    MODULE_EXECUTION_GAP    = "module_execution_gap"
+    HARDCODED_SITUATION     = "hardcoded_situation_code"
 
 
 class Visibility(str, Enum):
@@ -153,7 +157,7 @@ class UnparsedSection(BaseModel):
 class Flag(BaseModel):
     """Zone ambiguë détectée mécaniquement — source déterministe, confiance 1.0."""
     id: str
-    type: str  # missing_branch | magic_value | security_risk | unmapped_dep | business_logic_unclear
+    type: FlagType
     location: str  # nom de l'entry_point, block_id, op_id ou dep_name
     fragment: str  # le code brut minimal concerné
     question: str  # question précise à poser au LLM ou à un humain
@@ -168,6 +172,7 @@ class LLMInsight(BaseModel):
     """Enrichissement LLM d'un flag — confiance < 1.0, toujours à valider."""
     flag_id: str
     business_rule: str  # explication en français pour le PO
+    missing_context: Optional[str] = None  # question ouverte si contexte insuffisant
     confidence: float  # jamais 1.0
     source: str = "llm"
     needs_human_validation: bool = True

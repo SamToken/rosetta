@@ -240,6 +240,8 @@ class BusinessDocGenerator:
                     lines.append(
                         f"  - Règle LLM ({insight.confidence:.0%}) : {insight.business_rule}"
                     )
+                    if insight.missing_context:
+                        lines.append(f"  - ❓ Contexte manquant : {insight.missing_context}")
             lines.append("")
 
         return "\n".join(lines)

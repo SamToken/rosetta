@@ -278,13 +278,11 @@ class LLMEnricher:
 
         business_rule = str(data.get("business_rule", "Aucune règle extraite"))
         confidence = min(float(data.get("confidence", 0.5)), 0.99)
-
-        missing = data.get("missing_context")
-        if missing:
-            business_rule += f" [Contexte manquant : {missing}]"
+        missing = data.get("missing_context") or None
 
         return LLMInsight(
             flag_id=flag_id,
             business_rule=business_rule,
+            missing_context=missing,
             confidence=confidence,
         )
