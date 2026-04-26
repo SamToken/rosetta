@@ -13,7 +13,7 @@ Produit un AggregatedInsights utilisé par GlobalAuditGenerator.
 import re
 from dataclasses import dataclass, field
 from typing import Optional
-from ir.schema import IRSchema, Flag, LLMInsight
+from ir.schema import IRSchema, Flag, ImpactCategory, LLMInsight
 from analyzers.llm_enricher import TokenUsage
 
 _GLOSSARY_GENERIC = frozenset({
@@ -70,6 +70,7 @@ class DecisionGap:
     method_name: str = ""     # méthode PHP contenant le flag
     method_original_name: str = ""
     context_lines: Optional[str] = None
+    impact_category: str = ImpactCategory.LOGIC_GAP.value
 
 
 @dataclass
@@ -104,6 +105,10 @@ class AggregatedInsights:
     risk_count: int = 0
     gap_count: int = 0
     dep_count: int = 0
+
+    critical_count: int = 0     # flags CRITICAL_CORRUPTION
+    overload_count: int = 0     # flags API_OVERLOAD
+    logic_gap_count: int = 0    # flags LOGIC_GAP
 
     total_usage: Optional[TokenUsage] = None
 
@@ -145,6 +150,16 @@ class BusinessAggregator:
             len([f for f in ir.flags if f.type == "unmapped_dep"]) for ir in irs
         )
         result.health_score = self._compute_health(result)
+
+        result.critical_count = sum(
+            1 for f in result.all_flags if f.impact_category == ImpactCategory.CRITICAL_CORRUPTION.value
+        )
+        result.overload_count = sum(
+            1 for f in result.all_flags if f.impact_category == ImpactCategory.API_OVERLOAD.value
+        )
+        result.logic_gap_count = sum(
+            1 for f in result.all_flags if f.impact_category == ImpactCategory.LOGIC_GAP.value
+        )
 
         if usages:
             result.total_usage = self._aggregate_usage(
@@ -337,6 +352,7 @@ class BusinessAggregator:
                     method_name=flag.method_name or "",
                     method_original_name=flag.method_original_name or "",
                     context_lines=flag.context_lines,
+                    impact_category=flag.impact_category.value,
                 ))
         return gaps
 
@@ -362,6 +378,7 @@ class BusinessAggregator:
                     method_name=flag.method_name or "",
                     method_original_name=flag.method_original_name or "",
                     context_lines=flag.context_lines,
+                    impact_category=flag.impact_category.value,
                 ))
         return flags
 

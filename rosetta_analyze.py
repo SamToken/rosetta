@@ -391,7 +391,9 @@ def main() -> None:
     print(f"📊 Audit global       : {global_out}")
     print(f"🤖 {total_insights} insights LLM générés au total")
     print(f"🏥 Score de santé global : {insights.health_score}/100")
-    print(f"⚠️  {insights.gap_count} gap(s) de logique à arbitrer")
+    print(f"🔴 CRITICAL_CORRUPTION : {insights.critical_count} flag(s) — corriger avant MEP")
+    print(f"🟠 API_OVERLOAD        : {insights.overload_count} flag(s) — risque performance")
+    print(f"🟡 LOGIC_GAP           : {insights.logic_gap_count} flag(s) — arbitrage PO")
 
     if any(u for u in all_usages):
         if insights.total_usage:

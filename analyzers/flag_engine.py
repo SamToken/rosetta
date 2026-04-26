@@ -6,7 +6,7 @@ Zéro LLM — 100% déterministe et testable sans réseau.
 """
 
 import re
-from ir.schema import IRSchema, Flag, OperationType
+from ir.schema import IRSchema, Flag, ImpactCategory, OperationType
 
 
 SECURITY_PATTERNS = [
@@ -69,6 +69,17 @@ CONDITION_TRANSLATIONS: list[tuple[re.Pattern, str]] = [
      "un résultat a été obtenu"),
 ]
 
+IMPACT_CATEGORY_MAP: dict[str, ImpactCategory] = {
+    "security_risk":         ImpactCategory.CRITICAL_CORRUPTION,
+    "dynamic_session_key":   ImpactCategory.CRITICAL_CORRUPTION,
+    "chained_api_call":      ImpactCategory.API_OVERLOAD,
+    "side_effect":           ImpactCategory.API_OVERLOAD,
+    "business_logic_unclear": ImpactCategory.API_OVERLOAD,
+    "missing_branch":        ImpactCategory.LOGIC_GAP,
+    "magic_value":           ImpactCategory.LOGIC_GAP,
+    "unmapped_dep":          ImpactCategory.LOGIC_GAP,
+}
+
 MAGIC_VALUE_PATTERNS = [
     re.compile(r"!=\s*'([a-z_]+)'"),   # != 'admin'
     re.compile(r"==\s*'([a-z_]+)'"),   # == 'active'
@@ -112,6 +123,8 @@ class FlagEngine:
         flags.extend(self._check_unmapped_deps(ir))
         flags.extend(self._check_db_without_pagination(ir))
         flags.extend(self._check_side_effects_after_write(ir))
+        for flag in flags:
+            flag.impact_category = IMPACT_CATEGORY_MAP.get(flag.type, ImpactCategory.LOGIC_GAP)
         return flags
 
     # =========================================================================

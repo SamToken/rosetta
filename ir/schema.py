@@ -18,6 +18,13 @@ class SourceType(str, Enum):
     ASM = "asm"  # Pour plus tard
 
 
+class ImpactCategory(str, Enum):
+    """Catégorie d'impact métier d'un flag."""
+    CRITICAL_CORRUPTION = "CRITICAL_CORRUPTION"
+    API_OVERLOAD        = "API_OVERLOAD"
+    LOGIC_GAP           = "LOGIC_GAP"
+
+
 class Visibility(str, Enum):
     """Visibilité d'une méthode/fonction."""
     PUBLIC = "public"
@@ -138,6 +145,7 @@ class Flag(BaseModel):
     method_name: Optional[str] = None        # nom de la méthode contenant le flag
     method_original_name: Optional[str] = None  # nom PHP original (ex: editAction)
     context_lines: Optional[str] = None     # ±3 lignes autour pour copier dans Copilot
+    impact_category: ImpactCategory = ImpactCategory.LOGIC_GAP
 
 
 class LLMInsight(BaseModel):

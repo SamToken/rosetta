@@ -125,6 +125,15 @@ class GlobalAuditGenerator:
         lines.append(f"| Règles métier identifiées | {ins.total_insights} |")
         lines.append("")
 
+        lines.append("### Priorités de correction")
+        lines.append("")
+        lines.append("| Catégorie | Flags | Action |")
+        lines.append("|-----------|-------|--------|")
+        lines.append(f"| 🔴 CRITICAL_CORRUPTION | {ins.critical_count} | Corriger avant toute MEP |")
+        lines.append(f"| 🟠 API_OVERLOAD | {ins.overload_count} | Corriger avant migration |")
+        lines.append(f"| 🟡 LOGIC_GAP | {ins.logic_gap_count} | Arbitrage PO requis |")
+        lines.append("")
+
         # Périmètre analysé
         lines.append("### Périmètre analysé")
         lines.append("")
@@ -208,49 +217,67 @@ class GlobalAuditGenerator:
     def _section_decision_gaps(self, ins: AggregatedInsights) -> list[str]:
         lines = ["## 3. Décisions requises avant migration", ""]
 
-        if not ins.decision_gaps:
-            lines.append("*Aucun gap de logique identifié sur ce périmètre.*")
+        pool = ins.all_flags if ins.all_flags else ins.decision_gaps
+        if not pool:
+            lines.append("*Aucun flag identifié sur ce périmètre.*")
             lines.append("")
             lines.append("---")
             lines.append("")
             return lines
 
-        lines.append(
-            "> Ces questions nécessitent un arbitrage métier "
-            "avant tout développement dans la cible."
-        )
-        lines.append("")
-
-        # Comptage des gaps missing_branch par contrôleur
-        gap_counts: dict[str, int] = {}
-        for gap in ins.decision_gaps:
-            gap_counts[gap.controller] = gap_counts.get(gap.controller, 0) + 1
-
-        # Pool de tous les flags par contrôleur (pour la sélection top-5)
-        pool = ins.all_flags if ins.all_flags else ins.decision_gaps
-        flags_by_ctrl: dict[str, list[DecisionGap]] = {}
+        # Grouper par catégorie
+        flags_by_cat: dict[str, list[DecisionGap]] = {}
         for f in pool:
-            flags_by_ctrl.setdefault(f.controller, []).append(f)
+            flags_by_cat.setdefault(f.impact_category, []).append(f)
 
-        for controller in sorted(gap_counts, key=lambda c: gap_counts[c], reverse=True):
-            count = gap_counts[controller]
-            badge = "🔴" if count > 15 else ("🟡" if count > 5 else "🟢")
-            lines.append(f"### {badge} {controller} — {count} comportement(s) à définir")
-            lines.append("**Top 5 questions prioritaires :**")
+        critical = flags_by_cat.get("CRITICAL_CORRUPTION", [])
+        overload = flags_by_cat.get("API_OVERLOAD", [])
+        logic = flags_by_cat.get("LOGIC_GAP", [])
 
-            top5 = self._select_top5(flags_by_ctrl.get(controller, []))
-            for i, (gap, occ) in enumerate(top5, 1):
-                question = self._po_translate_question(
-                    gap.condition_business.replace("\n", " ").strip()
-                )
-                question = self._truncate_sentence(question, 300)
-                suffix = f" *({occ}×)*" if occ > 1 else ""
-                lines.append(f"{i}. {question}{suffix}")
+        # ── 🔴 CRITICAL_CORRUPTION ─────────────────────────────────────────
+        if critical:
+            lines.append(f"### 🔴 CRITICAL_CORRUPTION — {len(critical)} flag(s)")
+            lines.append(
+                "> Corriger avant toute MEP. "
+                "Ces comportements peuvent corrompre silencieusement les données en production."
+            )
+            lines.append("")
+            lines.append("| Contrôleur | Méthode | Ligne | Question |")
+            lines.append("|-----------|---------|-------|---------|")
+            for f in critical:
+                method_col = f"`{f.method_name}()`" if f.method_name and f.method_name != "unknown" else "—"
+                line_col = str(f.source_line) if f.source_line else "—"
+                q = f.condition_business.replace("\n", " ").strip()
+                q = q[:100] + "…" if len(q) > 100 else q
+                lines.append(f"| {f.controller} | {method_col} | {line_col} | {q} |")
+            lines.append("")
+            lines.append("---")
             lines.append("")
 
+        # ── 🟠 API_OVERLOAD ────────────────────────────────────────────────
+        if overload:
+            lines.append(f"### 🟠 API_OVERLOAD — {len(overload)} flag(s)")
+            lines.append("> Risque de surcharge ou d'erreur API silencieuse.")
+            lines.append("")
+            lines.append("| Contrôleur | Méthode | Ligne | Question |")
+            lines.append("|-----------|---------|-------|---------|")
+            for f in overload:
+                method_col = f"`{f.method_name}()`" if f.method_name and f.method_name != "unknown" else "—"
+                line_col = str(f.source_line) if f.source_line else "—"
+                q = f.condition_business.replace("\n", " ").strip()
+                q = q[:100] + "…" if len(q) > 100 else q
+                lines.append(f"| {f.controller} | {method_col} | {line_col} | {q} |")
+            lines.append("")
+            lines.append("---")
+            lines.append("")
+
+        # ── 🟡 LOGIC_GAP ───────────────────────────────────────────────────
+        lines.append(f"### 🟡 LOGIC_GAP — {len(logic)} flag(s)")
+        lines.append("> Arbitrage PO requis avant migration.")
+        lines.append("")
         lines.append(
             f"*(Voir `details/gaps_complets.md` pour la liste exhaustive "
-            f"des {ins.gap_count} gap(s))*"
+            f"des {ins.gap_count} comportement(s) à définir)*"
         )
         lines.append("")
         lines.append("---")
