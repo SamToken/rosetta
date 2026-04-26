@@ -256,7 +256,7 @@ Génère UNIQUEMENT le code PHP, sans explications."""
         for action_name, prompt in prompts.items():
             filename = f"{ir.metadata.controller_name}_{action_name}_migration.md"
             filepath = output_dir / filename
-            filepath.write_text(prompt)
+            filepath.write_text(prompt, encoding="utf-8")
             created_files.append(filepath)
         
         return created_files

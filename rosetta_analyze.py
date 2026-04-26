@@ -314,6 +314,12 @@ def main() -> None:
         help="Contexte de l'audit pour l'archivage (ex: 'Avant MEP US-1234')",
     )
     parser.add_argument(
+        "--git-root",
+        default=None,
+        metavar="DIR",
+        help="Racine Git pour générer des liens cliquables dans gaps_complets.md (ex: ./application/src)",
+    )
+    parser.add_argument(
         "--debug-rules",
         action="store_true",
         help="Afficher le détail de déclenchement de chaque règle de détection",
@@ -433,7 +439,7 @@ def main() -> None:
     print(f"   ✓ {global_out}")
 
     gaps_out = details_dir / "gaps_complets.md"
-    gaps_out.write_text(global_gen.generate_gaps_detail(insights), encoding="utf-8")
+    gaps_out.write_text(global_gen.generate_gaps_detail(insights, git_root=args.git_root), encoding="utf-8")
     print(f"   ✓ {gaps_out}")
 
     # ------------------------------------------------------------------

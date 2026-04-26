@@ -83,6 +83,16 @@ class CriticalMethod:
 
 
 @dataclass
+class ImpactRow:
+    """Ligne de la matrice de non-régression : méthode critique + méthodes corrélées."""
+    method_name: str
+    controller: str
+    pattern: str        # flag_type dominant de la méthode
+    correlated: list    # list of (controller, method_name)
+    risk_label: str
+
+
+@dataclass
 class ControllerSummary:
     """Résumé santé d'un contrôleur."""
     controller_name: str
@@ -120,6 +130,7 @@ class AggregatedInsights:
     logic_gap_count: int = 0    # flags LOGIC_GAP
 
     critical_methods: list = field(default_factory=list)  # list[CriticalMethod]
+    impact_matrix: list = field(default_factory=list)     # list[ImpactRow]
 
     total_usage: Optional[TokenUsage] = None
 
@@ -151,6 +162,7 @@ class BusinessAggregator:
         result.all_flags = self._collect_all_flags(irs)
         result.controller_summaries = self._build_summaries(irs)
         result.critical_methods = self._collect_critical_methods(irs)
+        result.impact_matrix = self._build_impact_matrix(irs)
 
         result.risk_count = sum(
             len([f for f in ir.flags if f.type == "security_risk"]) for ir in irs
@@ -342,7 +354,6 @@ class BusinessAggregator:
 
     def _collect_decision_gaps(self, irs: list[IRSchema]) -> list[DecisionGap]:
         """Collecte tous les flags (tous types), triés par sévérité d'impact."""
-        from pathlib import Path
         _priority = {
             ImpactCategory.CRITICAL_CORRUPTION.value: 0,
             ImpactCategory.API_OVERLOAD.value: 1,
@@ -351,7 +362,7 @@ class BusinessAggregator:
         gaps = []
         for ir in irs:
             controller = ir.metadata.controller_name
-            source_file = Path(ir.metadata.source_file).name
+            source_file = str(ir.metadata.source_file)
             confidence_map = {ins.flag_id: ins.confidence for ins in ir.llm_insights}
             for flag in ir.flags:
                 gaps.append(DecisionGap(
@@ -373,11 +384,10 @@ class BusinessAggregator:
 
     def _collect_all_flags(self, irs: list[IRSchema]) -> list[DecisionGap]:
         """Collecte tous les flags (tous types) avec leur confiance LLM, pour le top-5 PO."""
-        from pathlib import Path
         flags = []
         for ir in irs:
             controller = ir.metadata.controller_name
-            source_file = Path(ir.metadata.source_file).name
+            source_file = str(ir.metadata.source_file)
             confidence_map = {ins.flag_id: ins.confidence for ins in ir.llm_insights}
             for flag in ir.flags:
                 flags.append(DecisionGap(
@@ -414,6 +424,76 @@ class BusinessAggregator:
                         risk_details=ep.risk_details or {},
                     ))
         return sorted(critical, key=lambda m: m.risk_score, reverse=True)
+
+    # -------------------------------------------------------------------------
+    # 5b. Matrice de non-régression MEP
+    # -------------------------------------------------------------------------
+
+    def _build_impact_matrix(self, irs: list[IRSchema]) -> list:
+        """Pour chaque méthode critique, trouve les méthodes partageant le même pattern de flag."""
+        _RISK_LABELS = {
+            "dynamic_session_key":    "Vérifier nettoyage session",
+            "oceane_state_dependency": "Vérifier fallback Oceane",
+            "strong_coupling":        "Vérifier injection services",
+            "chained_api_call":       "Vérifier chaîne d'appels",
+            "missing_branch":         "Vérifier branche manquante",
+            "hardcoded_situation_code": "Vérifier codes situation",
+            "security_risk":          "Vérifier sécurité",
+        }
+
+        # flag_type → liste unique de (controller, method_name)
+        type_to_methods: dict[str, list] = {}
+        for ir in irs:
+            ctrl = ir.metadata.controller_name
+            for flag in ir.flags:
+                ft = str(flag.type)
+                method = flag.method_name or ""
+                if not method or method == "unknown":
+                    continue
+                entry = (ctrl, method)
+                bucket = type_to_methods.setdefault(ft, [])
+                if entry not in bucket:
+                    bucket.append(entry)
+
+        rows = []
+        seen: set = set()
+        for ir in irs:
+            ctrl = ir.metadata.controller_name
+            for ep in ir.entry_points:
+                if not ep.critical_risk:
+                    continue
+                key = (ctrl, ep.name)
+                if key in seen:
+                    continue
+                seen.add(key)
+
+                # Compter les flags par type pour cette méthode
+                flag_counts: dict[str, int] = {}
+                for flag in ir.flags:
+                    if flag.method_name == ep.name:
+                        ft = str(flag.type)
+                        flag_counts[ft] = flag_counts.get(ft, 0) + 1
+
+                if not flag_counts:
+                    continue
+
+                dominant = max(flag_counts, key=lambda k: flag_counts[k])
+                correlated = [
+                    (c, m) for c, m in type_to_methods.get(dominant, [])
+                    if (c, m) != key
+                ]
+                if not correlated:
+                    continue
+
+                rows.append(ImpactRow(
+                    method_name=ep.name,
+                    controller=ctrl,
+                    pattern=dominant,
+                    correlated=correlated,
+                    risk_label=_RISK_LABELS.get(dominant, "Vérifier comportement"),
+                ))
+
+        return sorted(rows, key=lambda r: (-len(r.correlated), r.method_name))
 
     # -------------------------------------------------------------------------
     # 6. Résumés par contrôleur

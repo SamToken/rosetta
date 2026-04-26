@@ -1,46 +1,46 @@
-# ?? Rosetta ? Branch tree-rosetta
+# ðŸŒ¿ Rosetta â€” Branch tree-rosetta
 
-Outil d'audit fonctionnel et d'extraction de connaissance pour la migration de systèmes PHP legacy Zend vers Symfony.
+Outil d'audit fonctionnel et d'extraction de connaissance pour la migration de systÃ¨mes PHP legacy Zend vers Symfony.
 
-Rosetta ne se contente plus de lire du texte ; elle comprend la structure du code grâce à un **arbre syntaxique abstrait (AST)**. Elle produit des livrables stratégiques pour le Product Owner :
-- Règles métier extraites
-- Comportements non définis (Gaps)
+Rosetta ne se contente plus de lire du texte ; elle comprend la structure du code grÃ¢ce Ã  un **arbre syntaxique abstrait (AST)**. Elle produit des livrables stratÃ©giques pour le Product Owner :
+- RÃ¨gles mÃ©tier extraites
+- Comportements non dÃ©finis (Gaps)
 - Cartographie des risques
 
 Le tout **sans jargon technique**.
 
 ---
 
-## ?? Principe : "Structural Truth"
+## ðŸŽ¯ Principe : "Structural Truth"
 
-Rosetta fonctionne en deux passes complémentaires :
+Rosetta fonctionne en deux passes complÃ©mentaires :
 
 ### 1. Extraction Structurelle (AST via Tree-sitter)
 
-Le code PHP est analysé localement. L'AST garantit une fiabilité de **100%** sur :
-- Détection des méthodes
-- Blocs if/else imbriqués
+Le code PHP est analysÃ© localement. L'AST garantit une fiabilitÃ© de **100%** sur :
+- DÃ©tection des mÃ©thodes
+- Blocs if/else imbriquÃ©s
 - Injections de services
 
 Le **Flag Engine** identifie les "points noirs" :
 - Gaps de logique
-- Dépendances critiques
+- DÃ©pendances critiques
 - Couplage fort
 
-### 2. Enrichissement Sémantique (LLM)
+### 2. Enrichissement SÃ©mantique (LLM)
 
-Seuls les fragments de code flaggués et leurs commentaires adjacents sont transmis à Claude. Le LLM traduit la structure technique en **règle métier en français**, prête pour un arbitrage PO.
+Seuls les fragments de code flagguÃ©s et leurs commentaires adjacents sont transmis Ã  Claude. Le LLM traduit la structure technique en **rÃ¨gle mÃ©tier en franÃ§ais**, prÃªte pour un arbitrage PO.
 
 **Philosophie** : _Deterministic AST for structure, Probabilistic LLM for meaning._
 
 ---
 
-## ?? Installation
+## ðŸ›  Installation
 
-Pour les utilisateurs **NixOS** (recommandé) ou environnements Python standards :
+Pour les utilisateurs **NixOS** (recommandÃ©) ou environnements Python standards :
 
 ```bash
-# Installation des dépendances
+# Installation des dÃ©pendances
 pip install tree-sitter tree-sitter-php anthropic pydantic python-dotenv
 ```
 
@@ -52,7 +52,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 ---
 
-## ?? Usage
+## ðŸš€ Usage
 
 ### Analyse d'un composant unique
 
@@ -62,67 +62,67 @@ python rosetta_analyze.py AssistantController.php --output-dir ./output
 
 | Fichier produit | Destinataire | Contenu |
 |---|---|---|
-| `<Nom>_business_doc.md` | Product Owner | Synthèse des règles, Gaps à arbitrer, Score de risque |
-| `<Nom>_flags.md` | Tech Lead | Détail technique des alertes (Lignes, Types de n½uds) |
+| `<Nom>_business_doc.md` | Product Owner | SynthÃ¨se des rÃ¨gles, Gaps Ã  arbitrer, Score de risque |
+| `<Nom>_flags.md` | Tech Lead | DÃ©tail technique des alertes (Lignes, Types de nÅ“uds) |
 | `<Nom>_business_logic.json` | Pipeline / RAG | IR complet (JSON) pour ingestion IA |
 
-### Mode Batch (Répertoire complet)
+### Mode Batch (RÃ©pertoire complet)
 
 ```bash
 python rosetta_analyze.py ./src/Controller/ --output-dir ./audit_report
 ```
 
-Génère un `global_audit.md` avec la matrice de décision transverse et le score de santé global.
+GÃ©nÃ¨re un `global_audit.md` avec la matrice de dÃ©cision transverse et le score de santÃ© global.
 
 ---
 
-## ?? Risk Scoring & Santé Fonctionnelle
+## ðŸ“Š Risk Scoring & SantÃ© Fonctionnelle
 
-Rosetta calcule un score de risque automatisé pour chaque méthode afin de prioriser la migration :
+Rosetta calcule un score de risque automatisÃ© pour chaque mÃ©thode afin de prioriser la migration :
 
 $$Score_{Risque} = (Complexity_{Cyclomatic} \times 2) + (Coupling_{Services} \times 5) + (Magic_{Values} \times 3)$$
 
-- ?? **Critique** (Score > 70) : Méthodes "God Object", couplage extrême, logique opaque
-- ?? **Modéré** (Score 30-70) : Logique à isoler dans des services dédiés
-- ?? **Sain** (Score < 30) : Code prêt pour une migration directe
+- ðŸ”´ **Critique** (Score > 70) : MÃ©thodes "God Object", couplage extrÃªme, logique opaque
+- ðŸŸ¡ **ModÃ©rÃ©** (Score 30-70) : Logique Ã  isoler dans des services dÃ©diÃ©s
+- ðŸŸ¢ **Sain** (Score < 30) : Code prÃªt pour une migration directe
 
 ---
 
-## ?? Architecture de la branche tree
+## ðŸ— Architecture de la branche tree
 
 ```
 rosetta/
-??? extractors/
-?   ??? php_extractor.py         # Parseur AST (Tree-sitter PHP)
-?       ??? _extract_params_ast()
-?       ??? _extract_control_flow_ast()
-?       ??? _link_comments()
-?
-??? analyzers/
-?   ??? flag_engine.py           # Moteur de règles
-?   ??? risk_analyzer.py         # Calculateur de complexité
-?
-??? aggregators/
-?   ??? business_aggregator.py   # Consolidation (57 Gaps vs 106 Flags)
-?
-??? generators/
-    ??? business_doc_generator.py # Rendu Markdown
+â”œâ”€â”€ extractors/
+â”‚   â””â”€â”€ php_extractor.py         # Parseur AST (Tree-sitter PHP)
+â”‚       â”œâ”€â”€ _extract_params_ast()
+â”‚       â”œâ”€â”€ _extract_control_flow_ast()
+â”‚       â””â”€â”€ _link_comments()
+â”‚
+â”œâ”€â”€ analyzers/
+â”‚   â”œâ”€â”€ flag_engine.py           # Moteur de rÃ¨gles
+â”‚   â””â”€â”€ risk_analyzer.py         # Calculateur de complexitÃ©
+â”‚
+â”œâ”€â”€ aggregators/
+â”‚   â””â”€â”€ business_aggregator.py   # Consolidation (57 Gaps vs 106 Flags)
+â”‚
+â””â”€â”€ generators/
+    â””â”€â”€ business_doc_generator.py # Rendu Markdown
 ```
 
 ---
 
-## ?? Confidentialité & Performance
+## ðŸ”’ ConfidentialitÃ© & Performance
 
-- **Zéro "Full-File" Upload** : Le fichier PHP complet n'est jamais envoyé au LLM. Seuls les fragments identifiés par l'AST sont transmis.
-- **Précision AST** : Réduction de 44% des faux positifs par rapport à l'ancienne version Regex
-- **Prompt Caching** : Optimisation des coûts Anthropic sur les analyses de masse
+- **ZÃ©ro "Full-File" Upload** : Le fichier PHP complet n'est jamais envoyÃ© au LLM. Seuls les fragments identifiÃ©s par l'AST sont transmis.
+- **PrÃ©cision AST** : RÃ©duction de 44% des faux positifs par rapport Ã  l'ancienne version Regex
+- **Prompt Caching** : Optimisation des coÃ»ts Anthropic sur les analyses de masse
 
 ---
 
-## ?? Roadmap
+## ðŸ“ˆ Roadmap
 
-- [x] Migration complète vers Tree-sitter (Structure & Flow)
-- [x] Implémentation du Risk Scoring (Complexité & Couplage)
-- [x] Corrélation automatique Code/Commentaires (Business Context)
-- [ ] Génération de graphes de dépendances Graphviz (DOT)
-- [ ] Export des matrices de décision vers Jira/Confluence
+- [x] Migration complÃ¨te vers Tree-sitter (Structure & Flow)
+- [x] ImplÃ©mentation du Risk Scoring (ComplexitÃ© & Couplage)
+- [x] CorrÃ©lation automatique Code/Commentaires (Business Context)
+- [ ] GÃ©nÃ©ration de graphes de dÃ©pendances Graphviz (DOT)
+- [ ] Export des matrices de dÃ©cision vers Jira/Confluence

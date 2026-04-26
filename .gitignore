@@ -139,6 +139,8 @@ dmypy.json
 output/
 output_validation/
 output_tests/
+details/
+global_audit.md
 .venv-tree-sitter/
 /tmp/rosetta_*/
 ../rosetta-memory/

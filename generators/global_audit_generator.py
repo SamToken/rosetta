@@ -15,8 +15,9 @@ Structure du livrable :
 
 import re
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
-from aggregators.business_aggregator import AggregatedInsights, DecisionGap, CriticalMethod
+from aggregators.business_aggregator import AggregatedInsights, DecisionGap, CriticalMethod, ImpactRow
 from analyzers.llm_enricher import TokenUsage, PRICING
 
 _TECHNICAL_NOISE = [r'\$_POST', r'\bmd5\b', r'SELECT\s*\*']
@@ -66,6 +67,44 @@ _PO_CONDITION_TRANSLATIONS = [
 ]
 
 
+# Types de flags consolidés dans gaps_complets (patterns répétitifs)
+_CONSOLIDATABLE = frozenset({
+    "dynamic_session_key", "oceane_state_dependency",
+    "strong_coupling", "chained_api_call",
+})
+
+_CONSOLIDATED_LABELS = {
+    "dynamic_session_key":    ("🔑", "Clé de session dynamique"),
+    "oceane_state_dependency": ("🌊", "Dépendance Oceane temps réel"),
+    "strong_coupling":        ("🔧", "Couplage fort"),
+    "chained_api_call":       ("🔗", "Appels API chaînés"),
+}
+
+_CONSOLIDATED_QUESTIONS = {
+    "dynamic_session_key":    "Cette clé est-elle nettoyée explicitement dans TOUS les chemins de sortie ?",
+    "oceane_state_dependency": "Quel est le comportement si Oceane est indisponible ou retourne une réponse vide ?",
+    "strong_coupling":        "Cette méthode est-elle testable de façon isolée ? Peut-on injecter les services autrement ?",
+    "chained_api_call":       "Le résultat intermédiaire est-il validé (!empty / null check) avant chaque appel suivant ?",
+}
+
+
+def _make_line_link(source_file: str, source_line: Optional[int], git_root: Optional[str]) -> str:
+    """Retourne 'L.N' ou '[L.N](path#LN)' selon que git_root est fourni."""
+    if not source_line:
+        return "—"
+    if not git_root:
+        return f"L.{source_line}"
+    try:
+        source = Path(source_file).resolve()
+        root = Path(git_root).resolve()
+        relative = source.relative_to(root)
+        root_str = git_root.rstrip('/').rstrip('\\')
+        link_path = f"{root_str}/{'/'.join(relative.parts)}"
+        return f"[L.{source_line}]({link_path}#L{source_line})"
+    except (ValueError, TypeError):
+        return f"L.{source_line}"
+
+
 class GlobalAuditGenerator:
     """Génère le rapport d'audit global lisible par un Product Owner."""
 
@@ -91,11 +130,18 @@ class GlobalAuditGenerator:
         lines.extend(self._section_transverse_rules(insights))
         lines.extend(self._section_decision_gaps(insights))
         lines.extend(self._section_domain_mapping(insights))
+        if insights.impact_matrix:
+            lines.extend(self._section_impact_matrix(insights))
 
         if insights.total_usage and model:
             lines.extend(self._section_cost_report(insights.total_usage, model, insights))
 
-        return "\n".join(lines)
+        signature = (
+            "\n*Rapport généré par **Rosetta** — outil d'audit statique PHP développé par Samah Toutouh*\n"
+            "*Analyse déterministe · Zéro donnée externalisée · Compatible PHP 7.3*"
+        )
+
+        return "\n".join(lines) + signature
 
     # =========================================================================
     # 1. Résumé Exécutif
@@ -285,6 +331,32 @@ class GlobalAuditGenerator:
         return len([f for f in all_flags if f.flag_type in rule_types])
 
     # =========================================================================
+    # 5. Impact du Changement — Zones à surveiller
+    # =========================================================================
+
+    def _section_impact_matrix(self, ins: AggregatedInsights) -> list[str]:
+        lines = ["## 5. Impact du Changement — Zones à surveiller", ""]
+        lines.append("> Si vous modifiez l'une de ces méthodes, vérifiez les méthodes corrélées.")
+        lines.append("")
+        lines.append("| Méthode modifiée | Pattern commun | Méthodes corrélées | Risque |")
+        lines.append("|-----------------|----------------|-------------------|--------|")
+        for row in ins.impact_matrix:
+            names = [m for _, m in row.correlated]
+            if len(names) <= 3:
+                corr_str = ", ".join(f"`{m}()`" for m in names)
+            else:
+                shown = ", ".join(f"`{m}()`" for m in names[:3])
+                corr_str = f"{shown} + {len(names) - 3} autres"
+            badge = "🔴" if row.pattern in ("dynamic_session_key", "oceane_state_dependency", "security_risk") else "🟠"
+            lines.append(
+                f"| `{row.method_name}()` | {row.pattern} | {corr_str} | {badge} {row.risk_label} |"
+            )
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+        return lines
+
+    # =========================================================================
     # 2. Règles Transverses & Redondances
     # =========================================================================
 
@@ -307,10 +379,7 @@ class GlobalAuditGenerator:
         lines.append("|-------------|----------------------|-------------|")
         for dup in ins.duplicate_rules:
             controllers_str = ", ".join(dup.controllers)
-            rule_short = dup.example_rule[:100].rstrip()
-            if len(dup.example_rule) > 100:
-                rule_short += "…"
-            lines.append(f"| {rule_short} | {controllers_str} | {dup.count} |")
+            lines.append(f"| {dup.example_rule} | {controllers_str} | {dup.count} |")
         lines.append("")
         lines.append("---")
         lines.append("")
@@ -356,7 +425,6 @@ class GlobalAuditGenerator:
                 method_col = f"`{f.method_name}()`" if f.method_name and f.method_name != "unknown" else "—"
                 line_col = str(f.source_line) if f.source_line else "—"
                 q = f.condition_business.replace("\n", " ").strip()
-                q = q[:100] + "…" if len(q) > 100 else q
                 lines.append(f"| {f.controller} | {method_col} | {line_col} | {q} |")
             lines.append("")
             lines.append("---")
@@ -373,7 +441,6 @@ class GlobalAuditGenerator:
                 method_col = f"`{f.method_name}()`" if f.method_name and f.method_name != "unknown" else "—"
                 line_col = str(f.source_line) if f.source_line else "—"
                 q = f.condition_business.replace("\n", " ").strip()
-                q = q[:100] + "…" if len(q) > 100 else q
                 lines.append(f"| {f.controller} | {method_col} | {line_col} | {q} |")
             lines.append("")
             lines.append("---")
@@ -465,13 +532,26 @@ class GlobalAuditGenerator:
     # gaps_complets.md — liste exhaustive (vue dev)
     # =========================================================================
 
-    def generate_gaps_detail(self, ins: AggregatedInsights) -> str:
+    def generate_gaps_detail(
+        self,
+        ins: AggregatedInsights,
+        git_root: Optional[str] = None,
+    ) -> str:
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
         nb_services   = sum(1 for g in ins.decision_gaps if g.flag_type == "unmapped_dep")
         nb_situations = sum(1 for g in ins.decision_gaps if g.flag_type == "hardcoded_situation_code")
         nb_gaps       = len(ins.decision_gaps) - nb_services - nb_situations
-        unique_count  = len({(g.controller, g.method_name, g.flag_type) for g in ins.decision_gaps})
+
+        # Séparer gaps individuels vs patterns consolidables
+        individual_gaps  = [g for g in ins.decision_gaps if g.flag_type not in _CONSOLIDATABLE]
+        consolidated_map: dict[str, list] = {}
+        for g in ins.decision_gaps:
+            if g.flag_type in _CONSOLIDATABLE:
+                consolidated_map.setdefault(g.flag_type, []).append(g)
+
+        unique_individual = len({(g.controller, g.method_name, g.flag_type) for g in individual_gaps})
+        nb_consolidated_groups = len(consolidated_map)
 
         lines = [
             "# Gaps de Documentation — Liste Exhaustive",
@@ -487,28 +567,59 @@ class GlobalAuditGenerator:
             "| # | Contrôleur | Méthode | Ligne | Question métier | Contexte | Statut |",
             "|---|-----------|---------|-------|----------------|----------|--------|",
         ]
-        for i, gap in enumerate(ins.decision_gaps, 1):
+
+        for i, gap in enumerate(individual_gaps, 1):
             question = gap.condition_business.replace("\n", " ").strip()
-            if len(question) > 120:
-                question = question[:117] + "…"
-            line_col = f"L.{gap.source_line}" if gap.source_line else "—"
+            line_col = _make_line_link(gap.source_file, gap.source_line, git_root)
             method_col = f"`{gap.method_name}()`" if gap.method_name and gap.method_name != "unknown" else "—"
             has_ctx = "[voir bloc]" if gap.source_line and gap.context_lines else "—"
             lines.append(
                 f"| {i} | {gap.controller} | {method_col} | {line_col} | {question} | {has_ctx} | ⬜ |"
             )
+
         lines.append("")
+        footer_parts = []
+        if unique_individual:
+            footer_parts.append(f"{unique_individual} gap(s) individuel(s)")
+        if nb_consolidated_groups:
+            total_consol = sum(len(v) for v in consolidated_map.values())
+            footer_parts.append(f"{nb_consolidated_groups} pattern(s) consolidé(s) ({total_consol} occurrence(s))")
         lines.append(
-            f"*{unique_count} gap(s) unique(s) — "
-            f"{nb_gaps} comportement(s) à arbitrer · "
-            f"{nb_services} service(s) à documenter · "
-            f"{nb_situations} code(s) situation à référencer — "
+            f"*{' · '.join(footer_parts)} — "
             "chaque case ⬜ représente une décision à prendre avant migration.*"
         )
         lines.append("")
 
-        # Blocs Copilot — un par gap ayant un contexte de code
-        copilot_blocks = [(i, g) for i, g in enumerate(ins.decision_gaps, 1)
+        # ── Patterns répétitifs consolidés ────────────────────────────────
+        if consolidated_map:
+            lines.append("---")
+            lines.append("")
+            lines.append("## Patterns répétitifs — Décisions transverses")
+            lines.append("")
+            lines.append(
+                "> Chaque bloc ci-dessous regroupe des occurrences identiques du même pattern. "
+                "Une seule décision couvre toutes les occurrences."
+            )
+            lines.append("")
+            for flag_type, group in consolidated_map.items():
+                icon, label = _CONSOLIDATED_LABELS.get(flag_type, ("⚠️", flag_type))
+                question = _CONSOLIDATED_QUESTIONS.get(flag_type, group[0].condition_business.split("\n")[0])
+                lines.append(f"### {icon} {label} — {len(group)} occurrence(s)")
+                lines.append("")
+                lines.append(f"*{question}*")
+                lines.append("")
+                lines.append("| Méthode | Ligne | Statut |")
+                lines.append("|---------|-------|--------|")
+                for g in group:
+                    m_col = f"`{g.method_name}()`" if g.method_name and g.method_name != "unknown" else "—"
+                    l_col = _make_line_link(g.source_file, g.source_line, git_root)
+                    lines.append(f"| {m_col} | {l_col} | ⬜ |")
+                lines.append("")
+                lines.append(f"*Une seule décision règle {len(group)} occurrence(s).*")
+                lines.append("")
+
+        # ── Blocs Copilot — gaps individuels avec contexte code ───────────
+        copilot_blocks = [(i, g) for i, g in enumerate(individual_gaps, 1)
                           if g.source_line and g.context_lines]
         if copilot_blocks:
             lines.append("---")
@@ -517,28 +628,26 @@ class GlobalAuditGenerator:
             lines.append("")
             for i, gap in copilot_blocks:
                 question = gap.condition_business.replace("\n", " ").strip()
-                method_display = (
-                    f"{gap.method_name}() — ligne {gap.source_line}"
-                    if gap.method_name and gap.method_name != "unknown"
-                    else f"ligne {gap.source_line}"
-                )
+                line_link = _make_line_link(gap.source_file, gap.source_line, git_root)
+                if gap.method_name and gap.method_name != "unknown":
+                    method_display = f"{gap.method_name}() — {line_link}"
+                else:
+                    method_display = line_link
                 lines.append("---")
                 lines.append("")
                 lines.append(f"**Gap #{i} — {gap.controller}**")
                 lines.append("")
                 lines.append("**→ Copier dans Copilot**")
                 lines.append("")
-                lines.append(f"Fichier    : {gap.source_file}")
+                lines.append(f"Fichier    : {Path(gap.source_file).name}")
                 lines.append(f"Méthode    : {method_display}")
                 lines.append("Contexte   :")
                 lines.append("```php")
                 lines.append(gap.context_lines)
                 lines.append("```")
                 lines.append("")
-                # Détecter et valoriser le commentaire PHP lié (business_context)
                 if question.startswith("Règle documentée"):
-                    import re as _re
-                    m = _re.search(r"Règle documentée : « ([^»]+) »\. (.*)", question)
+                    m = re.search(r"Règle documentée : « ([^»]+) »\. (.*)", question)
                     if m:
                         lines.append(f"> 📝 **Règle documentée dans le code :** *{m.group(1)}*")
                         lines.append("")
