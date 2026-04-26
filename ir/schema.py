@@ -144,6 +144,7 @@ class IRMetadata(BaseModel):
     extracted_at: datetime = Field(default_factory=datetime.now)
     extractor_version: str = "0.1.0"
     confidence_score: float = 1.0  # 0-1, baisse si parsing incomplet
+    file_type: str = "controller"  # controller | service | helper | tools | repository | unknown
 
 
 class UnparsedSection(BaseModel):

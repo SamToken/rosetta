@@ -81,9 +81,12 @@ class BusinessDocGenerator:
         # Une section par action
         # =====================================================================
         for ep in ir.entry_points:
-            methods = "/".join(ep.http_methods)
-            lines.append(f"## Action : {ep.name}")
-            lines.append(f"**Route** : {methods} {ep.route_pattern}")
+            if ir.metadata.file_type == "controller":
+                methods = "/".join(ep.http_methods)
+                lines.append(f"## Action : {ep.name}")
+                lines.append(f"**Route** : {methods} {ep.route_pattern}")
+            else:
+                lines.append(f"## Méthode : {ep.name}()")
             lines.append("")
 
             ep_flags = flags_by_location.get(ep.name, [])

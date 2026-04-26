@@ -65,6 +65,12 @@ class PHPExtractor:
     # Control flow
     PATTERN_IF = re.compile(r'if\s*\((.+?)\)\s*{', re.DOTALL)
     PATTERN_FOREACH = re.compile(r'foreach\s*\((.+?)\s+as\s+')
+
+    # Méthodes publiques pour Services/Helpers/Tools (groupes : 1=name, 2=params)
+    PATTERN_PUBLIC_METHOD = re.compile(
+        r'public\s+function\s+(\w+)\s*\(([^)]*)\)',
+        re.MULTILINE
+    )
     
     # Pattern pour extraire le corps complet d'une action
     PATTERN_ACTION_BODY = re.compile(
@@ -95,42 +101,37 @@ class PHPExtractor:
     
     def extract(self, source_path: Path | str) -> IRSchema:
         """
-        Extrait l'IR complet d'un fichier contrôleur PHP.
-        
+        Extrait l'IR complet d'un fichier PHP (Controller, Service, Helper, Tools).
+
         Args:
             source_path: Chemin vers le fichier .php
-            
+
         Returns:
             IRSchema rempli avec ce qu'on a pu extraire
         """
         source_path = Path(source_path)
-        
-        # Lire le fichier avec gestion encodage
+
         content = self._read_file(source_path)
-        
-        # Extraire le nom du contrôleur
-        controller_name = self._extract_controller_name(content, source_path)
-        
-        # Créer l'IR de base
+        file_type = self._detect_file_type(content, source_path)
+        class_name = self._extract_class_name(content, source_path)
+
         ir = create_ir(
             source_file=str(source_path),
-            controller_name=controller_name
+            controller_name=class_name
         )
-        
-        # Reset counters
+        ir.metadata.file_type = file_type
+
         self._operation_counter = 0
         self._block_counter = 0
-        
-        # Remplir l'IR
-        ir.entry_points = self._extract_entry_points(content)
-        ir.operations = self._extract_operations(content)
-        ir.data_flow = self._extract_data_flow(content)
+
+        ir.entry_points = self._extract_entry_points(content, file_type)
+        ir.operations   = self._extract_operations(content)
+        ir.data_flow    = self._extract_data_flow(content)
         ir.dependencies = self._extract_dependencies(content)
         ir.control_flow = self._extract_control_flow(content)
-        
-        # Calculer le score de confiance
+
         ir.metadata.confidence_score = self._calculate_confidence(ir, content)
-        
+
         return ir
     
     def _read_file(self, path: Path) -> str:
@@ -141,51 +142,94 @@ class PHPExtractor:
             # Fallback sur ISO-8859-1 (legacy Oracle)
             return path.read_text(encoding='iso-8859-1')
     
-    def _extract_controller_name(self, content: str, path: Path) -> str:
-        """Extrait le nom du contrôleur."""
-        match = self.PATTERN_CLASS.search(content)
+    def _detect_file_type(self, content: str, path: Path) -> str:
+        """Détecte si c'est un Controller, Service, Helper, Tools ou Repository."""
+        stem = path.stem
+        if 'Controller' in stem:
+            return 'controller'
+        if 'Service' in stem:
+            return 'service'
+        if 'Helper' in stem:
+            return 'helper'
+        if 'Tools' in stem or 'Tool' in stem:
+            return 'tools'
+        if 'Repository' in stem:
+            return 'repository'
+        return 'unknown'
+
+    def _extract_class_name(self, content: str, path: Path) -> str:
+        """Extrait le nom de la classe PHP (Controller, Service ou générique)."""
+        match = re.search(r'class\s+(\w+)Controller\s+extends', content)
         if match:
             return match.group(1)
-        # Fallback sur le nom du fichier
-        return path.stem.replace('Controller', '')
+        match = re.search(r'class\s+(\w+)Service\b', content)
+        if match:
+            return match.group(1)
+        match = re.search(r'class\s+(\w+)\b', content)
+        if match:
+            return match.group(1)
+        return path.stem.replace('Controller', '').replace('Service', '')
     
     # =========================================================================
     # Extraction des entry points (actions)
     # =========================================================================
     
-    def _extract_entry_points(self, content: str) -> list[EntryPoint]:
-        """Extrait toutes les actions du contrôleur avec leur code brut."""
+    def _extract_entry_points(
+        self,
+        content: str,
+        file_type: str = 'controller',
+    ) -> list[EntryPoint]:
+        """Extrait les méthodes publiques selon le type de fichier."""
         entry_points = []
-        
-        for match in self.PATTERN_ACTION.finditer(content):
-            visibility_str = match.group(1) or 'public'
-            action_name = match.group(2)
-            params_str = match.group(3)
-            
-            # Parser les paramètres
-            parameters = self._parse_parameters(params_str)
-            
-            # Deviner la route
-            route_pattern = self._guess_route(action_name)
-            
-            # Extraire le code brut de l'action
-            start_pos = match.start()
-            start_line = content[:start_pos].count('\n') + 1
-            raw_code, end_line = self._extract_function_body(content, start_pos)
-            
-            entry_point = EntryPoint(
-                name=action_name,
-                original_name=f"{action_name}Action",
-                visibility=Visibility(visibility_str),
-                parameters=parameters,
-                route_pattern=route_pattern,
-                http_methods=self._guess_http_methods(action_name, raw_code or content),
-                raw_code=raw_code,
-                start_line=start_line,
-                end_line=end_line
-            )
-            entry_points.append(entry_point)
-        
+
+        if file_type == 'controller':
+            for match in self.PATTERN_ACTION.finditer(content):
+                visibility_str = match.group(1) or 'public'
+                action_name = match.group(2)
+                params_str = match.group(3)
+
+                parameters = self._parse_parameters(params_str)
+                route_pattern = self._guess_route(action_name)
+                start_pos = match.start()
+                start_line = content[:start_pos].count('\n') + 1
+                raw_code, end_line = self._extract_function_body(content, start_pos)
+
+                entry_points.append(EntryPoint(
+                    name=action_name,
+                    original_name=f"{action_name}Action",
+                    visibility=Visibility(visibility_str),
+                    parameters=parameters,
+                    route_pattern=route_pattern,
+                    http_methods=self._guess_http_methods(action_name, raw_code or content),
+                    raw_code=raw_code,
+                    start_line=start_line,
+                    end_line=end_line,
+                ))
+        else:
+            for match in self.PATTERN_PUBLIC_METHOD.finditer(content):
+                method_name = match.group(1)
+                params_str = match.group(2)
+
+                # Ignorer les méthodes magic PHP
+                if method_name.startswith('__'):
+                    continue
+
+                start_pos = match.start()
+                start_line = content[:start_pos].count('\n') + 1
+                raw_code, end_line = self._extract_function_body(content, start_pos)
+
+                entry_points.append(EntryPoint(
+                    name=method_name,
+                    original_name=method_name,
+                    visibility=Visibility.PUBLIC,
+                    parameters=self._parse_parameters(params_str),
+                    route_pattern=None,
+                    http_methods=[],
+                    raw_code=raw_code,
+                    start_line=start_line,
+                    end_line=end_line,
+                ))
+
         return entry_points
     
     def _extract_function_body(self, content: str, start_pos: int) -> tuple[str, int]:
