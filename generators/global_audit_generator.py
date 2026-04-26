@@ -390,15 +390,13 @@ class GlobalAuditGenerator:
     # =========================================================================
 
     def _section_decision_gaps(self, ins: AggregatedInsights) -> list[str]:
-        lines = ["## 3. Décisions requises avant migration", ""]
-
         pool = ins.all_flags if ins.all_flags else ins.decision_gaps
         if not pool:
-            lines.append("*Aucun flag identifié sur ce périmètre.*")
-            lines.append("")
-            lines.append("---")
-            lines.append("")
-            return lines
+            return [
+                "## 3. Décisions requises avant migration", "",
+                "*Aucun flag identifié sur ce périmètre.*", "",
+                "---", "",
+            ]
 
         # Grouper par catégorie
         flags_by_cat: dict[str, list[DecisionGap]] = {}
@@ -406,10 +404,19 @@ class GlobalAuditGenerator:
             flags_by_cat.setdefault(f.impact_category, []).append(f)
 
         critical = flags_by_cat.get("CRITICAL_CORRUPTION", [])
-        overload = flags_by_cat.get("API_OVERLOAD", [])
-        logic = flags_by_cat.get("LOGIC_GAP", [])
-        unique_total = len({(f.controller, f.method_name, f.flag_type) for f in pool})
+        overload  = flags_by_cat.get("API_OVERLOAD", [])
+        logic     = flags_by_cat.get("LOGIC_GAP", [])
         unique_logic = len({(f.controller, f.method_name, f.flag_type) for f in logic})
+
+        # Total dynamique : cohérent avec les titres de sous-sections
+        total_sujets = len(critical) + len(overload) + unique_logic
+
+        lines = [
+            "## 3. Décisions requises avant migration",
+            "",
+            f"**Total : {total_sujets} sujets d'arbitrage identifiés**",
+            "",
+        ]
 
         # ── 🔴 CRITICAL_CORRUPTION ─────────────────────────────────────────
         if critical:
@@ -447,15 +454,26 @@ class GlobalAuditGenerator:
             lines.append("")
 
         # ── 🟡 LOGIC_GAP ───────────────────────────────────────────────────
-        lines.append(
-            f"### 🟡 LOGIC_GAP — {unique_logic} gap(s) unique(s) ({len(logic)} occurrence(s))"
-        )
+        lines.append(f"### 🟡 LOGIC_GAP — {unique_logic} sujets uniques")
         lines.append("> Arbitrage PO requis avant migration.")
         lines.append("")
-        lines.append(
-            f"*(Voir `details/gaps_complets.md` pour la liste exhaustive "
-            f"des {unique_total} gap(s) unique(s) toutes catégories · {len(pool)} occurrence(s))*"
-        )
+
+        # Détail technique : occurrences totales, avec breakdown codes situation si présents
+        nb_hardcoded_in_logic = sum(1 for f in logic if f.flag_type == "hardcoded_situation_code")
+        logic_sans_hardcoded = len(logic) - nb_hardcoded_in_logic
+        if nb_hardcoded_in_logic > 0:
+            lines.append(
+                f"**Détail technique** : Ces {unique_logic} sujets se manifestent à "
+                f"**{logic_sans_hardcoded} occurrence(s)** dans le code "
+                f"(soit {len(logic)} en comptant les {nb_hardcoded_in_logic} codes situation hardcodés)."
+            )
+        else:
+            lines.append(
+                f"**Détail technique** : Ces {unique_logic} sujets se manifestent à "
+                f"**{len(logic)} occurrence(s)** dans le code."
+            )
+        lines.append("")
+        lines.append("*(Voir `details/gaps_complets.md` pour la liste exhaustive)*")
         lines.append("")
         lines.append("---")
         lines.append("")
