@@ -14,6 +14,17 @@ from typing import Optional
 from ir.schema import IRSchema, Flag, LLMInsight
 from analyzers.llm_enricher import TokenUsage, PRICING
 
+FLAG_LABELS: dict[str, str] = {
+    "missing_branch":        "⚠️  Branche manquante",
+    "magic_value":           "🔢 Valeur de référence non documentée",
+    "security_risk":         "🔴 Risque sécurité",
+    "unmapped_dep":          "❓ Service non mappé",
+    "business_logic_unclear": "❓ Logique métier ambiguë",
+    "side_effect":           "⚡ Effet de bord",
+    "dynamic_session_key":   "🔑 Session dynamique — risque stale",
+    "chained_api_call":      "🔗 Appels API chaînés — risque payload vide",
+}
+
 # Traductions fragment technique → terme métier (dans l'ordre de priorité)
 TECH_TO_BUSINESS: list[tuple[str, str]] = [
     (r"\$_SESSION\s*\['user'\]\s*\['role'\]\s*!=\s*'admin'", "vérification habilitation Administrateur"),
@@ -193,11 +204,13 @@ class BusinessDocGenerator:
 
         # Grouper par type pour faciliter la lecture
         groups = {
-            "security_risk": ("🔴 Points d'attention", []),
-            "missing_branch": ("⚠️ Gaps de logique — Comportements non définis", []),
-            "magic_value": ("🔍 Valeurs de référence non documentées", []),
+            "security_risk":         ("🔴 Points d'attention sécurité", []),
+            "dynamic_session_key":   ("🔑 Session dynamique — risque stale", []),
+            "chained_api_call":      ("🔗 Appels API chaînés — risque payload vide", []),
+            "missing_branch":        ("⚠️ Gaps de logique — Comportements non définis", []),
+            "magic_value":           ("🔍 Valeurs de référence non documentées", []),
             "business_logic_unclear": ("❓ Règles métier à préciser", []),
-            "unmapped_dep": ("📦 Services tiers non documentés", []),
+            "unmapped_dep":          ("📦 Services tiers non documentés", []),
         }
 
         for flag in ir.flags:
@@ -313,6 +326,11 @@ def _build_validation_list(
 def _field_and_question(flag: Flag) -> tuple[str, str]:
     """Dérive un nom de champ court et une question actionnable depuis un flag."""
     frag = flag.fragment
+
+    if flag.type == "dynamic_session_key":
+        return 'session_key', "cette clé est-elle nettoyée dans tous les chemins de sortie ?"
+    if flag.type == "chained_api_call":
+        return 'api_chain', "le résultat intermédiaire est-il validé avant le second appel ?"
 
     # business_logic_unclear en premier : le fragment peut contenir md5/etc. sans que ce soit l'enjeu
     if flag.type == "business_logic_unclear":

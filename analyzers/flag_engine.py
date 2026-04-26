@@ -69,6 +69,25 @@ CONDITION_TRANSLATIONS: list[tuple[re.Pattern, str]] = [
      "un résultat a été obtenu"),
 ]
 
+DYNAMIC_SESSION_PATTERNS = [
+    r"->get\(['\"][\w]+['\"].*\.\s*\$",        # Session->get('key'. $var)
+    r"cable_infos_",                             # clé Astro spécifique
+    r"_infos_\.\$",                              # pattern clé dynamique _infos_.$var
+    r"_data_\.\$",                               # pattern clé dynamique _data_.$var
+    r"key_exists\(['\"][\w]+['\"],.*\$session",  # key_exists sur variable session
+    r"isset\(\$_SESSION\[.*\$",                  # isset sur clé de session dynamique
+    r"session.*->get\(.*\$\w+\)",               # session->get($variable)
+]
+
+CHAINED_API_PATTERNS = [
+    r"scenarioCode.*71.*scenarioCode.*10389",    # scénarios Orchestra connus
+    r"getSecondCall\w+\(\)",                      # méthodes chaînées Astro
+    r"lancerEtx\w+\(\)",                         # déclencheurs ETX Astro
+    r"(orchestra|oceane|adelia).*call.*\n.*\1.*call",  # même service appelé 2×
+    r"getFirst\w+.*\n(?!.*empty).*getSecond\w+",       # getFirst→getSecond sans empty check
+    r"\$payload\s*=.*\$result\w*\n(?!.*empty).*->call", # payload depuis résultat sans guard
+]
+
 IMPACT_CATEGORY_MAP: dict[str, ImpactCategory] = {
     "security_risk":         ImpactCategory.CRITICAL_CORRUPTION,
     "dynamic_session_key":   ImpactCategory.CRITICAL_CORRUPTION,
@@ -123,6 +142,8 @@ class FlagEngine:
         flags.extend(self._check_unmapped_deps(ir))
         flags.extend(self._check_db_without_pagination(ir))
         flags.extend(self._check_side_effects_after_write(ir))
+        flags.extend(self._detect_dynamic_session_key(ir))
+        flags.extend(self._detect_chained_api_call(ir))
         for flag in flags:
             flag.impact_category = IMPACT_CATEGORY_MAP.get(flag.type, ImpactCategory.LOGIC_GAP)
         return flags
@@ -360,6 +381,79 @@ class FlagEngine:
                     ))
                     break  # une seule flag par (entry_point, write_op)
 
+        return flags
+
+    # =========================================================================
+    # Règle 7 — Clés de session dynamiques (Astro — stale data)
+    # =========================================================================
+
+    def _detect_dynamic_session_key(self, ir: IRSchema) -> list[Flag]:
+        flags = []
+        for ep in ir.entry_points:
+            if not ep.raw_code:
+                continue
+            for pattern in DYNAMIC_SESSION_PATTERNS:
+                match = re.search(pattern, ep.raw_code, re.IGNORECASE)
+                if not match:
+                    continue
+                fragment = self._extract_line(ep.raw_code, match.start())
+                context = self._extract_context_lines(ep.raw_code, match.start(), max_lines=7)
+                abs_line = (ep.start_line or 0) + ep.raw_code[:match.start()].count('\n')
+                flags.append(Flag(
+                    id=self._next_id("dynamic_session_key"),
+                    type="dynamic_session_key",
+                    location=ep.name,
+                    fragment=fragment,
+                    question=(
+                        "Clé de session dynamique détectée — "
+                        "cette clé est-elle nettoyée explicitement "
+                        "dans TOUS les chemins de sortie ? "
+                        "(transitions : ASSEMBLEE→CABLE, "
+                        "EQUIPEMENT→CABLE, reclassification Océane)"
+                    ),
+                    source_line=abs_line if ep.start_line else None,
+                    method_name=ep.name,
+                    method_original_name=ep.original_name,
+                    context_lines=context,
+                ))
+                break  # 1 flag par entry_point max
+        return flags
+
+    # =========================================================================
+    # Règle 8 — Appels API séquentiels sans validation (Astro — payload vide)
+    # =========================================================================
+
+    def _detect_chained_api_call(self, ir: IRSchema) -> list[Flag]:
+        flags = []
+        for ep in ir.entry_points:
+            if not ep.raw_code:
+                continue
+            for pattern in CHAINED_API_PATTERNS:
+                match = re.search(pattern, ep.raw_code, re.IGNORECASE | re.DOTALL)
+                if not match:
+                    continue
+                fragment = self._extract_line(ep.raw_code, match.start())
+                context = self._extract_context_lines(ep.raw_code, match.start(), max_lines=7)
+                abs_line = (ep.start_line or 0) + ep.raw_code[:match.start()].count('\n')
+                flags.append(Flag(
+                    id=self._next_id("chained_api_call"),
+                    type="chained_api_call",
+                    location=ep.name,
+                    fragment=fragment,
+                    question=(
+                        "Appels API séquentiels détectés — "
+                        "le résultat de l'appel 1 est-il validé "
+                        "(!empty / null check) avant d'être utilisé "
+                        "comme payload de l'appel 2 ? "
+                        "(risque 400 Invalid request "
+                        "si prestation inconnue ou service indisponible)"
+                    ),
+                    source_line=abs_line if ep.start_line else None,
+                    method_name=ep.name,
+                    method_original_name=ep.original_name,
+                    context_lines=context,
+                ))
+                break  # 1 flag par entry_point max
         return flags
 
     # =========================================================================

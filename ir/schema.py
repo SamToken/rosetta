@@ -25,6 +25,18 @@ class ImpactCategory(str, Enum):
     LOGIC_GAP           = "LOGIC_GAP"
 
 
+FLAG_TYPES = [
+    "missing_branch",
+    "magic_value",
+    "security_risk",
+    "unmapped_dep",
+    "business_logic_unclear",
+    "side_effect",
+    "dynamic_session_key",   # Astro — clé session dynamique (stale data)
+    "chained_api_call",      # Astro — appels API séquentiels sans validation
+]
+
+
 class Visibility(str, Enum):
     """Visibilité d'une méthode/fonction."""
     PUBLIC = "public"

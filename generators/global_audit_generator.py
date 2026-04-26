@@ -149,27 +149,56 @@ class GlobalAuditGenerator:
         # Recommandations prioritaires
         lines.append("### Recommandations prioritaires")
         lines.append("")
-        if ins.gap_count > 0:
+        n = 0
+
+        # Comptage par type pour les recommandations spécifiques Astro
+        count_by_type: dict[str, int] = {}
+        for f in ins.all_flags:
+            count_by_type[f.flag_type] = count_by_type.get(f.flag_type, 0) + 1
+
+        if count_by_type.get("dynamic_session_key", 0) > 0:
+            n += 1
+            c = count_by_type["dynamic_session_key"]
             lines.append(
-                f"1. **Arbitrage requis sur {ins.gap_count} gap(s) de logique** — "
+                f"{n}. **🔑 {c} clé(s) de session dynamique(s)** — "
+                "Vérifier le nettoyage explicite dans tous les chemins de transition "
+                "de contexte (ASSEMBLEE→CABLE, EQUIPEMENT→CABLE, reclassification Océane). "
+                "Risque de données périmées chargées silencieusement en production."
+            )
+        if count_by_type.get("chained_api_call", 0) > 0:
+            n += 1
+            c = count_by_type["chained_api_call"]
+            lines.append(
+                f"{n}. **🔗 {c} appel(s) API séquentiel(s)** — "
+                "Vérifier la validation du résultat intermédiaire (!empty / null check) "
+                "avant chaque appel suivant. "
+                "Risque 400 Invalid request si prestation inconnue ou service indisponible."
+            )
+        if ins.gap_count > 0:
+            n += 1
+            lines.append(
+                f"{n}. **Arbitrage requis sur {ins.gap_count} gap(s) de logique** — "
                 "Les comportements non définis identifiés dans la section 3 doivent être "
                 "clarifiés par le Product Owner avant tout développement dans la cible."
             )
         if ins.risk_count > 0:
+            n += 1
             lines.append(
-                f"2. **{ins.risk_count} point(s) d'attention sécurité** — "
+                f"{n}. **{ins.risk_count} point(s) d'attention sécurité** — "
                 "Les pratiques de protection des données identifiées nécessitent une "
                 "décision sur la politique de sécurité applicable dans la nouvelle architecture."
             )
         if ins.duplicate_rules:
+            n += 1
             lines.append(
-                f"3. **{len(ins.duplicate_rules)} règle(s) transverse(s) détectée(s)** — "
+                f"{n}. **{len(ins.duplicate_rules)} règle(s) transverse(s) détectée(s)** — "
                 "Ces règles, présentes dans plusieurs contrôleurs, sont candidates à la "
                 "centralisation dans des services partagés de la cible Symfony."
             )
         if ins.dep_count > 0:
+            n += 1
             lines.append(
-                f"4. **{ins.dep_count} service(s) tiers non documenté(s)** — "
+                f"{n}. **{ins.dep_count} service(s) tiers non documenté(s)** — "
                 "Chaque service tiers doit faire l'objet d'une fiche de spécification "
                 "avant d'être intégré à la cible."
             )
