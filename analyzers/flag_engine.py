@@ -6,7 +6,11 @@ Zéro LLM — 100% déterministe et testable sans réseau.
 """
 
 import re
-from ir.schema import IRSchema, Flag, ImpactCategory, OperationType
+import tree_sitter_php as tsphp
+from tree_sitter import Language, Parser
+from ir.schema import IRSchema, Flag, FlagType, ImpactCategory, OperationType
+
+_PHP_LANGUAGE = Language(tsphp.language_php())
 
 
 SECURITY_PATTERNS = [
@@ -138,6 +142,9 @@ IMPACT_CATEGORY_MAP: dict[str, ImpactCategory] = {
     "magic_value":               ImpactCategory.LOGIC_GAP,
     "unmapped_dep":              ImpactCategory.LOGIC_GAP,
     "hardcoded_situation_code":  ImpactCategory.LOGIC_GAP,
+    "empty_catch":               ImpactCategory.CRITICAL_CORRUPTION,
+    "strong_coupling":           ImpactCategory.API_OVERLOAD,
+    "chained_method_call":       ImpactCategory.CRITICAL_CORRUPTION,
 }
 
 MAGIC_VALUE_PATTERNS = [
@@ -168,6 +175,18 @@ class FlagEngine:
 
     def __init__(self):
         self._counter = 0
+        self._parser = Parser(_PHP_LANGUAGE)
+
+    def _find_nodes(self, node, node_type: str) -> list:
+        """Parcours itératif — évite RecursionError sur les gros fichiers."""
+        results = []
+        stack = [node]
+        while stack:
+            current = stack.pop()
+            if current.type == node_type:
+                results.append(current)
+            stack.extend(current.children)
+        return results
 
     def _next_id(self, prefix: str) -> str:
         self._counter += 1
@@ -189,6 +208,9 @@ class FlagEngine:
         flags.extend(self._detect_oceane_state_dependency(ir))
         flags.extend(self._detect_module_execution_gap(ir))
         flags.extend(self._detect_hardcoded_situation_code(ir))
+        flags.extend(self._detect_empty_catch(ir))
+        flags.extend(self._detect_strong_coupling(ir))
+        flags.extend(self._detect_chained_method_calls(ir))
         for flag in flags:
             flag.impact_category = IMPACT_CATEGORY_MAP.get(flag.type, ImpactCategory.LOGIC_GAP)
         return flags
@@ -221,15 +243,23 @@ class FlagEngine:
                     self._find_method_for_line(block.source_line, ir.entry_points)
                     if block.source_line else ("unknown", "unknown")
                 )
+                if block.business_context:
+                    question = (
+                        f"Règle documentée : « {block.business_context} ». "
+                        f"Le cas contraire n'est pas géré — "
+                        f"quel est le comportement attendu ?"
+                    )
+                else:
+                    question = (
+                        f"Point de décision — {condition_business}. "
+                        f"Quel est le comportement attendu dans le cas contraire ?"
+                    )
                 flags.append(Flag(
                     id=self._next_id("missing_branch"),
                     type="missing_branch",
                     location=block.id,
                     fragment=block.condition,
-                    question=(
-                        f"Point de décision — {condition_business}. "
-                        f"Quel est le comportement attendu dans le cas contraire ?"
-                    ),
+                    question=question,
                     source_line=block.source_line,
                     method_name=method_name,
                     method_original_name=method_orig,
@@ -665,6 +695,114 @@ class FlagEngine:
                         method_original_name=ep.original_name,
                         context_lines=context,
                     ))
+        return flags
+
+    # =========================================================================
+    # Règle 13 — Catch vide (erreur silencieuse)
+    # =========================================================================
+
+    def _detect_empty_catch(self, ir: IRSchema) -> list[Flag]:
+        flags = []
+        for ep in ir.entry_points:
+            if not ep.raw_code:
+                continue
+            raw_bytes = ep.raw_code.encode('utf-8')
+            tree = self._parser.parse(raw_bytes)
+            for catch in self._find_nodes(tree.root_node, 'catch_clause'):
+                body = catch.child_by_field_name('body')
+                if not body:
+                    continue
+                non_trivial = [c for c in body.children if c.type not in ('{', '}', 'comment')]
+                if non_trivial:
+                    continue
+                fragment = raw_bytes[catch.start_byte:min(catch.end_byte, catch.start_byte + 80)].decode('utf-8', errors='replace').strip()
+                abs_line = (ep.start_line or 0) + catch.start_point[0]
+                context = self._extract_context_lines(ep.raw_code, catch.start_byte, max_lines=5)
+                flags.append(Flag(
+                    id=self._next_id("empty_catch"),
+                    type=FlagType.EMPTY_CATCH,
+                    location=ep.name,
+                    fragment=fragment,
+                    question=(
+                        "Exception capturée mais ignorée — "
+                        "que doit faire le système si cette erreur survient ?"
+                    ),
+                    source_line=abs_line if ep.start_line else None,
+                    method_name=ep.name,
+                    method_original_name=ep.original_name,
+                    context_lines=context,
+                ))
+        return flags
+
+    # =========================================================================
+    # Règle 14 — Couplage fort ($this->app->get)
+    # =========================================================================
+
+    def _detect_strong_coupling(self, ir: IRSchema) -> list[Flag]:
+        flags = []
+        for ep in ir.entry_points:
+            if not ep.raw_code:
+                continue
+            count = ep.raw_code.count("->app->get(")
+            if count < 5:
+                continue
+            match = re.search(r'->app->get\([^)]+\)', ep.raw_code)
+            fragment = match.group(0) if match else f"->app->get() ×{count}"
+            abs_line = (ep.start_line or 0) + ep.raw_code[:match.start()].count('\n') if match else ep.start_line
+            flags.append(Flag(
+                id=self._next_id("strong_coupling"),
+                type=FlagType.STRONG_COUPLING,
+                location=ep.name,
+                fragment=fragment,
+                question=(
+                    f"{count} services injectés manuellement dans cette méthode — "
+                    "ce couplage fort rend la méthode non testable "
+                    "et fragile en cas de migration."
+                ),
+                source_line=abs_line if ep.start_line else None,
+                method_name=ep.name,
+                method_original_name=ep.original_name,
+            ))
+        return flags
+
+    # =========================================================================
+    # Règle 15 — Appels chaînés sans garde-fou null
+    # =========================================================================
+
+    def _detect_chained_method_calls(self, ir: IRSchema) -> list[Flag]:
+        flags = []
+        for ep in ir.entry_points:
+            if not ep.raw_code:
+                continue
+            raw_bytes = ep.raw_code.encode('utf-8')
+            tree = self._parser.parse(raw_bytes)
+            seen_frags: set[str] = set()
+            for chain in self._find_nodes(tree.root_node, 'member_call_expression'):
+                obj = chain.child_by_field_name('object')
+                if not obj or obj.type != 'member_call_expression':
+                    continue
+                fragment = raw_bytes[chain.start_byte:min(chain.end_byte, chain.start_byte + 120)].decode('utf-8', errors='replace')
+                key = fragment[:60]
+                if key in seen_frags:
+                    continue
+                seen_frags.add(key)
+                abs_line = (ep.start_line or 0) + chain.start_point[0]
+                context = self._extract_context_lines(ep.raw_code, chain.start_byte, max_lines=3)
+                flags.append(Flag(
+                    id=self._next_id("chained_method_call"),
+                    type=FlagType.CHAINED_METHOD_CALL,
+                    location=ep.name,
+                    fragment=fragment.strip(),
+                    question=(
+                        "Appel chaîné détecté — "
+                        "si le premier appel retourne null, "
+                        "le second provoque une erreur fatale."
+                    ),
+                    source_line=abs_line if ep.start_line else None,
+                    method_name=ep.name,
+                    method_original_name=ep.original_name,
+                    context_lines=context,
+                ))
         return flags
 
     # =========================================================================

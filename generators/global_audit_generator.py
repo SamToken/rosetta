@@ -16,7 +16,7 @@ Structure du livrable :
 import re
 from datetime import datetime
 from typing import Optional
-from aggregators.business_aggregator import AggregatedInsights, DecisionGap
+from aggregators.business_aggregator import AggregatedInsights, DecisionGap, CriticalMethod
 from analyzers.llm_enricher import TokenUsage, PRICING
 
 _TECHNICAL_NOISE = [r'\$_POST', r'\bmd5\b', r'SELECT\s*\*']
@@ -122,8 +122,15 @@ class GlobalAuditGenerator:
         lines.append(f"| Points d'attention sécurité | {ins.risk_count} |")
         lines.append(f"| Gaps de logique à arbitrer | {ins.gap_count} |")
         lines.append(f"| Services tiers non documentés | {ins.dep_count} |")
-        lines.append(f"| Règles métier identifiées | {ins.total_insights} |")
+        identified = self._count_identified_rules(ins.all_flags)
+        lines.append(f"| Règles métier identifiées par reverse engineering | {identified} |")
         lines.append("")
+        if identified > 0:
+            lines.append(
+                f"> {identified} règle(s) implicite(s) ont été identifiées depuis le code source "
+                "sans documentation préexistante (codes situation, dépendances d'état, clés de session)."
+            )
+            lines.append("")
 
         lines.append("### Priorités de correction")
         lines.append("")
@@ -239,9 +246,43 @@ class GlobalAuditGenerator:
                 "avant d'être intégré à la cible."
             )
         lines.append("")
+
+        # Méthodes à risque critique
+        if ins.critical_methods:
+            lines.append("### Méthodes à risque critique")
+            lines.append("")
+            lines.append("| Contrôleur | Méthode | Score | Raison |")
+            lines.append("|-----------|---------|-------|--------|")
+            for m in ins.critical_methods:
+                d = m.risk_details
+                badge = "🔴" if m.risk_score >= 80 else "🟠"
+                reasons = []
+                if d.get('cyclomatic_complexity', 0):
+                    reasons.append(f"{d['cyclomatic_complexity']} if/boucles")
+                if d.get('strong_coupling', 0):
+                    reasons.append(f"{d['strong_coupling']} services")
+                if d.get('method_lines', 0):
+                    reasons.append(f"{d['method_lines']} lignes")
+                lines.append(
+                    f"| {m.controller} | `{m.method_name}()` "
+                    f"| {badge} {m.risk_score}/100 | {', '.join(reasons)} |"
+                )
+            lines.append("")
+
         lines.append("---")
         lines.append("")
         return lines
+
+    @staticmethod
+    def _count_identified_rules(all_flags) -> int:
+        """Règles implicites identifiées par reverse engineering — sans LLM."""
+        rule_types = {
+            'hardcoded_situation_code',
+            'oceane_state_dependency',
+            'dynamic_session_key',
+            'chained_api_call',
+        }
+        return len([f for f in all_flags if f.flag_type in rule_types])
 
     # =========================================================================
     # 2. Règles Transverses & Redondances
@@ -298,6 +339,8 @@ class GlobalAuditGenerator:
         critical = flags_by_cat.get("CRITICAL_CORRUPTION", [])
         overload = flags_by_cat.get("API_OVERLOAD", [])
         logic = flags_by_cat.get("LOGIC_GAP", [])
+        unique_total = len({(f.controller, f.method_name, f.flag_type) for f in pool})
+        unique_logic = len({(f.controller, f.method_name, f.flag_type) for f in logic})
 
         # ── 🔴 CRITICAL_CORRUPTION ─────────────────────────────────────────
         if critical:
@@ -337,12 +380,14 @@ class GlobalAuditGenerator:
             lines.append("")
 
         # ── 🟡 LOGIC_GAP ───────────────────────────────────────────────────
-        lines.append(f"### 🟡 LOGIC_GAP — {len(logic)} flag(s)")
+        lines.append(
+            f"### 🟡 LOGIC_GAP — {unique_logic} gap(s) unique(s) ({len(logic)} occurrence(s))"
+        )
         lines.append("> Arbitrage PO requis avant migration.")
         lines.append("")
         lines.append(
             f"*(Voir `details/gaps_complets.md` pour la liste exhaustive "
-            f"des {ins.gap_count} comportement(s) à définir)*"
+            f"des {unique_total} gap(s) unique(s) toutes catégories · {len(pool)} occurrence(s))*"
         )
         lines.append("")
         lines.append("---")
@@ -422,11 +467,19 @@ class GlobalAuditGenerator:
 
     def generate_gaps_detail(self, ins: AggregatedInsights) -> str:
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+        nb_services   = sum(1 for g in ins.decision_gaps if g.flag_type == "unmapped_dep")
+        nb_situations = sum(1 for g in ins.decision_gaps if g.flag_type == "hardcoded_situation_code")
+        nb_gaps       = len(ins.decision_gaps) - nb_services - nb_situations
+        unique_count  = len({(g.controller, g.method_name, g.flag_type) for g in ins.decision_gaps})
+
         lines = [
             "# Gaps de Documentation — Liste Exhaustive",
             "",
-            f"*Généré le {now} — {ins.gap_count} comportement(s) à définir "
-            f"sur {len(ins.controllers)} contrôleur(s)*",
+            f"*Généré le {now} — sur {len(ins.controllers)} contrôleur(s) : "
+            f"{nb_gaps} comportement(s) à arbitrer | "
+            f"{nb_services} service(s) tiers à documenter | "
+            f"{nb_situations} code(s) situation à référencer*",
             "",
             "> Chaque ligne correspond à un comportement du système actuel dont "
             "le cas contraire n'est pas documenté.",
@@ -446,8 +499,11 @@ class GlobalAuditGenerator:
             )
         lines.append("")
         lines.append(
-            f"*{ins.gap_count} gap(s) — chaque case ⬜ représente "
-            "une décision à prendre avant migration.*"
+            f"*{unique_count} gap(s) unique(s) — "
+            f"{nb_gaps} comportement(s) à arbitrer · "
+            f"{nb_services} service(s) à documenter · "
+            f"{nb_situations} code(s) situation à référencer — "
+            "chaque case ⬜ représente une décision à prendre avant migration.*"
         )
         lines.append("")
 
@@ -479,7 +535,18 @@ class GlobalAuditGenerator:
                 lines.append(gap.context_lines)
                 lines.append("```")
                 lines.append("")
-                lines.append(f"Question métier : {question}")
+                # Détecter et valoriser le commentaire PHP lié (business_context)
+                if question.startswith("Règle documentée"):
+                    import re as _re
+                    m = _re.search(r"Règle documentée : « ([^»]+) »\. (.*)", question)
+                    if m:
+                        lines.append(f"> 📝 **Règle documentée dans le code :** *{m.group(1)}*")
+                        lines.append("")
+                        lines.append(f"Question métier : {m.group(2).strip()}")
+                    else:
+                        lines.append(f"Question métier : {question}")
+                else:
+                    lines.append(f"Question métier : {question}")
                 lines.append("")
 
         return "\n".join(lines)

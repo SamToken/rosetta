@@ -142,7 +142,7 @@ def _do_archive(
         if item.is_dir():
             if dest.exists():
                 shutil.rmtree(dest)
-            shutil.copytree(item, dest)
+            shutil.copytree(item, dest, symlinks=True)
         else:
             shutil.copy2(item, dest)
 
@@ -234,6 +234,34 @@ def _analyze_single(
     return ir, usage
 
 
+_ALL_RULE_TYPES = [
+    "missing_branch", "magic_value", "security_risk", "unmapped_dep",
+    "business_logic_unclear", "side_effect", "dynamic_session_key",
+    "chained_api_call", "situation_coverage", "oceane_state_dependency",
+    "module_execution_gap", "hardcoded_situation_code",
+    "empty_catch", "strong_coupling", "chained_method_call",
+]
+
+
+def _print_debug_rules(irs: list) -> None:
+    """Affiche le nombre de flags par règle pour chaque fichier analysé."""
+    print("\n=== Debug règles ===")
+    # Agréger sur tous les IR
+    totals: dict[str, int] = {t: 0 for t in _ALL_RULE_TYPES}
+    for ir in irs:
+        for flag in ir.flags:
+            key = str(flag.type)
+            if key in totals:
+                totals[key] += 1
+            else:
+                totals[key] = totals.get(key, 0) + 1
+    for rule, count in totals.items():
+        status = "✅" if count > 0 else "⬜"
+        note = " — aucun pattern détecté" if count == 0 else ""
+        print(f"  {status} {rule:<32}: {count} flag(s){note}")
+    print()
+
+
 def _print_usage_summary(usage, model: str) -> None:
     if not usage:
         print("💰 Coût LLM : $0.00 (--no-llm)")
@@ -255,7 +283,8 @@ def main() -> None:
     )
     parser.add_argument(
         "input",
-        help="Fichier PHP ou répertoire à analyser (récursif si répertoire)",
+        nargs="+",
+        help="Fichier(s) PHP ou répertoire à analyser (récursif si répertoire)",
     )
     parser.add_argument(
         "--no-llm",
@@ -284,19 +313,35 @@ def main() -> None:
         metavar="TEXT",
         help="Contexte de l'audit pour l'archivage (ex: 'Avant MEP US-1234')",
     )
+    parser.add_argument(
+        "--debug-rules",
+        action="store_true",
+        help="Afficher le détail de déclenchement de chaque règle de détection",
+    )
 
     args = parser.parse_args()
-    input_path = Path(args.input)
     output_dir = Path(args.output_dir)
 
-    if not input_path.exists():
-        print(f"Erreur : chemin introuvable : {input_path}", file=sys.stderr)
-        sys.exit(1)
+    # Résoudre les chemins d'entrée
+    input_paths = [Path(p) for p in args.input]
+    for p in input_paths:
+        if not p.exists():
+            print(f"Erreur : chemin introuvable : {p}", file=sys.stderr)
+            sys.exit(1)
+
+    # Un seul répertoire → mode batch par répertoire
+    if len(input_paths) == 1 and input_paths[0].is_dir():
+        input_path = input_paths[0]
+    # Un seul fichier → mode fichier unique
+    elif len(input_paths) == 1 and input_paths[0].is_file():
+        input_path = input_paths[0]
+    else:
+        input_path = None  # plusieurs fichiers explicites
 
     # ======================================================================
     # Mode fichier unique (comportement original)
     # ======================================================================
-    if input_path.is_file():
+    if input_path is not None and input_path.is_file():
         output_dir.mkdir(parents=True, exist_ok=True)
         print(f"\n📄 Analyse : {input_path.name}")
         ir, usage = _analyze_single(input_path, output_dir, args.no_llm, args.model)
@@ -305,6 +350,8 @@ def main() -> None:
         print(f"📄 3 fichiers générés dans {output_dir}/")
         print(f"🤖 {len(ir.llm_insights)} flags enrichis / {usage.skipped_flags if usage else 0} skippés")
         _print_usage_summary(usage, args.model)
+        if args.debug_rules:
+            _print_debug_rules([ir])
 
         if args.archive:
             controller_names = [ir.metadata.controller_name]
@@ -333,17 +380,25 @@ def main() -> None:
         return
 
     # ======================================================================
-    # Mode batch (répertoire)
+    # Mode batch (répertoire ou liste de fichiers explicites)
     # ======================================================================
-    php_files = sorted(input_path.rglob("*.php"))
+    if input_path is not None:
+        # répertoire → scan récursif
+        php_files = sorted(input_path.rglob("*.php"))
+        batch_label = str(input_path)
+    else:
+        # liste de fichiers explicites
+        php_files = input_paths
+        batch_label = ", ".join(p.name for p in input_paths)
+
     if not php_files:
-        print(f"Erreur : aucun fichier .php trouvé dans {input_path}", file=sys.stderr)
+        print(f"Erreur : aucun fichier .php trouvé dans {batch_label}", file=sys.stderr)
         sys.exit(1)
 
     details_dir = output_dir / "details"
     details_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n🔍 Mode batch — {len(php_files)} fichier(s) PHP détecté(s) dans {input_path}")
+    print(f"\n🔍 Mode batch — {len(php_files)} fichier(s) PHP : {batch_label}")
     print(f"📂 Rapports détaillés → {details_dir}/")
     print(f"📊 Audit global      → {output_dir}/global_audit.md")
     print()
@@ -400,6 +455,8 @@ def main() -> None:
             _print_usage_summary(insights.total_usage, args.model)
     else:
         print("💰 Coût LLM : $0.00 (--no-llm)")
+    if args.debug_rules:
+        _print_debug_rules(all_irs)
 
     # ------------------------------------------------------------------
     # Archivage (--archive)
@@ -421,6 +478,7 @@ def main() -> None:
             "modele": "--no-llm" if args.no_llm else args.model,
             "mode": "--no-llm" if args.no_llm else "llm",
             "fichiers_analyses": [str(p) for p in php_files],
+
         }
         archive_dir = _do_archive(output_dir, archive_name, meta)
         print(f"📦 Archivé → {archive_dir}")

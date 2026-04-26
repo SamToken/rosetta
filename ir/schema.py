@@ -43,6 +43,9 @@ class FlagType(str, Enum):
     OCEANE_STATE_DEPENDENCY = "oceane_state_dependency"
     MODULE_EXECUTION_GAP    = "module_execution_gap"
     HARDCODED_SITUATION     = "hardcoded_situation_code"
+    EMPTY_CATCH             = "empty_catch"
+    STRONG_COUPLING         = "strong_coupling"
+    CHAINED_METHOD_CALL     = "chained_method_call"
 
 
 class Visibility(str, Enum):
@@ -96,6 +99,11 @@ class EntryPoint(BaseModel):
     # Opérations spécifiques à cette action (IDs)
     operation_ids: list[str] = Field(default_factory=list)
 
+    # Score de risque calculé par le PHP Extractor
+    risk_score: Optional[float] = None
+    risk_details: Optional[dict] = None
+    critical_risk: bool = False
+
 
 class Operation(BaseModel):
     """Une opération métier extraite du code."""
@@ -115,6 +123,7 @@ class ControlBlock(BaseModel):
     operations: list[str] = Field(default_factory=list)  # IDs des opérations
     source_line: Optional[int] = None    # ligne du if dans le fichier source
     raw_context: Optional[str] = None   # ±3 lignes autour pour le contexte
+    business_context: Optional[str] = None  # commentaire PHP précédant le if
 
 
 class DataFlow(BaseModel):
@@ -144,7 +153,7 @@ class IRMetadata(BaseModel):
     extracted_at: datetime = Field(default_factory=datetime.now)
     extractor_version: str = "0.1.0"
     confidence_score: float = 1.0  # 0-1, baisse si parsing incomplet
-    file_type: str = "controller"  # controller | service | helper | tools | repository | unknown
+    file_type: str = "unknown"  # controller | service | helper | tools | repository | unknown
 
 
 class UnparsedSection(BaseModel):

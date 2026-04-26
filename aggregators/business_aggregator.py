@@ -74,6 +74,15 @@ class DecisionGap:
 
 
 @dataclass
+class CriticalMethod:
+    """Méthode à risque critique (risk_score > 70)."""
+    controller: str
+    method_name: str
+    risk_score: float
+    risk_details: dict
+
+
+@dataclass
 class ControllerSummary:
     """Résumé santé d'un contrôleur."""
     controller_name: str
@@ -110,6 +119,8 @@ class AggregatedInsights:
     overload_count: int = 0     # flags API_OVERLOAD
     logic_gap_count: int = 0    # flags LOGIC_GAP
 
+    critical_methods: list = field(default_factory=list)  # list[CriticalMethod]
+
     total_usage: Optional[TokenUsage] = None
 
 
@@ -139,6 +150,7 @@ class BusinessAggregator:
         result.decision_gaps = self._collect_decision_gaps(irs)
         result.all_flags = self._collect_all_flags(irs)
         result.controller_summaries = self._build_summaries(irs)
+        result.critical_methods = self._collect_critical_methods(irs)
 
         result.risk_count = sum(
             len([f for f in ir.flags if f.type == "security_risk"]) for ir in irs
@@ -386,7 +398,25 @@ class BusinessAggregator:
         return flags
 
     # -------------------------------------------------------------------------
-    # 5. Résumés par contrôleur
+    # 5. Méthodes à risque critique
+    # -------------------------------------------------------------------------
+
+    def _collect_critical_methods(self, irs: list[IRSchema]) -> list[CriticalMethod]:
+        critical = []
+        for ir in irs:
+            controller = ir.metadata.controller_name
+            for ep in ir.entry_points:
+                if ep.critical_risk and ep.risk_score is not None:
+                    critical.append(CriticalMethod(
+                        controller=controller,
+                        method_name=ep.name,
+                        risk_score=ep.risk_score,
+                        risk_details=ep.risk_details or {},
+                    ))
+        return sorted(critical, key=lambda m: m.risk_score, reverse=True)
+
+    # -------------------------------------------------------------------------
+    # 6. Résumés par contrôleur
     # -------------------------------------------------------------------------
 
     def _build_summaries(self, irs: list[IRSchema]) -> list[ControllerSummary]:

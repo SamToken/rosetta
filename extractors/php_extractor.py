@@ -25,6 +25,13 @@ from ir.schema import (
 
 PHP_LANGUAGE = Language(tsphp.language_php())
 
+RISK_WEIGHTS = {
+    'cyclomatic':    2,  # par if/for/foreach/catch/switch
+    'coupling':      5,  # par $this->app->get()
+    'magic_values':  3,  # par comparaison avec valeur en dur
+    'method_length': 1,  # par tranche de 50 lignes
+}
+
 
 class PHPExtractor:
     """
@@ -96,6 +103,8 @@ class PHPExtractor:
         root = tree.root_node
 
         ir.entry_points = self._extract_entry_points_ast(root, content_bytes, content, file_type)
+        for ep in ir.entry_points:
+            ep.risk_score, ep.risk_details, ep.critical_risk = self._compute_risk_score(ep)
         ir.control_flow = self._extract_control_flow_ast(root, content_bytes, content)
         ir.operations   = self._extract_operations(content)
         ir.data_flow    = self._extract_data_flow(content)
@@ -136,12 +145,14 @@ class PHPExtractor:
     # =========================================================================
 
     def _find_nodes(self, node, node_type: str) -> list:
-        """Parcours récursif — retourne tous les nœuds du type demandé."""
+        """Parcours itératif — évite RecursionError sur les gros fichiers."""
         results = []
-        if node.type == node_type:
-            results.append(node)
-        for child in node.children:
-            results.extend(self._find_nodes(child, node_type))
+        stack = [node]
+        while stack:
+            current = stack.pop()
+            if current.type == node_type:
+                results.append(current)
+            stack.extend(current.children)
         return results
 
     def _get_visibility(self, method_node) -> str:
@@ -202,10 +213,15 @@ class PHPExtractor:
                 route   = None
                 methods = []
 
+            try:
+                vis = Visibility(visibility)
+            except ValueError:
+                vis = Visibility.PUBLIC
+
             entry_points.append(EntryPoint(
                 name=clean_name,
                 original_name=method_name,
-                visibility=Visibility(visibility),
+                visibility=vis,
                 parameters=self._extract_params_ast(method, content_bytes),
                 route_pattern=route,
                 http_methods=methods,
@@ -282,10 +298,7 @@ class PHPExtractor:
             if not cond_node:
                 continue
 
-            # Condition sans parenthèses externes
             condition = self._node_text(cond_node, content_bytes).strip()
-            if condition.startswith('(') and condition.endswith(')'):
-                condition = condition[1:-1].strip()
             condition = ' '.join(condition.split())
 
             # true_branch — toujours présent si le nœud existe
@@ -304,6 +317,8 @@ class PHPExtractor:
             ctx_end   = min(len(all_lines), line_num + 3)
             raw_context = '\n'.join(all_lines[ctx_start:ctx_end])
 
+            business_context = self._extract_linked_comment(node, content_bytes)
+
             blocks.append(ControlBlock(
                 id=self._next_block_id(),
                 condition=condition,
@@ -311,9 +326,67 @@ class PHPExtractor:
                 false_branch=false_branch,
                 source_line=line_num,
                 raw_context=raw_context,
+                business_context=business_context,
             ))
 
         return blocks
+
+    def _extract_linked_comment(self, node, content_bytes: bytes) -> Optional[str]:
+        """Retourne le commentaire PHP immédiatement avant ce nœud, si présent."""
+        prev = node.prev_sibling
+        if prev and prev.type == 'comment':
+            comment = content_bytes[prev.start_byte:prev.end_byte].decode('utf-8', errors='replace')
+            comment = comment.strip()
+            # Nettoyer // et /* */
+            comment = re.sub(r'^//\s*', '', comment)
+            comment = re.sub(r'^/\*+\s*|\s*\*+/$', '', comment)
+            comment = comment.strip()
+            if len(comment) > 3:
+                return comment
+        return None
+
+    def _compute_risk_score(self, ep: EntryPoint) -> tuple[float, dict, bool]:
+        """Calcule le score de risque d'une méthode sur 100."""
+        if not ep.raw_code:
+            return 0.0, {}, False
+
+        raw_bytes = ep.raw_code.encode('utf-8')
+        tree = self._parser.parse(raw_bytes)
+        root = tree.root_node
+
+        cyclo = (
+            len(self._find_nodes(root, 'if_statement'))
+            + len(self._find_nodes(root, 'for_statement'))
+            + len(self._find_nodes(root, 'foreach_statement'))
+            + len(self._find_nodes(root, 'catch_clause'))
+            + len(self._find_nodes(root, 'switch_statement'))
+        )
+        coupling = ep.raw_code.count('->app->get(')
+        magic = len(self._find_nodes(root, 'integer'))
+        magic += len([
+            n for n in self._find_nodes(root, 'string')
+            if n.parent and n.parent.type == 'binary_expression'
+        ])
+        lines = ep.raw_code.count('\n')
+        length_penalty = lines // 50
+
+        raw_score = (
+            cyclo         * RISK_WEIGHTS['cyclomatic']
+            + coupling    * RISK_WEIGHTS['coupling']
+            + magic       * RISK_WEIGHTS['magic_values']
+            + length_penalty * RISK_WEIGHTS['method_length']
+        )
+        score = min(100.0, raw_score)
+        critical = score > 70
+
+        details = {
+            'cyclomatic_complexity': cyclo,
+            'strong_coupling':       coupling,
+            'magic_values':          magic,
+            'method_lines':          lines,
+            'raw_score':             raw_score,
+        }
+        return round(score, 1), details, critical
 
     # =========================================================================
     # Opérations, data flow, dépendances — regex (inchangés)

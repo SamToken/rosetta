@@ -27,6 +27,9 @@ FLAG_LABELS: dict[str, str] = {
     "oceane_state_dependency":  "🌊 Dépendance Oceane temps réel — pas de fallback",
     "module_execution_gap":     "⚙️  Module séquentiel — échec silencieux possible",
     "hardcoded_situation_code": "🔢 Code situation hardcodé — risque désynchronisation",
+    "empty_catch":              "🕳️ Exception ignorée — erreur silencieuse",
+    "strong_coupling":          "🔧 Couplage fort — méthode non testable",
+    "chained_method_call":      "⛓️ Appel chaîné — risque null pointer",
 }
 
 # Traductions fragment technique → terme métier (dans l'ordre de priorité)
@@ -87,6 +90,28 @@ class BusinessDocGenerator:
                 lines.append(f"**Route** : {methods} {ep.route_pattern}")
             else:
                 lines.append(f"## Méthode : {ep.name}()")
+
+            if ep.risk_score is not None and ep.risk_score > 0:
+                badge = "🔴" if ep.critical_risk else ("🟡" if ep.risk_score > 40 else "🟢")
+                lines.append(f"**Risque : {badge} {ep.risk_score}/100**")
+                if ep.risk_details:
+                    d = ep.risk_details
+                    cyclo, coupling, magic, l, raw = (
+                        d.get('cyclomatic_complexity', 0),
+                        d.get('strong_coupling', 0),
+                        d.get('magic_values', 0),
+                        d.get('method_lines', 0),
+                        d.get('raw_score', 0),
+                    )
+                    lines.append("")
+                    lines.append("| Facteur | Valeur | Poids |")
+                    lines.append("|---------|--------|-------|")
+                    lines.append(f"| Complexité cyclomatique | {cyclo} | ×2 = {cyclo * 2} |")
+                    lines.append(f"| Couplage fort (→app→get) | {coupling} | ×5 = {coupling * 5} |")
+                    lines.append(f"| Valeurs magiques | {magic} | ×3 = {magic * 3} |")
+                    lines.append(f"| Longueur ({l} lignes) | {l // 50} tranches | ×1 = {l // 50} |")
+                    lines.append(f"| **Score brut** | | **{raw}** |")
+                    lines.append(f"| **Score normalisé** | | **{ep.risk_score}/100** {badge} |")
             lines.append("")
 
             ep_flags = flags_by_location.get(ep.name, [])
@@ -218,6 +243,9 @@ class BusinessDocGenerator:
             "oceane_state_dependency":  ("🌊 Dépendance Oceane temps réel — pas de fallback", []),
             "module_execution_gap":     ("⚙️  Module séquentiel — échec silencieux possible", []),
             "hardcoded_situation_code": ("🔢 Code situation hardcodé — risque désynchronisation", []),
+            "empty_catch":              ("🕳️ Exception ignorée — erreur silencieuse", []),
+            "strong_coupling":          ("🔧 Couplage fort — méthode non testable", []),
+            "chained_method_call":      ("⛓️ Appel chaîné — risque null pointer", []),
             "missing_branch":           ("⚠️ Gaps de logique — Comportements non définis", []),
             "magic_value":           ("🔍 Valeurs de référence non documentées", []),
             "business_logic_unclear": ("❓ Règles métier à préciser", []),
