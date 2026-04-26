@@ -1,0 +1,127 @@
+# VariableServiceController — Règles Métier
+Extrait le : 2026-04-26 | Confiance extraction : 0.29999999999999993
+
+## Points de décision — Comportements non définis
+- ⚠️ **Gap de logique**
+  - Point de décision — 'arg' égal à 'Temperature' ou 'arg' égal à 'Etat_batterie' ou 'arg' égal à 'Tension_batterie' ou 'arg' égal à 'Element_HS'. Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — property_exists('parameters', 'Parameter'). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — property_exists('val1', 'id') et 'val1'->id égal à 'LIBSITE'. Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — 'libSite' différent de "". Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — 'arg' égal à 'DSLAM_PRODUIT_DSLAM' ou 'arg' égal à 'DSLAM_PRODUIT_CHASSIS' ou 'arg' égal à 'DSLAM_PRODUIT_CARTE' ou 'arg' égal à 'DSLAM_PRODUIT_PORT' ou 'arg' égal à 'DSLAM_PRODUIT_PM'. Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — is_null('this'->variableRepository). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — !'replaceValue'. Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — 'replaceValue' différent de '' et !is_null('replaceValue') et !is_array('replaceValue'). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — OceaneTools::isValidVariable('replaceValue') et !is_array('replaceValue'). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — is_null('this'->transitoolService). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — OceaneTools::isValidVariable('replaceValue'). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — key_exists('etat', 'donnesTempsReel') et 'donnesTempsReel'['etat'] égal à 'ok'. Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — is_null('this'->findAndGet). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — !isset('this'->findAndGet['message']) et !is_null('this'->findAndGet['installed_resource']) et property_exists('this'->findAndGet['installed_resource'], 'Parameters') et property_exists('this'->findAndGet['installed_resource']->Parameters, 'Parameter'). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — !isset('this'->findAndGet['message']) et !is_null('this'->findAndGet['rd_plus']). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — !isset('this'->findAndGet['message']) et !is_null('this'->findAndGet['description']). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — !isset('this'->findAndGet['message']) et !is_null('this'->findAndGet['code_detecteur']). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — !is_null('this'->findAndGet['code_detecteur']). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — in_array('type', 'this'->arrayRessourcesTransAvecExt). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — OceaneTools::isValidVariable('replaceValue') et gettype('replaceValue') différent de 'boolean'. Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — 'this'->typeRessource égal à 'TRONCABLE'. Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — !is_null('resultColumn') et 'resultColumn' différent de ''. Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — 'this'->globalApiRepository->isVariableAdminExist('arg', 'type'). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — !isset('this'->findAndGet['message']). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — !is_null('this'->findAndGet['installed_resource']) et property_exists('this'->findAndGet['installed_resource'], 'ResourceSpecification') et property_exists('this'->findAndGet['installed_resource']->ResourceSpecification, 'resourceSpecificationCode'). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — !is_null('this'->findAndGet['installed_service']) et property_exists('this'->findAndGet['installed_service'], 'ServiceSpecification') et property_exists('this'->findAndGet['installed_service']->ServiceSpecification, 'serviceSpecificationCode'). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — 'resourceSpecification' différent de "". Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — count('tabIdentifiants') > 0. Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — isset('replaceValue'). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — 'this'->transcodage('ext1')); 'isSitePassifext2' = 'this'->refSiteRepository->isSitePassif('this'->transcodage('ext2')); return 'this'->selectExtension('ext1', 'isSitePassifext1', 'ext2', 'isSitePassifext2'); } public function selectExtension('ext1', 'ext1_status', 'ext2', 'ext2_status'. Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — 'ext1_status' égal à 0. Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — 'ext1_status' égal à 1 et 'ext2_status' égal à 0. Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — 'ext1_status' égal à -1. Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — 'ext2_status' égal à -1. Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — 'typeRessource' égal à 'TRONCABLE'. Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — 'variable' différent de ''. Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — 'intervenantMatriceRefsite' différent de "###'variableAdministree'###". Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — 'typeRessource' égal à 'MIE'. Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — 'ext' égal à 'tabs_action_ext1'. Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — 'ext' égal à 'tabs_action_ext2'. Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — 'techno' égal à 'FH'. Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — gettype('resultQuery') différent de 'boolean' et 'resultQuery' différent de '' et is_array('resultQuery'). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — key_exists('ID', 'resultQuery'). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — strpos('intervenantMatriceRefsite', "/"). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — strpos('value', "/"). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — !in_array('infraContextePari', ["###'variableAdministree'###", '']). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — is_null('this'->dataPariv2). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — 'this'->app->get('AstroBase')->isJson('dataJson'). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — isset('mapping'['variable']). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Gap de logique**
+  - Point de décision — is_array('value') et key_exists('key', 'value'). Quel est le comportement attendu dans le cas contraire ?
+- ⚠️ **Valeur de référence**
+  - Valeur de référence non documentée — La décision « key_exists('etat', 'donnesTempsReel') et 'donnesTempsReel'['etat'] égal à 'ok' » repose sur la valeur 'ok'. D'où vient cette valeur ? Fait-elle partie d'une liste de référence définie dans le cahier des charges ?
+- ⚠️ **Valeur de référence**
+  - Valeur de référence non documentée — La décision « OceaneTools::isValidVariable('replaceValue') et gettype('replaceValue') différent de 'boolean' » repose sur la valeur 'boolean'. D'où vient cette valeur ? Fait-elle partie d'une liste de référence définie dans le cahier des charges ?
+- ⚠️ **Valeur de référence**
+  - Valeur de référence non documentée — La décision « gettype('resultQuery') différent de 'boolean' et 'resultQuery' différent de '' et is_array('resultQuery') » repose sur la valeur 'boolean'. D'où vient cette valeur ? Fait-elle partie d'une liste de référence définie dans le cahier des charges ?
+
+## Services tiers non documentés
+- ❓ **App\Repository\AstroRepository** — Service tiers non documenté — Le composant 'App\Repository\AstroRepository' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- ❓ **App\Repository\RefsitesRepository** — Service tiers non documenté — Le composant 'App\Repository\RefsitesRepository' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- ❓ **App\Repository\VariableRepository** — Service tiers non documenté — Le composant 'App\Repository\VariableRepository' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- ❓ **App\Repository\GlobalApiRepository** — Service tiers non documenté — Le composant 'App\Repository\GlobalApiRepository' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- ❓ **App\Tools\OceaneTools** — Service tiers non documenté — Le composant 'App\Tools\OceaneTools' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- ❓ **Hbm\Common\Tools\StringTools** — Service tiers non documenté — Le composant 'Hbm\Common\Tools\StringTools' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- ❓ **Hbm\Globalapi\Factory\Pariv2Factory** — Service tiers non documenté — Le composant 'Hbm\Globalapi\Factory\Pariv2Factory' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- ❓ **Hbm\Globalapi\Service\Rest\ApiOceane** — Service tiers non documenté — Le composant 'Hbm\Globalapi\Service\Rest\ApiOceane' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- ❓ **Oft\Mvc\Application** — Service tiers non documenté — Le composant 'Oft\Mvc\Application' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- ❓ **Zend\Json\Json** — Service tiers non documenté — Le composant 'Zend\Json\Json' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- ❓ **ApiOceane** — Service tiers non documenté — Le composant 'ApiOceane' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- ❓ **Pariv2Factory** — Service tiers non documenté — Le composant 'Pariv2Factory' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+
+---
+**Légende :** ✅ Règle confirmée | 🔴 Point d'attention | ⚠️ Gap à arbitrer | ❓ Service à documenter

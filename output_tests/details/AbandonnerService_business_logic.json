@@ -1,0 +1,1751 @@
+{
+  "metadata": {
+    "source_type": "php",
+    "source_file": "tests/AbandonnerService.php",
+    "controller_name": "AbandonnerService",
+    "extracted_at": "2026-04-26T09:46:07.853716",
+    "extractor_version": "0.1.0",
+    "confidence_score": 0.29999999999999993
+  },
+  "entry_points": [],
+  "operations": [],
+  "control_flow": [
+    {
+      "id": "block_1",
+      "condition": "$isLocked === true",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 123,
+      "raw_context": "\n        $isLocked = $this->verrouRepository->isLocked($astroId, \"confirmerIncident\", true, $loginId);\n        if ($isLocked === true) {\n            $messageVerrou = $this->verrouRepository->getLabelVerrou($astroId, 'confirmerIncident');\n        } else {\n            $messageVerrou = '';"
+    },
+    {
+      "id": "block_2",
+      "condition": "$impact != ''",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 135,
+      "raw_context": "\n        $impact = $dataASTRO['ID_IMPACT_CLIENT_PRECONISE'];\n        if ($impact != '') {\n            $label = $this->astroRepository->getLabelPrio($dataASTRO['ID_IMPACT_CLIENT_PRECONISE']);\n            $libelleImpactClient = $this->astroRepository->getLibelleImpactClient($dataASTRO['ID_IMPACT_CLIENT_PRECONISE']);\n"
+    },
+    {
+      "id": "block_3",
+      "condition": "$labelFinal == ''",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 169,
+      "raw_context": "        $isMe = $this->verrouRepository->isLockedByMe($astroId, $label);\n        $labelFinal = $this->verrouRepository->getLabelReservation($astroId, $label, $isMe);\n        if ($labelFinal == '') {\n            $imageName = 'doigt_vert';\n        } else {\n            if ($isMe) {"
+    },
+    {
+      "id": "block_4",
+      "condition": "$isMe",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 172,
+      "raw_context": "            $imageName = 'doigt_vert';\n        } else {\n            if ($isMe) {\n                $imageName = 'doigt_violet';\n            } else {\n                $imageName = 'doigt_rouge';"
+    },
+    {
+      "id": "block_5",
+      "condition": "array_key_exists('message', $result) && array_key_exists('code', $result) && array_key_exists('description', $result)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 239,
+      "raw_context": "        $this->app->get('TraceRepository')->setTrace($astroId, \"RETOUR OCEANE AJOUT COMMENTAIRE ABANDON EVENEMENT AUTO\", $retourUpdate, $this->sessId, $ticketId);\n\n        if (array_key_exists('message', $result) && array_key_exists('code', $result) && array_key_exists('description', $result)) {\n\n            if ($result['message'] == 'Functional error: Ticket in closed status') {\n                $this->abandonBatchRepository->updateTicketEtat($ticketId);"
+    },
+    {
+      "id": "block_6",
+      "condition": "$result['message'] == 'Functional error: Ticket in closed status'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 241,
+      "raw_context": "        if (array_key_exists('message', $result) && array_key_exists('code', $result) && array_key_exists('description', $result)) {\n\n            if ($result['message'] == 'Functional error: Ticket in closed status') {\n                $this->abandonBatchRepository->updateTicketEtat($ticketId);\n                return 2;\n            } else {"
+    },
+    {
+      "id": "block_7",
+      "condition": "$incidentEnCours",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 266,
+      "raw_context": "        $detailProbleme = $this->astroIhmSqlRepository->getDetailFamilleProblemeValues($idJeu, $typeRessourceProd);\n\n        if($incidentEnCours){\n            $data['detail_cause_abandon'] = StringTools::convertEncoding($data['detail_cause_abandon'], 'ISO-8859-15', 'UTF-8');\n        }\n        $abandonMessage = new Message($this->app, $astroId, $messageFile, $sessId);"
+    },
+    {
+      "id": "block_8",
+      "condition": "array_key_exists('message', $result) && array_key_exists('code', $result) && array_key_exists('description', $result)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 319,
+      "raw_context": "        $this->app->get('TraceRepository')->setTrace($astroId, \"RETOUR OCEANE AJOUT COMMENTAIRE ABANDON EVENEMENT\", $retourUpdate, $this->sessId, $ticketId);\n\n        if (array_key_exists('message', $result) && array_key_exists('code', $result) && array_key_exists('description', $result)) {\n            $message = 'code  :' . $result['code'] . 'message  :' . $result['message'] . '  description : ' . $result['description'];\n            $code = $incidentEnCours ? 'E_ABANDON_EVENEMENT' : 'API_E_ABANDON_CARTE_BRASIL_ETEINTE';\n            return array("
+    },
+    {
+      "id": "block_9",
+      "condition": "$dataAdelia",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 391,
+      "raw_context": "        $detectionDate = $this->getOceane->getDetectionDate();\n        $oceaneAssistant = new OceaneAssistant($this->app);\n        if ($dataAdelia) {\n            $dataAdelia['SEUIL_GRAVE'] = intval($dataAdelia['SEUIL_GRAVE']);\n            $dataAdelia['SEUIL_MAJEUR'] = intval($dataAdelia['SEUIL_MAJEUR']);\n        }"
+    },
+    {
+      "id": "block_10",
+      "condition": "$dataAdelia['TOTAL_CLIENTS'] > 0",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 407,
+      "raw_context": "\n        }\n        if ($dataAdelia['TOTAL_CLIENTS'] > 0) {\n            if ($dataAstro['ADELIA_MANUEL'] == 'o') {\n                $dataAdeliaManuel = $this->adeliaRepository->getDataBlobManuel($dataAstro['ID_TICKET_ASTRO']);\n                if ($dataAdeliaManuel['BEGIN_DATE'] != '' && $dataAdeliaManuel['SEUIL_GRAVE'] != '' && $dataAdeliaManuel['SEUIL_MAJEUR'] != '') {"
+    },
+    {
+      "id": "block_11",
+      "condition": "$dataAstro['ADELIA_MANUEL'] == 'o'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 408,
+      "raw_context": "        }\n        if ($dataAdelia['TOTAL_CLIENTS'] > 0) {\n            if ($dataAstro['ADELIA_MANUEL'] == 'o') {\n                $dataAdeliaManuel = $this->adeliaRepository->getDataBlobManuel($dataAstro['ID_TICKET_ASTRO']);\n                if ($dataAdeliaManuel['BEGIN_DATE'] != '' && $dataAdeliaManuel['SEUIL_GRAVE'] != '' && $dataAdeliaManuel['SEUIL_MAJEUR'] != '') {\n                    $commentaire .= 'grave à partir du ' . $this->adeliaService->getDateSeuil($dataAdeliaManuel['BEGIN_DATE'], $dataAdeliaManuel['SEUIL_GRAVE'], true) . $rc;"
+    },
+    {
+      "id": "block_12",
+      "condition": "$dataAdeliaManuel['BEGIN_DATE'] != '' && $dataAdeliaManuel['SEUIL_GRAVE'] != '' && $dataAdeliaManuel['SEUIL_MAJEUR'] != ''",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 410,
+      "raw_context": "            if ($dataAstro['ADELIA_MANUEL'] == 'o') {\n                $dataAdeliaManuel = $this->adeliaRepository->getDataBlobManuel($dataAstro['ID_TICKET_ASTRO']);\n                if ($dataAdeliaManuel['BEGIN_DATE'] != '' && $dataAdeliaManuel['SEUIL_GRAVE'] != '' && $dataAdeliaManuel['SEUIL_MAJEUR'] != '') {\n                    $commentaire .= 'grave à partir du ' . $this->adeliaService->getDateSeuil($dataAdeliaManuel['BEGIN_DATE'], $dataAdeliaManuel['SEUIL_GRAVE'], true) . $rc;\n                    $commentaire .= 'majeur à partir du ' . $this->adeliaService->getDateSeuil($dataAdeliaManuel['BEGIN_DATE'], $dataAdeliaManuel['SEUIL_MAJEUR'], true) . $rc;\n                } else {"
+    },
+    {
+      "id": "block_13",
+      "condition": "$dataAdelia",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 435,
+      "raw_context": "        $idRessource = '';\n        $oceaneAssistant = new OceaneAssistant($this->app);\n        if ($dataAdelia) {\n            $dataAdelia['SEUIL_GRAVE'] =  intval($dataAdelia['SEUIL_GRAVE']);\n            $dataAdelia['SEUIL_MAJEUR'] = intval($dataAdelia['SEUIL_MAJEUR']);\n        }"
+    },
+    {
+      "id": "block_14",
+      "condition": "$dataAdelia['TOTAL_CLIENTS'] > 0",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 449,
+      "raw_context": "        $commentaire .= 'TVNUM'.':'.$dataFiltered['TVNUM'] . $rc;\n\n        if ($dataAdelia['TOTAL_CLIENTS'] > 0) {\n            if ($dataAstro['ADELIA_MANUEL'] == 'o') {\n                $dataAdeliaManuel = $this->adeliaRepository->getDataBlobManuel($dataAstro['ID_TICKET_ASTRO']);\n                if ($dataAdeliaManuel['BEGIN_DATE'] != '' && $dataAdeliaManuel['SEUIL_GRAVE'] != '' && $dataAdeliaManuel['SEUIL_MAJEUR'] != '') {"
+    },
+    {
+      "id": "block_15",
+      "condition": "$dataAstro['ADELIA_MANUEL'] == 'o'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 450,
+      "raw_context": "\n        if ($dataAdelia['TOTAL_CLIENTS'] > 0) {\n            if ($dataAstro['ADELIA_MANUEL'] == 'o') {\n                $dataAdeliaManuel = $this->adeliaRepository->getDataBlobManuel($dataAstro['ID_TICKET_ASTRO']);\n                if ($dataAdeliaManuel['BEGIN_DATE'] != '' && $dataAdeliaManuel['SEUIL_GRAVE'] != '' && $dataAdeliaManuel['SEUIL_MAJEUR'] != '') {\n                    $commentaire .= 'grave à partir du ' . $this->adeliaService->getDateSeuil($dataAdeliaManuel['BEGIN_DATE'], $dataAdeliaManuel['SEUIL_GRAVE'], true) . $rc;"
+    },
+    {
+      "id": "block_16",
+      "condition": "$dataAdeliaManuel['BEGIN_DATE'] != '' && $dataAdeliaManuel['SEUIL_GRAVE'] != '' && $dataAdeliaManuel['SEUIL_MAJEUR'] != ''",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 452,
+      "raw_context": "            if ($dataAstro['ADELIA_MANUEL'] == 'o') {\n                $dataAdeliaManuel = $this->adeliaRepository->getDataBlobManuel($dataAstro['ID_TICKET_ASTRO']);\n                if ($dataAdeliaManuel['BEGIN_DATE'] != '' && $dataAdeliaManuel['SEUIL_GRAVE'] != '' && $dataAdeliaManuel['SEUIL_MAJEUR'] != '') {\n                    $commentaire .= 'grave à partir du ' . $this->adeliaService->getDateSeuil($dataAdeliaManuel['BEGIN_DATE'], $dataAdeliaManuel['SEUIL_GRAVE'], true) . $rc;\n                    $commentaire .= 'majeur à partir du ' . $this->adeliaService->getDateSeuil($dataAdeliaManuel['BEGIN_DATE'], $dataAdeliaManuel['SEUIL_MAJEUR'], true) . $rc;\n                } else {"
+    },
+    {
+      "id": "block_17",
+      "condition": "count($ticket)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 461,
+      "raw_context": "            } else {\n                $ticket = $this->astroRepository->getTicket($dataAstro['ID_TICKET_ASTRO']);\n                if (count($ticket)) {\n                    $idRessource = $ticket[0]['ID_RESSOURCE'];\n                }\n                $result = $this->getSeuilsAdelia($idRessource, $adeliaId ,$dataAstro, $compteMachine);"
+    },
+    {
+      "id": "block_18",
+      "condition": "key_exists('code', $result) && key_exists('message', $result)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 534,
+      "raw_context": "        $this->app->get('TraceRepository')->setTrace($astroId, \"OCEANE REPONSE\", $result, $idUtilisateur, $ticketId);\n\n        if (key_exists('code', $result) && key_exists('message', $result)) {\n            $message = $result['code'] . ' ' . $result['message'];\n            $errorOceane = $messageManager->setMessage('E_CONFIRM', $message);\n            return array("
+    },
+    {
+      "id": "block_19",
+      "condition": "$result == 1",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 566,
+      "raw_context": "\n            $result = $this->abandonnerProcessAuto($ticket['ID_JEU_PARAM'], $ticket['TICKETOCEANEID'], $ticket['ID_TICKET_ASTRO'], $ticket['TYPE_RESSOURCE'], '', $loginId);\n            if ($result == 1) {\n                $this->abandonBatchRepository->updateTicketEtat($ticket['TICKETOCEANEID']);\n                $nbOk++;\n                echo $ticket['TICKETOCEANEID'] . \" : abandon OK <br /> \";"
+    },
+    {
+      "id": "block_20",
+      "condition": "$result == 2",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 570,
+      "raw_context": "                $nbOk++;\n                echo $ticket['TICKETOCEANEID'] . \" : abandon OK <br /> \";\n            } elseif ($result == 2) {\n                $this->abandonBatchRepository->updateTicketEtat($ticket['TICKETOCEANEID']);\n                $nbKo++;\n                echo $ticket['TICKETOCEANEID'] . \" : échec abandon <br /> \\n\";"
+    },
+    {
+      "id": "block_21",
+      "condition": "$nbKo == 0",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 583,
+      "raw_context": "              Nombre de tickets non abandonnés (échec) :  $nbKo <br /> \\n\";\n\n        if ($nbKo == 0) {\n            echo \"<b> Traitement OK</b> <br /> \\n\";\n        } else {\n            if ($nbOk > 0) {"
+    },
+    {
+      "id": "block_22",
+      "condition": "$nbOk > 0",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 586,
+      "raw_context": "            echo \"<b> Traitement OK</b> <br /> \\n\";\n        } else {\n            if ($nbOk > 0) {\n                echo \"<b> Traitement OK partiel </b> <br /> \\n\";\n            } else {\n                echo \"<b> Traitement KO</b> <br /> \\n\";"
+    },
+    {
+      "id": "block_23",
+      "condition": "!$droitTools->isIncident($ticketId)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 617,
+      "raw_context": "        $prestations = '';\n        $isNetVpnFinal = '';\n        if (!$droitTools->isIncident($ticketId)) {\n            $astroSession = $this->app->get('Session')->get('astroOft' . $ticketId);\n            $astroId = $astroSession['astroid'];\n            $type = $astroSession['type'];"
+    },
+    {
+      "id": "block_24",
+      "condition": "$isApi == 1",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 625,
+      "raw_context": "            $fonctions = $droitTools->getDroitFonction($idBandeau);\n            $droitEds = $droitTools->droitEds($ticketId, $astroSession['connectedgroup'], $astroSession['pilotgroup']);\n            if ($isApi == 1) {\n                $astroId = $astrId;\n            }\n            $informerClient = $this->informerClient($astroId, $login);"
+    },
+    {
+      "id": "block_25",
+      "condition": "$nombreClientEntreprise == 'oui' || intval($nombreClientEntreprise) > 0",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 633,
+      "raw_context": "            $totalClients = (is_array($adelia) && key_exists('TOTAL_CLIENTS', $adelia)) ? intval($adelia['TOTAL_CLIENTS']) : 0;\n            $nombreClientEntreprise = (is_array($adelia) && key_exists('CLIENTS_ENTREPRISE', $adelia)) ? $adelia['CLIENTS_ENTREPRISE'] : '';\n            if ($nombreClientEntreprise == 'oui' || intval($nombreClientEntreprise) > 0) {\n                $isClientEntreprise = true;\n            }\n            $oceaneAssistant = new OceaneAssistant($this->app);"
+    },
+    {
+      "id": "block_26",
+      "condition": "!empty($adelia) && key_exists('PRESTATIONS', $adelia)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 639,
+      "raw_context": "            $idJeuParam = $this->astroRepository->getJeuParamByBandeauFonction($idBandeau, 'CONFIRMER_GENERIQUE');\n            $isNetVpn = $this->astroRepository->checkNetVpn($idJeuParam);\n            if (!empty($adelia) && key_exists('PRESTATIONS', $adelia)) {\n                $prestations = key_exists('PRESTATIONS', $adelia) ? json_decode($adelia['PRESTATIONS'], true) : '';\n            }\n"
+    },
+    {
+      "id": "block_27",
+      "condition": "!empty($adelia) && !empty($prestations) && $prestations != '' && key_exists('NETVPN', $prestations) && $prestations['NETVPN'] > 0",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 643,
+      "raw_context": "            }\n\n            if (!empty($adelia) && !empty($prestations) && $prestations != '' && key_exists('NETVPN', $prestations) && $prestations['NETVPN'] > 0) {\n                $isNetVpnAdelia = 1;\n            }\n            if ($isNetVpn == '1' && $isNetVpnAdelia == 1) {"
+    },
+    {
+      "id": "block_28",
+      "condition": "$isNetVpn == '1' && $isNetVpnAdelia == 1",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 646,
+      "raw_context": "                $isNetVpnAdelia = 1;\n            }\n            if ($isNetVpn == '1' && $isNetVpnAdelia == 1) {\n                $isNetVpnFinal = '1';\n            } else {\n                $isNetVpnFinal = '';"
+    },
+    {
+      "id": "block_29",
+      "condition": "$gtr && strtolower($informerClient['label']) == \"coupure franche\"",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 661,
+      "raw_context": "\n\n            if ($gtr && strtolower($informerClient['label']) == \"coupure franche\"){\n                $priorite = 'P1';\n                $impactPreconise = 'Service interrompu';\n            } else {"
+    },
+    {
+      "id": "block_30",
+      "condition": "$informerClient['priorite'] == '-'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 665,
+      "raw_context": "                $impactPreconise = 'Service interrompu';\n            } else {\n                if ($informerClient['priorite'] == '-') {\n                    $priorite = (in_array('PRECONISATION_PRIORITE_ADSL', $fonctions)) ? $informerClient['priorite'] : $this->astroRepository->getLibPriorite($astroSession['priority']);\n                } else {\n                    $priorite = (in_array('PRECONISATION_PRIORITE_ADSL', $fonctions)) ? 'P' . $arrMatricePrio[$idValeurImpactPreconise] : $this->astroRepository->getLibPriorite($astroSession['priority']);"
+    },
+    {
+      "id": "block_31",
+      "condition": "!is_null($value[$typeKey])",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 705,
+      "raw_context": "    {\n        foreach ($data as $k => $value) {\n            if (!is_null($value[$typeKey])) {\n                $explodeData = explode(' ', $value[$typeKey]);\n                $type = $explodeData[0];\n                $explodeDataValue = preg_split('/(?=\\d)/', $explodeData[1], 2);"
+    },
+    {
+      "id": "block_32",
+      "condition": "is_null($assemblee)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 733,
+      "raw_context": "    private function recupererDonneesTicket(string $ticketId, string $typeRessource, bool $api, $assemblee): array\n    {\n        if(is_null($assemblee)) {\n            $assemblee = $this->analyseService->getNomAssemblee($typeRessource, $ticketId);\n        }\n"
+    },
+    {
+      "id": "block_33",
+      "condition": "key_exists('CODE', $value) && $value['CODE'] == 'PRIORITE'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 768,
+      "raw_context": "        $idChampJeuParam = null;\n        foreach ($listChamps as $value) {\n            if (key_exists('CODE', $value) && $value['CODE'] == 'PRIORITE') {\n                $idChampJeuParam = $value['ID_CHAMP_JEU_PARAM'];\n                break;\n            }"
+    },
+    {
+      "id": "block_34",
+      "condition": "!$isAssemblee && !$isEquipementTrans",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 792,
+      "raw_context": "        $isAssemblee = $retourCountByService['is_assemblee'] ?? false;\n        $isEquipementTrans = $retourCountByService['is_equipement_trans'] ?? false;\n        if (!$isAssemblee && !$isEquipementTrans) {\n            $countByService['troncon_id'] = $troncon;\n        }\n        $countByService['impact_result'] = $countByService['result'];"
+    },
+    {
+      "id": "block_35",
+      "condition": "is_array($dataPrioImpact) && !empty($dataPrioImpact) && key_exists('impact_result', $dataPrioImpact)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 801,
+      "raw_context": "        $dataPrioImpact = $countByService;\n        $dataPrioImpact['HNO'] = $isHno ? 'HNO' : 'HO';\n        if (is_array($dataPrioImpact) && !empty($dataPrioImpact) && key_exists('impact_result', $dataPrioImpact)) {\n            if (key_exists('VoIP', $dataPrioImpact['impact_result'])) {\n                unset($dataPrioImpact['impact_result']['VoIP']);\n            }"
+    },
+    {
+      "id": "block_36",
+      "condition": "key_exists('VoIP', $dataPrioImpact['impact_result'])",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 802,
+      "raw_context": "        $dataPrioImpact['HNO'] = $isHno ? 'HNO' : 'HO';\n        if (is_array($dataPrioImpact) && !empty($dataPrioImpact) && key_exists('impact_result', $dataPrioImpact)) {\n            if (key_exists('VoIP', $dataPrioImpact['impact_result'])) {\n                unset($dataPrioImpact['impact_result']['VoIP']);\n            }\n        }"
+    },
+    {
+      "id": "block_37",
+      "condition": "!is_null($countByService) && ((key_exists('gtrs1', $countByService) && $countByService['gtrs1']) || (key_exists('gtrs2', $countByService) && $countByService['gtrs2']))",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 806,
+      "raw_context": "            }\n        }\n        if (!is_null($countByService) && ((key_exists('gtrs1', $countByService) && $countByService['gtrs1']) || (key_exists('gtrs2', $countByService) && $countByService['gtrs2']))) {\n            $dataPrioImpact['gtr_final'] = 'oui';\n        } elseif (!is_null($dataPrioImpact) && key_exists('impact_result', $dataPrioImpact)) {\n            $dataPrioImpact['gtr_final'] = 'non';"
+    },
+    {
+      "id": "block_38",
+      "condition": "!is_null($dataPrioImpact) && key_exists('impact_result', $dataPrioImpact)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 808,
+      "raw_context": "        if (!is_null($countByService) && ((key_exists('gtrs1', $countByService) && $countByService['gtrs1']) || (key_exists('gtrs2', $countByService) && $countByService['gtrs2']))) {\n            $dataPrioImpact['gtr_final'] = 'oui';\n        } elseif (!is_null($dataPrioImpact) && key_exists('impact_result', $dataPrioImpact)) {\n            $dataPrioImpact['gtr_final'] = 'non';\n        }\n        $dataPrioImpact['impact_result']['TOTAL'] = (is_array($dataPrioImpact) && !empty($dataPrioImpact) && key_exists('impact_result', $dataPrioImpact)) ? array_sum($dataPrioImpact['impact_result']) : 0;"
+    },
+    {
+      "id": "block_39",
+      "condition": "!isset($dataPrioImpact['impact_result'][$service])",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 816,
+      "raw_context": "            'Internet', 'NETVPN', 'LL=2M', 'LL>2M', 'TDSL', 'T2'\n        ] as $service) {\n            if (!isset($dataPrioImpact['impact_result'][$service])) {\n                $dataPrioImpact['impact_result'][$service] = 0;\n            }\n        }"
+    },
+    {
+      "id": "block_40",
+      "condition": "isset($arrayDeclencher['VoIP'])",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 822,
+      "raw_context": "        $arrayDeclencher = $dataPrioImpact['impact_result'] ?? [];\n        // Nettoyage VoIP\n        if (isset($arrayDeclencher['VoIP'])) {\n            unset($arrayDeclencher['VoIP']);\n        }\n        // Calcul DEC"
+    },
+    {
+      "id": "block_41",
+      "condition": "!is_null($dataPrioImpact) && key_exists('impact_result', $dataPrioImpact)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 826,
+      "raw_context": "        }\n        // Calcul DEC\n        if (!is_null($dataPrioImpact) && key_exists('impact_result', $dataPrioImpact)) {\n            foreach ($arrayDeclencher as $k => $v) {\n                foreach ($decData as $value2) {\n                    if (($k == $value2['TYPE'] || $value2['TYPE'] == '_TOTAL') && !$decDone) {"
+    },
+    {
+      "id": "block_42",
+      "condition": "($k == $value2['TYPE'] || $value2['TYPE'] == '_TOTAL') && !$decDone",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 829,
+      "raw_context": "            foreach ($arrayDeclencher as $k => $v) {\n                foreach ($decData as $value2) {\n                    if (($k == $value2['TYPE'] || $value2['TYPE'] == '_TOTAL') && !$decDone) {\n                        $op = $value2['OPERATOR'];\n                        $val = intval($value2['OPERATOR_VALUE']);\n                        $gtr = $value2['GTR'] ?? null;"
+    },
+    {
+      "id": "block_43",
+      "condition": "$op == '>='",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 834,
+      "raw_context": "                        $gtr = $value2['GTR'] ?? null;\n                        $gtrOk = is_null($gtr) || (key_exists('gtr_final', $dataPrioImpact) && $dataPrioImpact['gtr_final'] == $gtr);\n                        if ($op == '>=') {\n                            if ($v >= $val && $gtrOk && !$decDone) {\n                                $decStat = true;\n                                $decDone = true;"
+    },
+    {
+      "id": "block_44",
+      "condition": "$v >= $val && $gtrOk && !$decDone",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 835,
+      "raw_context": "                        $gtrOk = is_null($gtr) || (key_exists('gtr_final', $dataPrioImpact) && $dataPrioImpact['gtr_final'] == $gtr);\n                        if ($op == '>=') {\n                            if ($v >= $val && $gtrOk && !$decDone) {\n                                $decStat = true;\n                                $decDone = true;\n                            } else {"
+    },
+    {
+      "id": "block_45",
+      "condition": "$op == '<='",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 841,
+      "raw_context": "                                $decStat = false;\n                            }\n                        } elseif ($op == '<=') {\n                            if ($v <= $val && $gtrOk && !$decDone) {\n                                $decStat = true;\n                                $decDone = true;"
+    },
+    {
+      "id": "block_46",
+      "condition": "$v <= $val && $gtrOk && !$decDone",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 842,
+      "raw_context": "                            }\n                        } elseif ($op == '<=') {\n                            if ($v <= $val && $gtrOk && !$decDone) {\n                                $decStat = true;\n                                $decDone = true;\n                            } else {"
+    },
+    {
+      "id": "block_47",
+      "condition": "is_null($value2['TYPE']) && !is_null($value2['GTR'])",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 849,
+      "raw_context": "                            }\n                        }\n                    } elseif (is_null($value2['TYPE']) && !is_null($value2['GTR'])) {\n                        if (key_exists('gtr_final', $dataPrioImpact) && $dataPrioImpact['gtr_final'] == $value2['GTR'] && !$decDone) {\n                            $decStat = true;\n                            $decDone = true;"
+    },
+    {
+      "id": "block_48",
+      "condition": "key_exists('gtr_final', $dataPrioImpact) && $dataPrioImpact['gtr_final'] == $value2['GTR'] && !$decDone",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 850,
+      "raw_context": "                        }\n                    } elseif (is_null($value2['TYPE']) && !is_null($value2['GTR'])) {\n                        if (key_exists('gtr_final', $dataPrioImpact) && $dataPrioImpact['gtr_final'] == $value2['GTR'] && !$decDone) {\n                            $decStat = true;\n                            $decDone = true;\n                        } else {"
+    },
+    {
+      "id": "block_49",
+      "condition": "is_null($value2['TYPE']) && is_null($value2['GTR']) && !$decDone",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 856,
+      "raw_context": "                            $decStat = false;\n                        }\n                    } elseif (is_null($value2['TYPE']) && is_null($value2['GTR']) && !$decDone) {\n                        $decStat = true;\n                        $decDone = true;\n                    }"
+    },
+    {
+      "id": "block_50",
+      "condition": "$doneFlag || is_null($dataPrioImpact) || !key_exists('impact_result', $dataPrioImpact)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 879,
+      "raw_context": "    private function getPrioriteFromData($dataPrioImpact, $data, &$doneFlag)\n    {\n        if ($doneFlag || is_null($dataPrioImpact) || !key_exists('impact_result', $dataPrioImpact)) {\n            return '-';\n        }\n        foreach ($dataPrioImpact['impact_result'] as $k => $v) {"
+    },
+    {
+      "id": "block_51",
+      "condition": "$doneFlag) break; if ($k == $value2['TYPE'] || $value2['TYPE'] == '_TOTAL'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 884,
+      "raw_context": "        foreach ($dataPrioImpact['impact_result'] as $k => $v) {\n            foreach ($data as $value2) {\n                if ($doneFlag) break;\n                if ($k == $value2['TYPE'] || $value2['TYPE'] == '_TOTAL') {\n                    $op = $value2['OPERATOR'];\n                    $val = intval($value2['OPERATOR_VALUE']);"
+    },
+    {
+      "id": "block_52",
+      "condition": "$op == '>='",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 893,
+      "raw_context": "                    $hnoOk = is_null($hno) || (key_exists('HNO', $dataPrioImpact) && $dataPrioImpact['HNO'] == $hno);\n                    $gtrOk = is_null($gtr) || (key_exists('gtr_final', $dataPrioImpact) && $dataPrioImpact['gtr_final'] == $gtr);\n                    if ($op == '>=') {\n                        if ($v >= $val && $gtrOk && $hnoOk) {\n                            $doneFlag = true;\n                            return 'P' . $prio;"
+    },
+    {
+      "id": "block_53",
+      "condition": "$v >= $val && $gtrOk && $hnoOk",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 894,
+      "raw_context": "                    $gtrOk = is_null($gtr) || (key_exists('gtr_final', $dataPrioImpact) && $dataPrioImpact['gtr_final'] == $gtr);\n                    if ($op == '>=') {\n                        if ($v >= $val && $gtrOk && $hnoOk) {\n                            $doneFlag = true;\n                            return 'P' . $prio;\n                        }"
+    },
+    {
+      "id": "block_54",
+      "condition": "$op == '<='",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 898,
+      "raw_context": "                            return 'P' . $prio;\n                        }\n                    } elseif ($op == '<=') {\n                        if ($v <= $val && $gtrOk && $hnoOk) {\n                            $doneFlag = true;\n                            return 'P' . $prio;"
+    },
+    {
+      "id": "block_55",
+      "condition": "$v <= $val && $gtrOk && $hnoOk",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 899,
+      "raw_context": "                        }\n                    } elseif ($op == '<=') {\n                        if ($v <= $val && $gtrOk && $hnoOk) {\n                            $doneFlag = true;\n                            return 'P' . $prio;\n                        }"
+    },
+    {
+      "id": "block_56",
+      "condition": "is_null($value2['TYPE']) && !is_null($value2['GTR'])",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 904,
+      "raw_context": "                        }\n                    }\n                } elseif (is_null($value2['TYPE']) && !is_null($value2['GTR'])) {\n                    $gtr = $value2['GTR'];\n                    $hno = $value2['HNO'] ?? null;\n                    $prio = $value2['PRIORITE'] ?? null;"
+    },
+    {
+      "id": "block_57",
+      "condition": "key_exists('gtr_final', $dataPrioImpact) && $dataPrioImpact['gtr_final'] == $gtr && $hnoOk",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 909,
+      "raw_context": "                    $prio = $value2['PRIORITE'] ?? null;\n                    $hnoOk = is_null($hno) || (key_exists('HNO', $dataPrioImpact) && $dataPrioImpact['HNO'] == $hno);\n                    if (key_exists('gtr_final', $dataPrioImpact) && $dataPrioImpact['gtr_final'] == $gtr && $hnoOk) {\n                        $doneFlag = true;\n                        return 'P' . $prio;\n                    }"
+    },
+    {
+      "id": "block_58",
+      "condition": "is_null($value2['TYPE']) && is_null($value2['GTR'])",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 913,
+      "raw_context": "                        return 'P' . $prio;\n                    }\n                } elseif (is_null($value2['TYPE']) && is_null($value2['GTR'])) {\n                    $hno = $value2['HNO'] ?? null;\n                    $prio = $value2['PRIORITE'] ?? null;\n                    $hnoOk = is_null($hno) || (key_exists('HNO', $dataPrioImpact) && $dataPrioImpact['HNO'] == $hno);"
+    },
+    {
+      "id": "block_59",
+      "condition": "$hnoOk",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 917,
+      "raw_context": "                    $prio = $value2['PRIORITE'] ?? null;\n                    $hnoOk = is_null($hno) || (key_exists('HNO', $dataPrioImpact) && $dataPrioImpact['HNO'] == $hno);\n                    if ($hnoOk) {\n                        $doneFlag = true;\n                        return 'P' . $prio;\n                    }"
+    },
+    {
+      "id": "block_60",
+      "condition": "!is_null($result)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 953,
+      "raw_context": "        $dataAdeliaSavedFirst = $this->adeliaService->saveAdeliaDataFirst( true,$dataAdeliaArraySimulate, $data['ID_TICKET_ASTRO']);\n\n        if (!is_null($result)) {\n            $dataAdeliaArray = json_decode($result);\n            $dataAdeliaSaved = $this->adeliaService->saveAdeliaData($dataAdeliaArray, $data['ID_TICKET_ASTRO'],array(),true);\n"
+    }
+  ],
+  "data_flow": {
+    "inputs": [],
+    "outputs": [
+      "json"
+    ],
+    "session_reads": [],
+    "session_writes": []
+  },
+  "dependencies": [
+    {
+      "name": "App\\Repository\\AbandonBatchRepository",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "App\\Repository\\AdeliaRepository",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "App\\Repository\\AssistantRepository",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "App\\Repository\\AstroIhmSqlRepository",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "App\\Repository\\AstroLienRepository",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "App\\Repository\\AstroRepository",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "App\\Repository\\VerrouRepository",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "App\\Tools\\OceaneAssistant",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "App\\Tools\\Message",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "Hbm\\Common\\Tools\\StringTools",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "Hbm\\Globalapi\\Service\\Soap\\OceaneUpd",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "Hbm\\Globalapi\\Service\\Rest\\Oceane",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "App\\View\\Helper\\Adelia",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "Oft\\Mvc\\Application",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "App\\Tools\\DroitAstroTools",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "Hbm\\Globalapi\\Service\\Rest\\ApiOceane",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "Message",
+      "type": "instantiation",
+      "suggested_symfony": null
+    },
+    {
+      "name": "Oceane",
+      "type": "instantiation",
+      "suggested_symfony": null
+    },
+    {
+      "name": "OceaneAssistant",
+      "type": "instantiation",
+      "suggested_symfony": null
+    },
+    {
+      "name": "Adelia",
+      "type": "instantiation",
+      "suggested_symfony": null
+    },
+    {
+      "name": "DroitAstroTools",
+      "type": "instantiation",
+      "suggested_symfony": null
+    },
+    {
+      "name": "app",
+      "type": "service",
+      "suggested_symfony": "AppService"
+    },
+    {
+      "name": "verrouRepository",
+      "type": "service",
+      "suggested_symfony": "VerrourepositoryService"
+    },
+    {
+      "name": "astroRepository",
+      "type": "service",
+      "suggested_symfony": "AstrorepositoryService"
+    },
+    {
+      "name": "adeliaRepository",
+      "type": "service",
+      "suggested_symfony": "AdeliarepositoryService"
+    },
+    {
+      "name": "assistantRepository",
+      "type": "service",
+      "suggested_symfony": "AssistantrepositoryService"
+    },
+    {
+      "name": "abandonBatchRepository",
+      "type": "service",
+      "suggested_symfony": "AbandonbatchrepositoryService"
+    },
+    {
+      "name": "astroIhmSqlRepository",
+      "type": "service",
+      "suggested_symfony": "AstroihmsqlrepositoryService"
+    },
+    {
+      "name": "globalApiService",
+      "type": "service",
+      "suggested_symfony": "GlobalapiserviceService"
+    },
+    {
+      "name": "getapeService",
+      "type": "service",
+      "suggested_symfony": "GetapeserviceService"
+    },
+    {
+      "name": "astroLienRepository",
+      "type": "service",
+      "suggested_symfony": "AstrolienrepositoryService"
+    },
+    {
+      "name": "getOceane",
+      "type": "service",
+      "suggested_symfony": "GetoceaneService"
+    },
+    {
+      "name": "adeliaService",
+      "type": "service",
+      "suggested_symfony": "AdeliaserviceService"
+    },
+    {
+      "name": "analyseService",
+      "type": "service",
+      "suggested_symfony": "AnalyseserviceService"
+    },
+    {
+      "name": "maestroRepository",
+      "type": "service",
+      "suggested_symfony": "MaestrorepositoryService"
+    }
+  ],
+  "unparsed_sections": [],
+  "flags": [
+    {
+      "id": "missing_branch_1",
+      "type": "missing_branch",
+      "location": "block_1",
+      "fragment": "$isLocked === true",
+      "question": "Point de décision — 'isLocked' égal à = true. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 123,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "\n        $isLocked = $this->verrouRepository->isLocked($astroId, \"confirmerIncident\", true, $loginId);\n        if ($isLocked === true) {\n            $messageVerrou = $this->verrouRepository->getLabelVerrou($astroId, 'confirmerIncident');\n        } else {\n            $messageVerrou = '';",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_2",
+      "type": "missing_branch",
+      "location": "block_2",
+      "fragment": "$impact != ''",
+      "question": "Point de décision — 'impact' différent de ''. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 135,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "\n        $impact = $dataASTRO['ID_IMPACT_CLIENT_PRECONISE'];\n        if ($impact != '') {\n            $label = $this->astroRepository->getLabelPrio($dataASTRO['ID_IMPACT_CLIENT_PRECONISE']);\n            $libelleImpactClient = $this->astroRepository->getLibelleImpactClient($dataASTRO['ID_IMPACT_CLIENT_PRECONISE']);\n",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_3",
+      "type": "missing_branch",
+      "location": "block_3",
+      "fragment": "$labelFinal == ''",
+      "question": "Point de décision — 'labelFinal' égal à ''. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 169,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        $isMe = $this->verrouRepository->isLockedByMe($astroId, $label);\n        $labelFinal = $this->verrouRepository->getLabelReservation($astroId, $label, $isMe);\n        if ($labelFinal == '') {\n            $imageName = 'doigt_vert';\n        } else {\n            if ($isMe) {",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_4",
+      "type": "missing_branch",
+      "location": "block_4",
+      "fragment": "$isMe",
+      "question": "Point de décision — 'isMe'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 172,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            $imageName = 'doigt_vert';\n        } else {\n            if ($isMe) {\n                $imageName = 'doigt_violet';\n            } else {\n                $imageName = 'doigt_rouge';",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_5",
+      "type": "missing_branch",
+      "location": "block_5",
+      "fragment": "array_key_exists('message', $result) && array_key_exists('code', $result) && array_key_exists('description', $result)",
+      "question": "Point de décision — array_key_exists('message', 'result') et array_key_exists('code', 'result') et array_key_exists('description', 'result'). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 239,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        $this->app->get('TraceRepository')->setTrace($astroId, \"RETOUR OCEANE AJOUT COMMENTAIRE ABANDON EVENEMENT AUTO\", $retourUpdate, $this->sessId, $ticketId);\n\n        if (array_key_exists('message', $result) && array_key_exists('code', $result) && array_key_exists('description', $result)) {\n\n            if ($result['message'] == 'Functional error: Ticket in closed status') {\n                $this->abandonBatchRepository->updateTicketEtat($ticketId);",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_6",
+      "type": "missing_branch",
+      "location": "block_6",
+      "fragment": "$result['message'] == 'Functional error: Ticket in closed status'",
+      "question": "Point de décision — 'result'['message'] égal à 'Functional error: Ticket in closed status'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 241,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        if (array_key_exists('message', $result) && array_key_exists('code', $result) && array_key_exists('description', $result)) {\n\n            if ($result['message'] == 'Functional error: Ticket in closed status') {\n                $this->abandonBatchRepository->updateTicketEtat($ticketId);\n                return 2;\n            } else {",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_7",
+      "type": "missing_branch",
+      "location": "block_7",
+      "fragment": "$incidentEnCours",
+      "question": "Point de décision — 'incidentEnCours'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 266,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        $detailProbleme = $this->astroIhmSqlRepository->getDetailFamilleProblemeValues($idJeu, $typeRessourceProd);\n\n        if($incidentEnCours){\n            $data['detail_cause_abandon'] = StringTools::convertEncoding($data['detail_cause_abandon'], 'ISO-8859-15', 'UTF-8');\n        }\n        $abandonMessage = new Message($this->app, $astroId, $messageFile, $sessId);",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_8",
+      "type": "missing_branch",
+      "location": "block_8",
+      "fragment": "array_key_exists('message', $result) && array_key_exists('code', $result) && array_key_exists('description', $result)",
+      "question": "Point de décision — array_key_exists('message', 'result') et array_key_exists('code', 'result') et array_key_exists('description', 'result'). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 319,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        $this->app->get('TraceRepository')->setTrace($astroId, \"RETOUR OCEANE AJOUT COMMENTAIRE ABANDON EVENEMENT\", $retourUpdate, $this->sessId, $ticketId);\n\n        if (array_key_exists('message', $result) && array_key_exists('code', $result) && array_key_exists('description', $result)) {\n            $message = 'code  :' . $result['code'] . 'message  :' . $result['message'] . '  description : ' . $result['description'];\n            $code = $incidentEnCours ? 'E_ABANDON_EVENEMENT' : 'API_E_ABANDON_CARTE_BRASIL_ETEINTE';\n            return array(",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_9",
+      "type": "missing_branch",
+      "location": "block_9",
+      "fragment": "$dataAdelia",
+      "question": "Point de décision — 'dataAdelia'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 391,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        $detectionDate = $this->getOceane->getDetectionDate();\n        $oceaneAssistant = new OceaneAssistant($this->app);\n        if ($dataAdelia) {\n            $dataAdelia['SEUIL_GRAVE'] = intval($dataAdelia['SEUIL_GRAVE']);\n            $dataAdelia['SEUIL_MAJEUR'] = intval($dataAdelia['SEUIL_MAJEUR']);\n        }",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_10",
+      "type": "missing_branch",
+      "location": "block_10",
+      "fragment": "$dataAdelia['TOTAL_CLIENTS'] > 0",
+      "question": "Point de décision — 'dataAdelia'['TOTAL_CLIENTS'] > 0. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 407,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "\n        }\n        if ($dataAdelia['TOTAL_CLIENTS'] > 0) {\n            if ($dataAstro['ADELIA_MANUEL'] == 'o') {\n                $dataAdeliaManuel = $this->adeliaRepository->getDataBlobManuel($dataAstro['ID_TICKET_ASTRO']);\n                if ($dataAdeliaManuel['BEGIN_DATE'] != '' && $dataAdeliaManuel['SEUIL_GRAVE'] != '' && $dataAdeliaManuel['SEUIL_MAJEUR'] != '') {",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_11",
+      "type": "missing_branch",
+      "location": "block_11",
+      "fragment": "$dataAstro['ADELIA_MANUEL'] == 'o'",
+      "question": "Point de décision — 'dataAstro'['ADELIA_MANUEL'] égal à 'o'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 408,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        }\n        if ($dataAdelia['TOTAL_CLIENTS'] > 0) {\n            if ($dataAstro['ADELIA_MANUEL'] == 'o') {\n                $dataAdeliaManuel = $this->adeliaRepository->getDataBlobManuel($dataAstro['ID_TICKET_ASTRO']);\n                if ($dataAdeliaManuel['BEGIN_DATE'] != '' && $dataAdeliaManuel['SEUIL_GRAVE'] != '' && $dataAdeliaManuel['SEUIL_MAJEUR'] != '') {\n                    $commentaire .= 'grave à partir du ' . $this->adeliaService->getDateSeuil($dataAdeliaManuel['BEGIN_DATE'], $dataAdeliaManuel['SEUIL_GRAVE'], true) . $rc;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_12",
+      "type": "missing_branch",
+      "location": "block_12",
+      "fragment": "$dataAdeliaManuel['BEGIN_DATE'] != '' && $dataAdeliaManuel['SEUIL_GRAVE'] != '' && $dataAdeliaManuel['SEUIL_MAJEUR'] != ''",
+      "question": "Point de décision — 'dataAdeliaManuel'['BEGIN_DATE'] différent de '' et 'dataAdeliaManuel'['SEUIL_GRAVE'] différent de '' et 'dataAdeliaManuel'['SEUIL_MAJEUR'] différent de ''. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 410,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            if ($dataAstro['ADELIA_MANUEL'] == 'o') {\n                $dataAdeliaManuel = $this->adeliaRepository->getDataBlobManuel($dataAstro['ID_TICKET_ASTRO']);\n                if ($dataAdeliaManuel['BEGIN_DATE'] != '' && $dataAdeliaManuel['SEUIL_GRAVE'] != '' && $dataAdeliaManuel['SEUIL_MAJEUR'] != '') {\n                    $commentaire .= 'grave à partir du ' . $this->adeliaService->getDateSeuil($dataAdeliaManuel['BEGIN_DATE'], $dataAdeliaManuel['SEUIL_GRAVE'], true) . $rc;\n                    $commentaire .= 'majeur à partir du ' . $this->adeliaService->getDateSeuil($dataAdeliaManuel['BEGIN_DATE'], $dataAdeliaManuel['SEUIL_MAJEUR'], true) . $rc;\n                } else {",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_13",
+      "type": "missing_branch",
+      "location": "block_13",
+      "fragment": "$dataAdelia",
+      "question": "Point de décision — 'dataAdelia'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 435,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        $idRessource = '';\n        $oceaneAssistant = new OceaneAssistant($this->app);\n        if ($dataAdelia) {\n            $dataAdelia['SEUIL_GRAVE'] =  intval($dataAdelia['SEUIL_GRAVE']);\n            $dataAdelia['SEUIL_MAJEUR'] = intval($dataAdelia['SEUIL_MAJEUR']);\n        }",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_14",
+      "type": "missing_branch",
+      "location": "block_14",
+      "fragment": "$dataAdelia['TOTAL_CLIENTS'] > 0",
+      "question": "Point de décision — 'dataAdelia'['TOTAL_CLIENTS'] > 0. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 449,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        $commentaire .= 'TVNUM'.':'.$dataFiltered['TVNUM'] . $rc;\n\n        if ($dataAdelia['TOTAL_CLIENTS'] > 0) {\n            if ($dataAstro['ADELIA_MANUEL'] == 'o') {\n                $dataAdeliaManuel = $this->adeliaRepository->getDataBlobManuel($dataAstro['ID_TICKET_ASTRO']);\n                if ($dataAdeliaManuel['BEGIN_DATE'] != '' && $dataAdeliaManuel['SEUIL_GRAVE'] != '' && $dataAdeliaManuel['SEUIL_MAJEUR'] != '') {",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_15",
+      "type": "missing_branch",
+      "location": "block_15",
+      "fragment": "$dataAstro['ADELIA_MANUEL'] == 'o'",
+      "question": "Point de décision — 'dataAstro'['ADELIA_MANUEL'] égal à 'o'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 450,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "\n        if ($dataAdelia['TOTAL_CLIENTS'] > 0) {\n            if ($dataAstro['ADELIA_MANUEL'] == 'o') {\n                $dataAdeliaManuel = $this->adeliaRepository->getDataBlobManuel($dataAstro['ID_TICKET_ASTRO']);\n                if ($dataAdeliaManuel['BEGIN_DATE'] != '' && $dataAdeliaManuel['SEUIL_GRAVE'] != '' && $dataAdeliaManuel['SEUIL_MAJEUR'] != '') {\n                    $commentaire .= 'grave à partir du ' . $this->adeliaService->getDateSeuil($dataAdeliaManuel['BEGIN_DATE'], $dataAdeliaManuel['SEUIL_GRAVE'], true) . $rc;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_16",
+      "type": "missing_branch",
+      "location": "block_16",
+      "fragment": "$dataAdeliaManuel['BEGIN_DATE'] != '' && $dataAdeliaManuel['SEUIL_GRAVE'] != '' && $dataAdeliaManuel['SEUIL_MAJEUR'] != ''",
+      "question": "Point de décision — 'dataAdeliaManuel'['BEGIN_DATE'] différent de '' et 'dataAdeliaManuel'['SEUIL_GRAVE'] différent de '' et 'dataAdeliaManuel'['SEUIL_MAJEUR'] différent de ''. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 452,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            if ($dataAstro['ADELIA_MANUEL'] == 'o') {\n                $dataAdeliaManuel = $this->adeliaRepository->getDataBlobManuel($dataAstro['ID_TICKET_ASTRO']);\n                if ($dataAdeliaManuel['BEGIN_DATE'] != '' && $dataAdeliaManuel['SEUIL_GRAVE'] != '' && $dataAdeliaManuel['SEUIL_MAJEUR'] != '') {\n                    $commentaire .= 'grave à partir du ' . $this->adeliaService->getDateSeuil($dataAdeliaManuel['BEGIN_DATE'], $dataAdeliaManuel['SEUIL_GRAVE'], true) . $rc;\n                    $commentaire .= 'majeur à partir du ' . $this->adeliaService->getDateSeuil($dataAdeliaManuel['BEGIN_DATE'], $dataAdeliaManuel['SEUIL_MAJEUR'], true) . $rc;\n                } else {",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_17",
+      "type": "missing_branch",
+      "location": "block_17",
+      "fragment": "count($ticket)",
+      "question": "Point de décision — count('ticket'). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 461,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            } else {\n                $ticket = $this->astroRepository->getTicket($dataAstro['ID_TICKET_ASTRO']);\n                if (count($ticket)) {\n                    $idRessource = $ticket[0]['ID_RESSOURCE'];\n                }\n                $result = $this->getSeuilsAdelia($idRessource, $adeliaId ,$dataAstro, $compteMachine);",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_18",
+      "type": "missing_branch",
+      "location": "block_18",
+      "fragment": "key_exists('code', $result) && key_exists('message', $result)",
+      "question": "Point de décision — key_exists('code', 'result') et key_exists('message', 'result'). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 534,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        $this->app->get('TraceRepository')->setTrace($astroId, \"OCEANE REPONSE\", $result, $idUtilisateur, $ticketId);\n\n        if (key_exists('code', $result) && key_exists('message', $result)) {\n            $message = $result['code'] . ' ' . $result['message'];\n            $errorOceane = $messageManager->setMessage('E_CONFIRM', $message);\n            return array(",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_19",
+      "type": "missing_branch",
+      "location": "block_19",
+      "fragment": "$result == 1",
+      "question": "Point de décision — 'result' égal à 1. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 566,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "\n            $result = $this->abandonnerProcessAuto($ticket['ID_JEU_PARAM'], $ticket['TICKETOCEANEID'], $ticket['ID_TICKET_ASTRO'], $ticket['TYPE_RESSOURCE'], '', $loginId);\n            if ($result == 1) {\n                $this->abandonBatchRepository->updateTicketEtat($ticket['TICKETOCEANEID']);\n                $nbOk++;\n                echo $ticket['TICKETOCEANEID'] . \" : abandon OK <br /> \";",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_20",
+      "type": "missing_branch",
+      "location": "block_20",
+      "fragment": "$result == 2",
+      "question": "Point de décision — 'result' égal à 2. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 570,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                $nbOk++;\n                echo $ticket['TICKETOCEANEID'] . \" : abandon OK <br /> \";\n            } elseif ($result == 2) {\n                $this->abandonBatchRepository->updateTicketEtat($ticket['TICKETOCEANEID']);\n                $nbKo++;\n                echo $ticket['TICKETOCEANEID'] . \" : échec abandon <br /> \\n\";",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_21",
+      "type": "missing_branch",
+      "location": "block_21",
+      "fragment": "$nbKo == 0",
+      "question": "Point de décision — 'nbKo' égal à 0. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 583,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "              Nombre de tickets non abandonnés (échec) :  $nbKo <br /> \\n\";\n\n        if ($nbKo == 0) {\n            echo \"<b> Traitement OK</b> <br /> \\n\";\n        } else {\n            if ($nbOk > 0) {",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_22",
+      "type": "missing_branch",
+      "location": "block_22",
+      "fragment": "$nbOk > 0",
+      "question": "Point de décision — 'nbOk' > 0. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 586,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            echo \"<b> Traitement OK</b> <br /> \\n\";\n        } else {\n            if ($nbOk > 0) {\n                echo \"<b> Traitement OK partiel </b> <br /> \\n\";\n            } else {\n                echo \"<b> Traitement KO</b> <br /> \\n\";",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_23",
+      "type": "missing_branch",
+      "location": "block_23",
+      "fragment": "!$droitTools->isIncident($ticketId)",
+      "question": "Point de décision — !'droitTools'->isIncident('ticketId'). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 617,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        $prestations = '';\n        $isNetVpnFinal = '';\n        if (!$droitTools->isIncident($ticketId)) {\n            $astroSession = $this->app->get('Session')->get('astroOft' . $ticketId);\n            $astroId = $astroSession['astroid'];\n            $type = $astroSession['type'];",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_24",
+      "type": "missing_branch",
+      "location": "block_24",
+      "fragment": "$isApi == 1",
+      "question": "Point de décision — 'isApi' égal à 1. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 625,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            $fonctions = $droitTools->getDroitFonction($idBandeau);\n            $droitEds = $droitTools->droitEds($ticketId, $astroSession['connectedgroup'], $astroSession['pilotgroup']);\n            if ($isApi == 1) {\n                $astroId = $astrId;\n            }\n            $informerClient = $this->informerClient($astroId, $login);",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_25",
+      "type": "missing_branch",
+      "location": "block_25",
+      "fragment": "$nombreClientEntreprise == 'oui' || intval($nombreClientEntreprise) > 0",
+      "question": "Point de décision — 'nombreClientEntreprise' égal à 'oui' ou intval('nombreClientEntreprise') > 0. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 633,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            $totalClients = (is_array($adelia) && key_exists('TOTAL_CLIENTS', $adelia)) ? intval($adelia['TOTAL_CLIENTS']) : 0;\n            $nombreClientEntreprise = (is_array($adelia) && key_exists('CLIENTS_ENTREPRISE', $adelia)) ? $adelia['CLIENTS_ENTREPRISE'] : '';\n            if ($nombreClientEntreprise == 'oui' || intval($nombreClientEntreprise) > 0) {\n                $isClientEntreprise = true;\n            }\n            $oceaneAssistant = new OceaneAssistant($this->app);",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_26",
+      "type": "missing_branch",
+      "location": "block_26",
+      "fragment": "!empty($adelia) && key_exists('PRESTATIONS', $adelia)",
+      "question": "Point de décision — !le champ 'adelia' est vide && key_exists('PRESTATIONS', $adelia). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 639,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            $idJeuParam = $this->astroRepository->getJeuParamByBandeauFonction($idBandeau, 'CONFIRMER_GENERIQUE');\n            $isNetVpn = $this->astroRepository->checkNetVpn($idJeuParam);\n            if (!empty($adelia) && key_exists('PRESTATIONS', $adelia)) {\n                $prestations = key_exists('PRESTATIONS', $adelia) ? json_decode($adelia['PRESTATIONS'], true) : '';\n            }\n",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_27",
+      "type": "missing_branch",
+      "location": "block_27",
+      "fragment": "!empty($adelia) && !empty($prestations) && $prestations != '' && key_exists('NETVPN', $prestations) && $prestations['NETVPN'] > 0",
+      "question": "Point de décision — !le champ 'adelia' est vide && !le champ 'prestations' est vide && $prestations != '' && key_exists('NETVPN', $prestations) && $prestations['NETVPN'] > 0. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 643,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            }\n\n            if (!empty($adelia) && !empty($prestations) && $prestations != '' && key_exists('NETVPN', $prestations) && $prestations['NETVPN'] > 0) {\n                $isNetVpnAdelia = 1;\n            }\n            if ($isNetVpn == '1' && $isNetVpnAdelia == 1) {",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_28",
+      "type": "missing_branch",
+      "location": "block_28",
+      "fragment": "$isNetVpn == '1' && $isNetVpnAdelia == 1",
+      "question": "Point de décision — 'isNetVpn' égal à '1' et 'isNetVpnAdelia' égal à 1. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 646,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                $isNetVpnAdelia = 1;\n            }\n            if ($isNetVpn == '1' && $isNetVpnAdelia == 1) {\n                $isNetVpnFinal = '1';\n            } else {\n                $isNetVpnFinal = '';",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_29",
+      "type": "missing_branch",
+      "location": "block_29",
+      "fragment": "$gtr && strtolower($informerClient['label']) == \"coupure franche\"",
+      "question": "Point de décision — 'gtr' et strtolower('informerClient'['label']) égal à \"coupure franche\". Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 661,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "\n\n            if ($gtr && strtolower($informerClient['label']) == \"coupure franche\"){\n                $priorite = 'P1';\n                $impactPreconise = 'Service interrompu';\n            } else {",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_30",
+      "type": "missing_branch",
+      "location": "block_30",
+      "fragment": "$informerClient['priorite'] == '-'",
+      "question": "Point de décision — 'informerClient'['priorite'] égal à '-'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 665,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                $impactPreconise = 'Service interrompu';\n            } else {\n                if ($informerClient['priorite'] == '-') {\n                    $priorite = (in_array('PRECONISATION_PRIORITE_ADSL', $fonctions)) ? $informerClient['priorite'] : $this->astroRepository->getLibPriorite($astroSession['priority']);\n                } else {\n                    $priorite = (in_array('PRECONISATION_PRIORITE_ADSL', $fonctions)) ? 'P' . $arrMatricePrio[$idValeurImpactPreconise] : $this->astroRepository->getLibPriorite($astroSession['priority']);",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_31",
+      "type": "missing_branch",
+      "location": "block_31",
+      "fragment": "!is_null($value[$typeKey])",
+      "question": "Point de décision — !is_null('value'['typeKey']). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 705,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "    {\n        foreach ($data as $k => $value) {\n            if (!is_null($value[$typeKey])) {\n                $explodeData = explode(' ', $value[$typeKey]);\n                $type = $explodeData[0];\n                $explodeDataValue = preg_split('/(?=\\d)/', $explodeData[1], 2);",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_32",
+      "type": "missing_branch",
+      "location": "block_32",
+      "fragment": "is_null($assemblee)",
+      "question": "Point de décision — is_null('assemblee'). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 733,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "    private function recupererDonneesTicket(string $ticketId, string $typeRessource, bool $api, $assemblee): array\n    {\n        if(is_null($assemblee)) {\n            $assemblee = $this->analyseService->getNomAssemblee($typeRessource, $ticketId);\n        }\n",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_33",
+      "type": "missing_branch",
+      "location": "block_33",
+      "fragment": "key_exists('CODE', $value) && $value['CODE'] == 'PRIORITE'",
+      "question": "Point de décision — key_exists('CODE', 'value') et 'value'['CODE'] égal à 'PRIORITE'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 768,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        $idChampJeuParam = null;\n        foreach ($listChamps as $value) {\n            if (key_exists('CODE', $value) && $value['CODE'] == 'PRIORITE') {\n                $idChampJeuParam = $value['ID_CHAMP_JEU_PARAM'];\n                break;\n            }",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_34",
+      "type": "missing_branch",
+      "location": "block_34",
+      "fragment": "!$isAssemblee && !$isEquipementTrans",
+      "question": "Point de décision — !'isAssemblee' et !'isEquipementTrans'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 792,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        $isAssemblee = $retourCountByService['is_assemblee'] ?? false;\n        $isEquipementTrans = $retourCountByService['is_equipement_trans'] ?? false;\n        if (!$isAssemblee && !$isEquipementTrans) {\n            $countByService['troncon_id'] = $troncon;\n        }\n        $countByService['impact_result'] = $countByService['result'];",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_35",
+      "type": "missing_branch",
+      "location": "block_35",
+      "fragment": "is_array($dataPrioImpact) && !empty($dataPrioImpact) && key_exists('impact_result', $dataPrioImpact)",
+      "question": "Point de décision — is_array($dataPrioImpact) && !le champ 'dataPrioImpact' est vide && key_exists('impact_result', $dataPrioImpact). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 801,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        $dataPrioImpact = $countByService;\n        $dataPrioImpact['HNO'] = $isHno ? 'HNO' : 'HO';\n        if (is_array($dataPrioImpact) && !empty($dataPrioImpact) && key_exists('impact_result', $dataPrioImpact)) {\n            if (key_exists('VoIP', $dataPrioImpact['impact_result'])) {\n                unset($dataPrioImpact['impact_result']['VoIP']);\n            }",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_36",
+      "type": "missing_branch",
+      "location": "block_36",
+      "fragment": "key_exists('VoIP', $dataPrioImpact['impact_result'])",
+      "question": "Point de décision — key_exists('VoIP', 'dataPrioImpact'['impact_result']). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 802,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        $dataPrioImpact['HNO'] = $isHno ? 'HNO' : 'HO';\n        if (is_array($dataPrioImpact) && !empty($dataPrioImpact) && key_exists('impact_result', $dataPrioImpact)) {\n            if (key_exists('VoIP', $dataPrioImpact['impact_result'])) {\n                unset($dataPrioImpact['impact_result']['VoIP']);\n            }\n        }",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_37",
+      "type": "missing_branch",
+      "location": "block_37",
+      "fragment": "!is_null($countByService) && ((key_exists('gtrs1', $countByService) && $countByService['gtrs1']) || (key_exists('gtrs2', $countByService) && $countByService['gtrs2']))",
+      "question": "Point de décision — !is_null('countByService') et ((key_exists('gtrs1', 'countByService') et 'countByService'['gtrs1']) ou (key_exists('gtrs2', 'countByService') et 'countByService'['gtrs2'])). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 806,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            }\n        }\n        if (!is_null($countByService) && ((key_exists('gtrs1', $countByService) && $countByService['gtrs1']) || (key_exists('gtrs2', $countByService) && $countByService['gtrs2']))) {\n            $dataPrioImpact['gtr_final'] = 'oui';\n        } elseif (!is_null($dataPrioImpact) && key_exists('impact_result', $dataPrioImpact)) {\n            $dataPrioImpact['gtr_final'] = 'non';",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_38",
+      "type": "missing_branch",
+      "location": "block_38",
+      "fragment": "!is_null($dataPrioImpact) && key_exists('impact_result', $dataPrioImpact)",
+      "question": "Point de décision — !is_null('dataPrioImpact') et key_exists('impact_result', 'dataPrioImpact'). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 808,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        if (!is_null($countByService) && ((key_exists('gtrs1', $countByService) && $countByService['gtrs1']) || (key_exists('gtrs2', $countByService) && $countByService['gtrs2']))) {\n            $dataPrioImpact['gtr_final'] = 'oui';\n        } elseif (!is_null($dataPrioImpact) && key_exists('impact_result', $dataPrioImpact)) {\n            $dataPrioImpact['gtr_final'] = 'non';\n        }\n        $dataPrioImpact['impact_result']['TOTAL'] = (is_array($dataPrioImpact) && !empty($dataPrioImpact) && key_exists('impact_result', $dataPrioImpact)) ? array_sum($dataPrioImpact['impact_result']) : 0;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_39",
+      "type": "missing_branch",
+      "location": "block_39",
+      "fragment": "!isset($dataPrioImpact['impact_result'][$service])",
+      "question": "Point de décision — !isset('dataPrioImpact'['impact_result']['service']). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 816,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            'Internet', 'NETVPN', 'LL=2M', 'LL>2M', 'TDSL', 'T2'\n        ] as $service) {\n            if (!isset($dataPrioImpact['impact_result'][$service])) {\n                $dataPrioImpact['impact_result'][$service] = 0;\n            }\n        }",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_40",
+      "type": "missing_branch",
+      "location": "block_40",
+      "fragment": "isset($arrayDeclencher['VoIP'])",
+      "question": "Point de décision — isset('arrayDeclencher'['VoIP']). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 822,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        $arrayDeclencher = $dataPrioImpact['impact_result'] ?? [];\n        // Nettoyage VoIP\n        if (isset($arrayDeclencher['VoIP'])) {\n            unset($arrayDeclencher['VoIP']);\n        }\n        // Calcul DEC",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_41",
+      "type": "missing_branch",
+      "location": "block_41",
+      "fragment": "!is_null($dataPrioImpact) && key_exists('impact_result', $dataPrioImpact)",
+      "question": "Point de décision — !is_null('dataPrioImpact') et key_exists('impact_result', 'dataPrioImpact'). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 826,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        }\n        // Calcul DEC\n        if (!is_null($dataPrioImpact) && key_exists('impact_result', $dataPrioImpact)) {\n            foreach ($arrayDeclencher as $k => $v) {\n                foreach ($decData as $value2) {\n                    if (($k == $value2['TYPE'] || $value2['TYPE'] == '_TOTAL') && !$decDone) {",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_42",
+      "type": "missing_branch",
+      "location": "block_42",
+      "fragment": "($k == $value2['TYPE'] || $value2['TYPE'] == '_TOTAL') && !$decDone",
+      "question": "Point de décision — ('k' égal à 'value2'['TYPE'] ou 'value2'['TYPE'] égal à '_TOTAL') et !'decDone'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 829,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            foreach ($arrayDeclencher as $k => $v) {\n                foreach ($decData as $value2) {\n                    if (($k == $value2['TYPE'] || $value2['TYPE'] == '_TOTAL') && !$decDone) {\n                        $op = $value2['OPERATOR'];\n                        $val = intval($value2['OPERATOR_VALUE']);\n                        $gtr = $value2['GTR'] ?? null;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_43",
+      "type": "missing_branch",
+      "location": "block_43",
+      "fragment": "$op == '>='",
+      "question": "Point de décision — 'op' égal à '>='. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 834,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                        $gtr = $value2['GTR'] ?? null;\n                        $gtrOk = is_null($gtr) || (key_exists('gtr_final', $dataPrioImpact) && $dataPrioImpact['gtr_final'] == $gtr);\n                        if ($op == '>=') {\n                            if ($v >= $val && $gtrOk && !$decDone) {\n                                $decStat = true;\n                                $decDone = true;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_44",
+      "type": "missing_branch",
+      "location": "block_44",
+      "fragment": "$v >= $val && $gtrOk && !$decDone",
+      "question": "Point de décision — 'v' >= 'val' et 'gtrOk' et !'decDone'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 835,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                        $gtrOk = is_null($gtr) || (key_exists('gtr_final', $dataPrioImpact) && $dataPrioImpact['gtr_final'] == $gtr);\n                        if ($op == '>=') {\n                            if ($v >= $val && $gtrOk && !$decDone) {\n                                $decStat = true;\n                                $decDone = true;\n                            } else {",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_45",
+      "type": "missing_branch",
+      "location": "block_45",
+      "fragment": "$op == '<='",
+      "question": "Point de décision — 'op' égal à '<='. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 841,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                                $decStat = false;\n                            }\n                        } elseif ($op == '<=') {\n                            if ($v <= $val && $gtrOk && !$decDone) {\n                                $decStat = true;\n                                $decDone = true;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_46",
+      "type": "missing_branch",
+      "location": "block_46",
+      "fragment": "$v <= $val && $gtrOk && !$decDone",
+      "question": "Point de décision — 'v' <= 'val' et 'gtrOk' et !'decDone'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 842,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                            }\n                        } elseif ($op == '<=') {\n                            if ($v <= $val && $gtrOk && !$decDone) {\n                                $decStat = true;\n                                $decDone = true;\n                            } else {",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_47",
+      "type": "missing_branch",
+      "location": "block_47",
+      "fragment": "is_null($value2['TYPE']) && !is_null($value2['GTR'])",
+      "question": "Point de décision — is_null('value2'['TYPE']) et !is_null('value2'['GTR']). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 849,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                            }\n                        }\n                    } elseif (is_null($value2['TYPE']) && !is_null($value2['GTR'])) {\n                        if (key_exists('gtr_final', $dataPrioImpact) && $dataPrioImpact['gtr_final'] == $value2['GTR'] && !$decDone) {\n                            $decStat = true;\n                            $decDone = true;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_48",
+      "type": "missing_branch",
+      "location": "block_48",
+      "fragment": "key_exists('gtr_final', $dataPrioImpact) && $dataPrioImpact['gtr_final'] == $value2['GTR'] && !$decDone",
+      "question": "Point de décision — key_exists('gtr_final', 'dataPrioImpact') et 'dataPrioImpact'['gtr_final'] égal à 'value2'['GTR'] et !'decDone'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 850,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                        }\n                    } elseif (is_null($value2['TYPE']) && !is_null($value2['GTR'])) {\n                        if (key_exists('gtr_final', $dataPrioImpact) && $dataPrioImpact['gtr_final'] == $value2['GTR'] && !$decDone) {\n                            $decStat = true;\n                            $decDone = true;\n                        } else {",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_49",
+      "type": "missing_branch",
+      "location": "block_49",
+      "fragment": "is_null($value2['TYPE']) && is_null($value2['GTR']) && !$decDone",
+      "question": "Point de décision — is_null('value2'['TYPE']) et is_null('value2'['GTR']) et !'decDone'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 856,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                            $decStat = false;\n                        }\n                    } elseif (is_null($value2['TYPE']) && is_null($value2['GTR']) && !$decDone) {\n                        $decStat = true;\n                        $decDone = true;\n                    }",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_50",
+      "type": "missing_branch",
+      "location": "block_50",
+      "fragment": "$doneFlag || is_null($dataPrioImpact) || !key_exists('impact_result', $dataPrioImpact)",
+      "question": "Point de décision — 'doneFlag' ou is_null('dataPrioImpact') ou !key_exists('impact_result', 'dataPrioImpact'). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 879,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "    private function getPrioriteFromData($dataPrioImpact, $data, &$doneFlag)\n    {\n        if ($doneFlag || is_null($dataPrioImpact) || !key_exists('impact_result', $dataPrioImpact)) {\n            return '-';\n        }\n        foreach ($dataPrioImpact['impact_result'] as $k => $v) {",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_51",
+      "type": "missing_branch",
+      "location": "block_51",
+      "fragment": "$doneFlag) break; if ($k == $value2['TYPE'] || $value2['TYPE'] == '_TOTAL'",
+      "question": "Point de décision — 'doneFlag') break; if ('k' égal à 'value2'['TYPE'] ou 'value2'['TYPE'] égal à '_TOTAL'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 884,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        foreach ($dataPrioImpact['impact_result'] as $k => $v) {\n            foreach ($data as $value2) {\n                if ($doneFlag) break;\n                if ($k == $value2['TYPE'] || $value2['TYPE'] == '_TOTAL') {\n                    $op = $value2['OPERATOR'];\n                    $val = intval($value2['OPERATOR_VALUE']);",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_52",
+      "type": "missing_branch",
+      "location": "block_52",
+      "fragment": "$op == '>='",
+      "question": "Point de décision — 'op' égal à '>='. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 893,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                    $hnoOk = is_null($hno) || (key_exists('HNO', $dataPrioImpact) && $dataPrioImpact['HNO'] == $hno);\n                    $gtrOk = is_null($gtr) || (key_exists('gtr_final', $dataPrioImpact) && $dataPrioImpact['gtr_final'] == $gtr);\n                    if ($op == '>=') {\n                        if ($v >= $val && $gtrOk && $hnoOk) {\n                            $doneFlag = true;\n                            return 'P' . $prio;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_53",
+      "type": "missing_branch",
+      "location": "block_53",
+      "fragment": "$v >= $val && $gtrOk && $hnoOk",
+      "question": "Point de décision — 'v' >= 'val' et 'gtrOk' et 'hnoOk'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 894,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                    $gtrOk = is_null($gtr) || (key_exists('gtr_final', $dataPrioImpact) && $dataPrioImpact['gtr_final'] == $gtr);\n                    if ($op == '>=') {\n                        if ($v >= $val && $gtrOk && $hnoOk) {\n                            $doneFlag = true;\n                            return 'P' . $prio;\n                        }",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_54",
+      "type": "missing_branch",
+      "location": "block_54",
+      "fragment": "$op == '<='",
+      "question": "Point de décision — 'op' égal à '<='. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 898,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                            return 'P' . $prio;\n                        }\n                    } elseif ($op == '<=') {\n                        if ($v <= $val && $gtrOk && $hnoOk) {\n                            $doneFlag = true;\n                            return 'P' . $prio;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_55",
+      "type": "missing_branch",
+      "location": "block_55",
+      "fragment": "$v <= $val && $gtrOk && $hnoOk",
+      "question": "Point de décision — 'v' <= 'val' et 'gtrOk' et 'hnoOk'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 899,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                        }\n                    } elseif ($op == '<=') {\n                        if ($v <= $val && $gtrOk && $hnoOk) {\n                            $doneFlag = true;\n                            return 'P' . $prio;\n                        }",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_56",
+      "type": "missing_branch",
+      "location": "block_56",
+      "fragment": "is_null($value2['TYPE']) && !is_null($value2['GTR'])",
+      "question": "Point de décision — is_null('value2'['TYPE']) et !is_null('value2'['GTR']). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 904,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                        }\n                    }\n                } elseif (is_null($value2['TYPE']) && !is_null($value2['GTR'])) {\n                    $gtr = $value2['GTR'];\n                    $hno = $value2['HNO'] ?? null;\n                    $prio = $value2['PRIORITE'] ?? null;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_57",
+      "type": "missing_branch",
+      "location": "block_57",
+      "fragment": "key_exists('gtr_final', $dataPrioImpact) && $dataPrioImpact['gtr_final'] == $gtr && $hnoOk",
+      "question": "Point de décision — key_exists('gtr_final', 'dataPrioImpact') et 'dataPrioImpact'['gtr_final'] égal à 'gtr' et 'hnoOk'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 909,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                    $prio = $value2['PRIORITE'] ?? null;\n                    $hnoOk = is_null($hno) || (key_exists('HNO', $dataPrioImpact) && $dataPrioImpact['HNO'] == $hno);\n                    if (key_exists('gtr_final', $dataPrioImpact) && $dataPrioImpact['gtr_final'] == $gtr && $hnoOk) {\n                        $doneFlag = true;\n                        return 'P' . $prio;\n                    }",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_58",
+      "type": "missing_branch",
+      "location": "block_58",
+      "fragment": "is_null($value2['TYPE']) && is_null($value2['GTR'])",
+      "question": "Point de décision — is_null('value2'['TYPE']) et is_null('value2'['GTR']). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 913,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                        return 'P' . $prio;\n                    }\n                } elseif (is_null($value2['TYPE']) && is_null($value2['GTR'])) {\n                    $hno = $value2['HNO'] ?? null;\n                    $prio = $value2['PRIORITE'] ?? null;\n                    $hnoOk = is_null($hno) || (key_exists('HNO', $dataPrioImpact) && $dataPrioImpact['HNO'] == $hno);",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_59",
+      "type": "missing_branch",
+      "location": "block_59",
+      "fragment": "$hnoOk",
+      "question": "Point de décision — 'hnoOk'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 917,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                    $prio = $value2['PRIORITE'] ?? null;\n                    $hnoOk = is_null($hno) || (key_exists('HNO', $dataPrioImpact) && $dataPrioImpact['HNO'] == $hno);\n                    if ($hnoOk) {\n                        $doneFlag = true;\n                        return 'P' . $prio;\n                    }",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_60",
+      "type": "missing_branch",
+      "location": "block_60",
+      "fragment": "!is_null($result)",
+      "question": "Point de décision — !is_null('result'). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 953,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        $dataAdeliaSavedFirst = $this->adeliaService->saveAdeliaDataFirst( true,$dataAdeliaArraySimulate, $data['ID_TICKET_ASTRO']);\n\n        if (!is_null($result)) {\n            $dataAdeliaArray = json_decode($result);\n            $dataAdeliaSaved = $this->adeliaService->saveAdeliaData($dataAdeliaArray, $data['ID_TICKET_ASTRO'],array(),true);\n",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "magic_value_61",
+      "type": "magic_value",
+      "location": "block_11",
+      "fragment": "$dataAstro['ADELIA_MANUEL'] == 'o'",
+      "question": "Valeur de référence non documentée — La décision « 'dataAstro'['ADELIA_MANUEL'] égal à 'o' » repose sur la valeur 'o'. D'où vient cette valeur ? Fait-elle partie d'une liste de référence définie dans le cahier des charges ?",
+      "source_line": 408,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        }\n        if ($dataAdelia['TOTAL_CLIENTS'] > 0) {\n            if ($dataAstro['ADELIA_MANUEL'] == 'o') {\n                $dataAdeliaManuel = $this->adeliaRepository->getDataBlobManuel($dataAstro['ID_TICKET_ASTRO']);\n                if ($dataAdeliaManuel['BEGIN_DATE'] != '' && $dataAdeliaManuel['SEUIL_GRAVE'] != '' && $dataAdeliaManuel['SEUIL_MAJEUR'] != '') {\n                    $commentaire .= 'grave à partir du ' . $this->adeliaService->getDateSeuil($dataAdeliaManuel['BEGIN_DATE'], $dataAdeliaManuel['SEUIL_GRAVE'], true) . $rc;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "magic_value_62",
+      "type": "magic_value",
+      "location": "block_15",
+      "fragment": "$dataAstro['ADELIA_MANUEL'] == 'o'",
+      "question": "Valeur de référence non documentée — La décision « 'dataAstro'['ADELIA_MANUEL'] égal à 'o' » repose sur la valeur 'o'. D'où vient cette valeur ? Fait-elle partie d'une liste de référence définie dans le cahier des charges ?",
+      "source_line": 450,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "\n        if ($dataAdelia['TOTAL_CLIENTS'] > 0) {\n            if ($dataAstro['ADELIA_MANUEL'] == 'o') {\n                $dataAdeliaManuel = $this->adeliaRepository->getDataBlobManuel($dataAstro['ID_TICKET_ASTRO']);\n                if ($dataAdeliaManuel['BEGIN_DATE'] != '' && $dataAdeliaManuel['SEUIL_GRAVE'] != '' && $dataAdeliaManuel['SEUIL_MAJEUR'] != '') {\n                    $commentaire .= 'grave à partir du ' . $this->adeliaService->getDateSeuil($dataAdeliaManuel['BEGIN_DATE'], $dataAdeliaManuel['SEUIL_GRAVE'], true) . $rc;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "magic_value_63",
+      "type": "magic_value",
+      "location": "block_25",
+      "fragment": "$nombreClientEntreprise == 'oui' || intval($nombreClientEntreprise) > 0",
+      "question": "Valeur de référence non documentée — La décision « 'nombreClientEntreprise' égal à 'oui' ou intval('nombreClientEntreprise') > 0 » repose sur la valeur 'oui'. D'où vient cette valeur ? Fait-elle partie d'une liste de référence définie dans le cahier des charges ?",
+      "source_line": 633,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            $totalClients = (is_array($adelia) && key_exists('TOTAL_CLIENTS', $adelia)) ? intval($adelia['TOTAL_CLIENTS']) : 0;\n            $nombreClientEntreprise = (is_array($adelia) && key_exists('CLIENTS_ENTREPRISE', $adelia)) ? $adelia['CLIENTS_ENTREPRISE'] : '';\n            if ($nombreClientEntreprise == 'oui' || intval($nombreClientEntreprise) > 0) {\n                $isClientEntreprise = true;\n            }\n            $oceaneAssistant = new OceaneAssistant($this->app);",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_64",
+      "type": "unmapped_dep",
+      "location": "App\\Repository\\AbandonBatchRepository",
+      "fragment": "use: App\\Repository\\AbandonBatchRepository",
+      "question": "Service tiers non documenté — Le composant 'App\\Repository\\AbandonBatchRepository' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_65",
+      "type": "unmapped_dep",
+      "location": "App\\Repository\\AdeliaRepository",
+      "fragment": "use: App\\Repository\\AdeliaRepository",
+      "question": "Service tiers non documenté — Le composant 'App\\Repository\\AdeliaRepository' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_66",
+      "type": "unmapped_dep",
+      "location": "App\\Repository\\AssistantRepository",
+      "fragment": "use: App\\Repository\\AssistantRepository",
+      "question": "Service tiers non documenté — Le composant 'App\\Repository\\AssistantRepository' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_67",
+      "type": "unmapped_dep",
+      "location": "App\\Repository\\AstroIhmSqlRepository",
+      "fragment": "use: App\\Repository\\AstroIhmSqlRepository",
+      "question": "Service tiers non documenté — Le composant 'App\\Repository\\AstroIhmSqlRepository' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_68",
+      "type": "unmapped_dep",
+      "location": "App\\Repository\\AstroLienRepository",
+      "fragment": "use: App\\Repository\\AstroLienRepository",
+      "question": "Service tiers non documenté — Le composant 'App\\Repository\\AstroLienRepository' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_69",
+      "type": "unmapped_dep",
+      "location": "App\\Repository\\AstroRepository",
+      "fragment": "use: App\\Repository\\AstroRepository",
+      "question": "Service tiers non documenté — Le composant 'App\\Repository\\AstroRepository' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_70",
+      "type": "unmapped_dep",
+      "location": "App\\Repository\\VerrouRepository",
+      "fragment": "use: App\\Repository\\VerrouRepository",
+      "question": "Service tiers non documenté — Le composant 'App\\Repository\\VerrouRepository' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_71",
+      "type": "unmapped_dep",
+      "location": "App\\Tools\\OceaneAssistant",
+      "fragment": "use: App\\Tools\\OceaneAssistant",
+      "question": "Service tiers non documenté — Le composant 'App\\Tools\\OceaneAssistant' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_72",
+      "type": "unmapped_dep",
+      "location": "App\\Tools\\Message",
+      "fragment": "use: App\\Tools\\Message",
+      "question": "Service tiers non documenté — Le composant 'App\\Tools\\Message' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_73",
+      "type": "unmapped_dep",
+      "location": "Hbm\\Common\\Tools\\StringTools",
+      "fragment": "use: Hbm\\Common\\Tools\\StringTools",
+      "question": "Service tiers non documenté — Le composant 'Hbm\\Common\\Tools\\StringTools' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_74",
+      "type": "unmapped_dep",
+      "location": "Hbm\\Globalapi\\Service\\Soap\\OceaneUpd",
+      "fragment": "use: Hbm\\Globalapi\\Service\\Soap\\OceaneUpd",
+      "question": "Service tiers non documenté — Le composant 'Hbm\\Globalapi\\Service\\Soap\\OceaneUpd' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_75",
+      "type": "unmapped_dep",
+      "location": "Hbm\\Globalapi\\Service\\Rest\\Oceane",
+      "fragment": "use: Hbm\\Globalapi\\Service\\Rest\\Oceane",
+      "question": "Service tiers non documenté — Le composant 'Hbm\\Globalapi\\Service\\Rest\\Oceane' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_76",
+      "type": "unmapped_dep",
+      "location": "App\\View\\Helper\\Adelia",
+      "fragment": "use: App\\View\\Helper\\Adelia",
+      "question": "Service tiers non documenté — Le composant 'App\\View\\Helper\\Adelia' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_77",
+      "type": "unmapped_dep",
+      "location": "Oft\\Mvc\\Application",
+      "fragment": "use: Oft\\Mvc\\Application",
+      "question": "Service tiers non documenté — Le composant 'Oft\\Mvc\\Application' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_78",
+      "type": "unmapped_dep",
+      "location": "App\\Tools\\DroitAstroTools",
+      "fragment": "use: App\\Tools\\DroitAstroTools",
+      "question": "Service tiers non documenté — Le composant 'App\\Tools\\DroitAstroTools' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_79",
+      "type": "unmapped_dep",
+      "location": "Hbm\\Globalapi\\Service\\Rest\\ApiOceane",
+      "fragment": "use: Hbm\\Globalapi\\Service\\Rest\\ApiOceane",
+      "question": "Service tiers non documenté — Le composant 'Hbm\\Globalapi\\Service\\Rest\\ApiOceane' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_80",
+      "type": "unmapped_dep",
+      "location": "Message",
+      "fragment": "instantiation: Message",
+      "question": "Service tiers non documenté — Le composant 'Message' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_81",
+      "type": "unmapped_dep",
+      "location": "Oceane",
+      "fragment": "instantiation: Oceane",
+      "question": "Service tiers non documenté — Le composant 'Oceane' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_82",
+      "type": "unmapped_dep",
+      "location": "OceaneAssistant",
+      "fragment": "instantiation: OceaneAssistant",
+      "question": "Service tiers non documenté — Le composant 'OceaneAssistant' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_83",
+      "type": "unmapped_dep",
+      "location": "Adelia",
+      "fragment": "instantiation: Adelia",
+      "question": "Service tiers non documenté — Le composant 'Adelia' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_84",
+      "type": "unmapped_dep",
+      "location": "DroitAstroTools",
+      "fragment": "instantiation: DroitAstroTools",
+      "question": "Service tiers non documenté — Le composant 'DroitAstroTools' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    }
+  ],
+  "llm_insights": []
+}

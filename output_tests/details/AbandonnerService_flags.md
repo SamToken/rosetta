@@ -1,0 +1,260 @@
+# AbandonnerServiceController — Zones à valider
+Généré le : 2026-04-26 09:46 | 84 flags | 0 insights LLM
+
+## ⚠️ Gaps de logique — Comportements non définis
+- [ ] **[block_1]** ⬜ non enrichi
+  - Fragment : `$isLocked === true`
+  - Question : Point de décision — 'isLocked' égal à = true. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_2]** ⬜ non enrichi
+  - Fragment : `$impact != ''`
+  - Question : Point de décision — 'impact' différent de ''. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_3]** ⬜ non enrichi
+  - Fragment : `$labelFinal == ''`
+  - Question : Point de décision — 'labelFinal' égal à ''. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_4]** ⬜ non enrichi
+  - Fragment : `$isMe`
+  - Question : Point de décision — 'isMe'. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_5]** ⬜ non enrichi
+  - Fragment : `array_key_exists('message', $result) && array_key_exists('code', $result) && array_key_exists('descr`
+  - Question : Point de décision — array_key_exists('message', 'result') et array_key_exists('code', 'result') et array_key_exists('description', 'result'). Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_6]** ⬜ non enrichi
+  - Fragment : `$result['message'] == 'Functional error: Ticket in closed status'`
+  - Question : Point de décision — 'result'['message'] égal à 'Functional error: Ticket in closed status'. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_7]** ⬜ non enrichi
+  - Fragment : `$incidentEnCours`
+  - Question : Point de décision — 'incidentEnCours'. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_8]** ⬜ non enrichi
+  - Fragment : `array_key_exists('message', $result) && array_key_exists('code', $result) && array_key_exists('descr`
+  - Question : Point de décision — array_key_exists('message', 'result') et array_key_exists('code', 'result') et array_key_exists('description', 'result'). Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_9]** ⬜ non enrichi
+  - Fragment : `$dataAdelia`
+  - Question : Point de décision — 'dataAdelia'. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_10]** ⬜ non enrichi
+  - Fragment : `$dataAdelia['TOTAL_CLIENTS'] > 0`
+  - Question : Point de décision — 'dataAdelia'['TOTAL_CLIENTS'] > 0. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_11]** ⬜ non enrichi
+  - Fragment : `$dataAstro['ADELIA_MANUEL'] == 'o'`
+  - Question : Point de décision — 'dataAstro'['ADELIA_MANUEL'] égal à 'o'. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_12]** ⬜ non enrichi
+  - Fragment : `$dataAdeliaManuel['BEGIN_DATE'] != '' && $dataAdeliaManuel['SEUIL_GRAVE'] != '' && $dataAdeliaManuel`
+  - Question : Point de décision — 'dataAdeliaManuel'['BEGIN_DATE'] différent de '' et 'dataAdeliaManuel'['SEUIL_GRAVE'] différent de '' et 'dataAdeliaManuel'['SEUIL_MAJEUR'] différent de ''. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_13]** ⬜ non enrichi
+  - Fragment : `$dataAdelia`
+  - Question : Point de décision — 'dataAdelia'. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_14]** ⬜ non enrichi
+  - Fragment : `$dataAdelia['TOTAL_CLIENTS'] > 0`
+  - Question : Point de décision — 'dataAdelia'['TOTAL_CLIENTS'] > 0. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_15]** ⬜ non enrichi
+  - Fragment : `$dataAstro['ADELIA_MANUEL'] == 'o'`
+  - Question : Point de décision — 'dataAstro'['ADELIA_MANUEL'] égal à 'o'. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_16]** ⬜ non enrichi
+  - Fragment : `$dataAdeliaManuel['BEGIN_DATE'] != '' && $dataAdeliaManuel['SEUIL_GRAVE'] != '' && $dataAdeliaManuel`
+  - Question : Point de décision — 'dataAdeliaManuel'['BEGIN_DATE'] différent de '' et 'dataAdeliaManuel'['SEUIL_GRAVE'] différent de '' et 'dataAdeliaManuel'['SEUIL_MAJEUR'] différent de ''. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_17]** ⬜ non enrichi
+  - Fragment : `count($ticket)`
+  - Question : Point de décision — count('ticket'). Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_18]** ⬜ non enrichi
+  - Fragment : `key_exists('code', $result) && key_exists('message', $result)`
+  - Question : Point de décision — key_exists('code', 'result') et key_exists('message', 'result'). Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_19]** ⬜ non enrichi
+  - Fragment : `$result == 1`
+  - Question : Point de décision — 'result' égal à 1. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_20]** ⬜ non enrichi
+  - Fragment : `$result == 2`
+  - Question : Point de décision — 'result' égal à 2. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_21]** ⬜ non enrichi
+  - Fragment : `$nbKo == 0`
+  - Question : Point de décision — 'nbKo' égal à 0. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_22]** ⬜ non enrichi
+  - Fragment : `$nbOk > 0`
+  - Question : Point de décision — 'nbOk' > 0. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_23]** ⬜ non enrichi
+  - Fragment : `!$droitTools->isIncident($ticketId)`
+  - Question : Point de décision — !'droitTools'->isIncident('ticketId'). Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_24]** ⬜ non enrichi
+  - Fragment : `$isApi == 1`
+  - Question : Point de décision — 'isApi' égal à 1. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_25]** ⬜ non enrichi
+  - Fragment : `$nombreClientEntreprise == 'oui' || intval($nombreClientEntreprise) > 0`
+  - Question : Point de décision — 'nombreClientEntreprise' égal à 'oui' ou intval('nombreClientEntreprise') > 0. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_26]** ⬜ non enrichi
+  - Fragment : `!empty($adelia) && key_exists('PRESTATIONS', $adelia)`
+  - Question : Point de décision — !le champ 'adelia' est vide && key_exists('PRESTATIONS', $adelia). Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_27]** ⬜ non enrichi
+  - Fragment : `!empty($adelia) && !empty($prestations) && $prestations != '' && key_exists('NETVPN', $prestations) `
+  - Question : Point de décision — !le champ 'adelia' est vide && !le champ 'prestations' est vide && $prestations != '' && key_exists('NETVPN', $prestations) && $prestations['NETVPN'] > 0. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_28]** ⬜ non enrichi
+  - Fragment : `$isNetVpn == '1' && $isNetVpnAdelia == 1`
+  - Question : Point de décision — 'isNetVpn' égal à '1' et 'isNetVpnAdelia' égal à 1. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_29]** ⬜ non enrichi
+  - Fragment : `$gtr && strtolower($informerClient['label']) == "coupure franche"`
+  - Question : Point de décision — 'gtr' et strtolower('informerClient'['label']) égal à "coupure franche". Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_30]** ⬜ non enrichi
+  - Fragment : `$informerClient['priorite'] == '-'`
+  - Question : Point de décision — 'informerClient'['priorite'] égal à '-'. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_31]** ⬜ non enrichi
+  - Fragment : `!is_null($value[$typeKey])`
+  - Question : Point de décision — !is_null('value'['typeKey']). Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_32]** ⬜ non enrichi
+  - Fragment : `is_null($assemblee)`
+  - Question : Point de décision — is_null('assemblee'). Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_33]** ⬜ non enrichi
+  - Fragment : `key_exists('CODE', $value) && $value['CODE'] == 'PRIORITE'`
+  - Question : Point de décision — key_exists('CODE', 'value') et 'value'['CODE'] égal à 'PRIORITE'. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_34]** ⬜ non enrichi
+  - Fragment : `!$isAssemblee && !$isEquipementTrans`
+  - Question : Point de décision — !'isAssemblee' et !'isEquipementTrans'. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_35]** ⬜ non enrichi
+  - Fragment : `is_array($dataPrioImpact) && !empty($dataPrioImpact) && key_exists('impact_result', $dataPrioImpact)`
+  - Question : Point de décision — is_array($dataPrioImpact) && !le champ 'dataPrioImpact' est vide && key_exists('impact_result', $dataPrioImpact). Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_36]** ⬜ non enrichi
+  - Fragment : `key_exists('VoIP', $dataPrioImpact['impact_result'])`
+  - Question : Point de décision — key_exists('VoIP', 'dataPrioImpact'['impact_result']). Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_37]** ⬜ non enrichi
+  - Fragment : `!is_null($countByService) && ((key_exists('gtrs1', $countByService) && $countByService['gtrs1']) || `
+  - Question : Point de décision — !is_null('countByService') et ((key_exists('gtrs1', 'countByService') et 'countByService'['gtrs1']) ou (key_exists('gtrs2', 'countByService') et 'countByService'['gtrs2'])). Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_38]** ⬜ non enrichi
+  - Fragment : `!is_null($dataPrioImpact) && key_exists('impact_result', $dataPrioImpact)`
+  - Question : Point de décision — !is_null('dataPrioImpact') et key_exists('impact_result', 'dataPrioImpact'). Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_39]** ⬜ non enrichi
+  - Fragment : `!isset($dataPrioImpact['impact_result'][$service])`
+  - Question : Point de décision — !isset('dataPrioImpact'['impact_result']['service']). Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_40]** ⬜ non enrichi
+  - Fragment : `isset($arrayDeclencher['VoIP'])`
+  - Question : Point de décision — isset('arrayDeclencher'['VoIP']). Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_41]** ⬜ non enrichi
+  - Fragment : `!is_null($dataPrioImpact) && key_exists('impact_result', $dataPrioImpact)`
+  - Question : Point de décision — !is_null('dataPrioImpact') et key_exists('impact_result', 'dataPrioImpact'). Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_42]** ⬜ non enrichi
+  - Fragment : `($k == $value2['TYPE'] || $value2['TYPE'] == '_TOTAL') && !$decDone`
+  - Question : Point de décision — ('k' égal à 'value2'['TYPE'] ou 'value2'['TYPE'] égal à '_TOTAL') et !'decDone'. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_43]** ⬜ non enrichi
+  - Fragment : `$op == '>='`
+  - Question : Point de décision — 'op' égal à '>='. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_44]** ⬜ non enrichi
+  - Fragment : `$v >= $val && $gtrOk && !$decDone`
+  - Question : Point de décision — 'v' >= 'val' et 'gtrOk' et !'decDone'. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_45]** ⬜ non enrichi
+  - Fragment : `$op == '<='`
+  - Question : Point de décision — 'op' égal à '<='. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_46]** ⬜ non enrichi
+  - Fragment : `$v <= $val && $gtrOk && !$decDone`
+  - Question : Point de décision — 'v' <= 'val' et 'gtrOk' et !'decDone'. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_47]** ⬜ non enrichi
+  - Fragment : `is_null($value2['TYPE']) && !is_null($value2['GTR'])`
+  - Question : Point de décision — is_null('value2'['TYPE']) et !is_null('value2'['GTR']). Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_48]** ⬜ non enrichi
+  - Fragment : `key_exists('gtr_final', $dataPrioImpact) && $dataPrioImpact['gtr_final'] == $value2['GTR'] && !$decD`
+  - Question : Point de décision — key_exists('gtr_final', 'dataPrioImpact') et 'dataPrioImpact'['gtr_final'] égal à 'value2'['GTR'] et !'decDone'. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_49]** ⬜ non enrichi
+  - Fragment : `is_null($value2['TYPE']) && is_null($value2['GTR']) && !$decDone`
+  - Question : Point de décision — is_null('value2'['TYPE']) et is_null('value2'['GTR']) et !'decDone'. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_50]** ⬜ non enrichi
+  - Fragment : `$doneFlag || is_null($dataPrioImpact) || !key_exists('impact_result', $dataPrioImpact)`
+  - Question : Point de décision — 'doneFlag' ou is_null('dataPrioImpact') ou !key_exists('impact_result', 'dataPrioImpact'). Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_51]** ⬜ non enrichi
+  - Fragment : `$doneFlag) break; if ($k == $value2['TYPE'] || $value2['TYPE'] == '_TOTAL'`
+  - Question : Point de décision — 'doneFlag') break; if ('k' égal à 'value2'['TYPE'] ou 'value2'['TYPE'] égal à '_TOTAL'. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_52]** ⬜ non enrichi
+  - Fragment : `$op == '>='`
+  - Question : Point de décision — 'op' égal à '>='. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_53]** ⬜ non enrichi
+  - Fragment : `$v >= $val && $gtrOk && $hnoOk`
+  - Question : Point de décision — 'v' >= 'val' et 'gtrOk' et 'hnoOk'. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_54]** ⬜ non enrichi
+  - Fragment : `$op == '<='`
+  - Question : Point de décision — 'op' égal à '<='. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_55]** ⬜ non enrichi
+  - Fragment : `$v <= $val && $gtrOk && $hnoOk`
+  - Question : Point de décision — 'v' <= 'val' et 'gtrOk' et 'hnoOk'. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_56]** ⬜ non enrichi
+  - Fragment : `is_null($value2['TYPE']) && !is_null($value2['GTR'])`
+  - Question : Point de décision — is_null('value2'['TYPE']) et !is_null('value2'['GTR']). Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_57]** ⬜ non enrichi
+  - Fragment : `key_exists('gtr_final', $dataPrioImpact) && $dataPrioImpact['gtr_final'] == $gtr && $hnoOk`
+  - Question : Point de décision — key_exists('gtr_final', 'dataPrioImpact') et 'dataPrioImpact'['gtr_final'] égal à 'gtr' et 'hnoOk'. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_58]** ⬜ non enrichi
+  - Fragment : `is_null($value2['TYPE']) && is_null($value2['GTR'])`
+  - Question : Point de décision — is_null('value2'['TYPE']) et is_null('value2'['GTR']). Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_59]** ⬜ non enrichi
+  - Fragment : `$hnoOk`
+  - Question : Point de décision — 'hnoOk'. Quel est le comportement attendu dans le cas contraire ?
+- [ ] **[block_60]** ⬜ non enrichi
+  - Fragment : `!is_null($result)`
+  - Question : Point de décision — !is_null('result'). Quel est le comportement attendu dans le cas contraire ?
+
+## 🔍 Valeurs de référence non documentées
+- [ ] **[block_11]** ⬜ non enrichi
+  - Fragment : `$dataAstro['ADELIA_MANUEL'] == 'o'`
+  - Question : Valeur de référence non documentée — La décision « 'dataAstro'['ADELIA_MANUEL'] égal à 'o' » repose sur la valeur 'o'. D'où vient cette valeur ? Fait-elle partie d'une liste de référence définie dans le cahier des charges ?
+- [ ] **[block_15]** ⬜ non enrichi
+  - Fragment : `$dataAstro['ADELIA_MANUEL'] == 'o'`
+  - Question : Valeur de référence non documentée — La décision « 'dataAstro'['ADELIA_MANUEL'] égal à 'o' » repose sur la valeur 'o'. D'où vient cette valeur ? Fait-elle partie d'une liste de référence définie dans le cahier des charges ?
+- [ ] **[block_25]** ⬜ non enrichi
+  - Fragment : `$nombreClientEntreprise == 'oui' || intval($nombreClientEntreprise) > 0`
+  - Question : Valeur de référence non documentée — La décision « 'nombreClientEntreprise' égal à 'oui' ou intval('nombreClientEntreprise') > 0 » repose sur la valeur 'oui'. D'où vient cette valeur ? Fait-elle partie d'une liste de référence définie dans le cahier des charges ?
+
+## 📦 Services tiers non documentés
+- [ ] **[App\Repository\AbandonBatchRepository]** ⬜ non enrichi
+  - Fragment : `use: App\Repository\AbandonBatchRepository`
+  - Question : Service tiers non documenté — Le composant 'App\Repository\AbandonBatchRepository' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- [ ] **[App\Repository\AdeliaRepository]** ⬜ non enrichi
+  - Fragment : `use: App\Repository\AdeliaRepository`
+  - Question : Service tiers non documenté — Le composant 'App\Repository\AdeliaRepository' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- [ ] **[App\Repository\AssistantRepository]** ⬜ non enrichi
+  - Fragment : `use: App\Repository\AssistantRepository`
+  - Question : Service tiers non documenté — Le composant 'App\Repository\AssistantRepository' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- [ ] **[App\Repository\AstroIhmSqlRepository]** ⬜ non enrichi
+  - Fragment : `use: App\Repository\AstroIhmSqlRepository`
+  - Question : Service tiers non documenté — Le composant 'App\Repository\AstroIhmSqlRepository' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- [ ] **[App\Repository\AstroLienRepository]** ⬜ non enrichi
+  - Fragment : `use: App\Repository\AstroLienRepository`
+  - Question : Service tiers non documenté — Le composant 'App\Repository\AstroLienRepository' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- [ ] **[App\Repository\AstroRepository]** ⬜ non enrichi
+  - Fragment : `use: App\Repository\AstroRepository`
+  - Question : Service tiers non documenté — Le composant 'App\Repository\AstroRepository' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- [ ] **[App\Repository\VerrouRepository]** ⬜ non enrichi
+  - Fragment : `use: App\Repository\VerrouRepository`
+  - Question : Service tiers non documenté — Le composant 'App\Repository\VerrouRepository' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- [ ] **[App\Tools\OceaneAssistant]** ⬜ non enrichi
+  - Fragment : `use: App\Tools\OceaneAssistant`
+  - Question : Service tiers non documenté — Le composant 'App\Tools\OceaneAssistant' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- [ ] **[App\Tools\Message]** ⬜ non enrichi
+  - Fragment : `use: App\Tools\Message`
+  - Question : Service tiers non documenté — Le composant 'App\Tools\Message' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- [ ] **[Hbm\Common\Tools\StringTools]** ⬜ non enrichi
+  - Fragment : `use: Hbm\Common\Tools\StringTools`
+  - Question : Service tiers non documenté — Le composant 'Hbm\Common\Tools\StringTools' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- [ ] **[Hbm\Globalapi\Service\Soap\OceaneUpd]** ⬜ non enrichi
+  - Fragment : `use: Hbm\Globalapi\Service\Soap\OceaneUpd`
+  - Question : Service tiers non documenté — Le composant 'Hbm\Globalapi\Service\Soap\OceaneUpd' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- [ ] **[Hbm\Globalapi\Service\Rest\Oceane]** ⬜ non enrichi
+  - Fragment : `use: Hbm\Globalapi\Service\Rest\Oceane`
+  - Question : Service tiers non documenté — Le composant 'Hbm\Globalapi\Service\Rest\Oceane' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- [ ] **[App\View\Helper\Adelia]** ⬜ non enrichi
+  - Fragment : `use: App\View\Helper\Adelia`
+  - Question : Service tiers non documenté — Le composant 'App\View\Helper\Adelia' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- [ ] **[Oft\Mvc\Application]** ⬜ non enrichi
+  - Fragment : `use: Oft\Mvc\Application`
+  - Question : Service tiers non documenté — Le composant 'Oft\Mvc\Application' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- [ ] **[App\Tools\DroitAstroTools]** ⬜ non enrichi
+  - Fragment : `use: App\Tools\DroitAstroTools`
+  - Question : Service tiers non documenté — Le composant 'App\Tools\DroitAstroTools' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- [ ] **[Hbm\Globalapi\Service\Rest\ApiOceane]** ⬜ non enrichi
+  - Fragment : `use: Hbm\Globalapi\Service\Rest\ApiOceane`
+  - Question : Service tiers non documenté — Le composant 'Hbm\Globalapi\Service\Rest\ApiOceane' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- [ ] **[Message]** ⬜ non enrichi
+  - Fragment : `instantiation: Message`
+  - Question : Service tiers non documenté — Le composant 'Message' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- [ ] **[Oceane]** ⬜ non enrichi
+  - Fragment : `instantiation: Oceane`
+  - Question : Service tiers non documenté — Le composant 'Oceane' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- [ ] **[OceaneAssistant]** ⬜ non enrichi
+  - Fragment : `instantiation: OceaneAssistant`
+  - Question : Service tiers non documenté — Le composant 'OceaneAssistant' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- [ ] **[Adelia]** ⬜ non enrichi
+  - Fragment : `instantiation: Adelia`
+  - Question : Service tiers non documenté — Le composant 'Adelia' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?
+- [ ] **[DroitAstroTools]** ⬜ non enrichi
+  - Fragment : `instantiation: DroitAstroTools`
+  - Question : Service tiers non documenté — Le composant 'DroitAstroTools' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?

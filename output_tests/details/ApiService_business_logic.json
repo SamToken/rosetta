@@ -1,0 +1,1146 @@
+{
+  "metadata": {
+    "source_type": "php",
+    "source_file": "tests/ApiService.php",
+    "controller_name": "ApiService",
+    "extracted_at": "2026-04-26T09:46:07.898257",
+    "extractor_version": "0.1.0",
+    "confidence_score": 0.29999999999999993
+  },
+  "entry_points": [],
+  "operations": [],
+  "control_flow": [
+    {
+      "id": "block_1",
+      "condition": "key_exists('code', $resultatO) && $resultatO['code'] != 60",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 78,
+      "raw_context": "            //Get FindAndGet Data\n            //Check if fg is well received\n            if (key_exists('code', $resultatO) && $resultatO['code'] != 60) {\n                $message = $resultatO['message'] . ' ' . $resultatO['code'];\n            } elseif (key_exists('code', $resultatO) && $resultatO['code'] == 60) {\n                $message = 'Ticket ' . $ticketId . ' est inexistant dans océane !';"
+    },
+    {
+      "id": "block_2",
+      "condition": "key_exists('code', $resultatO) && $resultatO['code'] == 60",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 80,
+      "raw_context": "            if (key_exists('code', $resultatO) && $resultatO['code'] != 60) {\n                $message = $resultatO['message'] . ' ' . $resultatO['code'];\n            } elseif (key_exists('code', $resultatO) && $resultatO['code'] == 60) {\n                $message = 'Ticket ' . $ticketId . ' est inexistant dans océane !';\n            } elseif (key_exists('id', $resultatO)) {\n                //Hno"
+    },
+    {
+      "id": "block_3",
+      "condition": "key_exists('id', $resultatO)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 82,
+      "raw_context": "            } elseif (key_exists('code', $resultatO) && $resultatO['code'] == 60) {\n                $message = 'Ticket ' . $ticketId . ' est inexistant dans océane !';\n            } elseif (key_exists('id', $resultatO)) {\n                //Hno\n                $hno = $this->getOceane->getHno();\n                //TIKETOCEANEID"
+    },
+    {
+      "id": "block_4",
+      "condition": "$userData && is_array($userData) && !key_exists('message', $userData)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 125,
+      "raw_context": "                $userData = $this->ihmUserRepository->getByLogin($cuidLow);\n\n                if ($userData && is_array($userData) && !key_exists('message', $userData)) {\n                    $idUser = $userData['ID_UTILISATEUR'];\n                }\n                //URL DATA"
+    },
+    {
+      "id": "block_5",
+      "condition": "in_array($category, $listIncident)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 209,
+      "raw_context": "        $listIncident = array(15, 1, 4);\n        //incident\n        if (in_array($category, $listIncident)) {\n            $this->assistantRepository->evtToIncident($astroId, 'incident');\n            $value = 'incident';\n        } // evenement"
+    },
+    {
+      "id": "block_6",
+      "condition": "$category == '64'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 214,
+      "raw_context": "        } // evenement\n        else {\n            if ($category == '64') {\n                $this->assistantRepository->evtToIncident($astroId, 'événement');\n                $value = 'événement';\n            } else {"
+    },
+    {
+      "id": "block_7",
+      "condition": "$data['type_ressource'] == 'DSLAM'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 227,
+      "raw_context": "    {\n        $idJeuParam = '';\n        if ($data['type_ressource'] == 'DSLAM') {\n            $ressource = $this->oceaneAssistant->detailMateriel($data['ressource'], $data['type_ressource_iadr'], $data['code_detecteur'], $data['description'], $data['id1']);\n            $idRessource = $this->astroRepository->createRessource($ressource);\n            $data['id_ressource'] = $idRessource;"
+    },
+    {
+      "id": "block_8",
+      "condition": "$data['evt_incident'] == '64'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 233,
+      "raw_context": "        }\n\n        if ($data['evt_incident'] == '64') {\n            $idJeuParam = $this->astroRepository->getJeuParamByBandeauFonction($data['bandeau_id'], 'ABONDONNER');\n        }\n        $data['id_jeu_param'] = $idJeuParam;"
+    },
+    {
+      "id": "block_9",
+      "condition": "$data['type_ressource'] == 'DSLAM'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 240,
+      "raw_context": "        $astroId = $this->astroRepository->getAstroIdByTicket($data['ticketoceaneid']);\n\n        if ($data['type_ressource'] == 'DSLAM') {\n            // Si autre chose qu'un DSLAM, on doit créer la ressource du DSLAM uniquement\n            if ($ressource['ID_TYPE_RESSOURCE'] != '1' && $ressource['ID_TYPE_RESSOURCE'] != '9') {\n                $inj['ID_TYPE_RESSOURCE'] = '1';"
+    },
+    {
+      "id": "block_10",
+      "condition": "$ressource['ID_TYPE_RESSOURCE'] != '1' && $ressource['ID_TYPE_RESSOURCE'] != '9'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 242,
+      "raw_context": "        if ($data['type_ressource'] == 'DSLAM') {\n            // Si autre chose qu'un DSLAM, on doit créer la ressource du DSLAM uniquement\n            if ($ressource['ID_TYPE_RESSOURCE'] != '1' && $ressource['ID_TYPE_RESSOURCE'] != '9') {\n                $inj['ID_TYPE_RESSOURCE'] = '1';\n                $inj['DSLAM'] = $ressource['DSLAM'];\n                $idRessourceDslam = $this->astroRepository->createRessource($inj);"
+    },
+    {
+      "id": "block_11",
+      "condition": "$enchainement == 'TRAITEMENT_ALARME_ADSL'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 263,
+      "raw_context": "        $astroId = $this->astroRepository->getAstroIdByTicket($idTicket);\n        $message = new Message($this->app, $astroId, $this->messageFile, $this->sessId);\n        if ($enchainement == 'TRAITEMENT_ALARME_ADSL') {\n            $checkIfTAADSL = true;\n            $dataAuto = $this->app->get('AutomatisationRepository')->getCodeAndEnchainementAutomaisation($codeDetecteur);\n            $enchainement = $dataAuto['ENCHAINEMENT'];"
+    },
+    {
+      "id": "block_12",
+      "condition": "!$preRequis",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 273,
+      "raw_context": "                $this->updateDateActionEnCoursEds($idTicket, $connectedGroup);\n                $preRequis = $this->checkPreRequirementEnchainement($idTicket, $enchainement, $connectedGroup);\n                if (!$preRequis) {\n                    $message->setMessageComplexe(\"E_AUTOMATE_ENCHAINEMENT\", array('###DETAIL###' => \"ECHEC AUTOMATE : l'état actuel du ticket ne permet pas le lancement de l'enchaînement\"));\n                    $preRequirementException = new PreRequirementException();\n                    return $preRequirementException();"
+    },
+    {
+      "id": "block_13",
+      "condition": "!$preRequis",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 284,
+      "raw_context": "                $this->updateDateActionEnCoursEds($idTicket, $connectedGroup);\n                $preRequis = $this->checkPreRequirementEnchainement($idTicket, $enchainement, $connectedGroup);\n                if (!$preRequis) {\n                    $message->setMessageComplexe(\"E_AUTOMATE_ENCHAINEMENT\", array('###DETAIL###' => \"ECHEC AUTOMATE : l'état actuel du ticket ne permet pas le lancement de l'enchaînement\"));\n                    $preRequirementException = new PreRequirementException();\n                    return $preRequirementException();"
+    },
+    {
+      "id": "block_14",
+      "condition": "!$preRequis",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 304,
+      "raw_context": "                $this->updateDateActionEnCoursEds($idTicket, $connectedGroup);\n                $preRequis = $this->checkPreRequirementEnchainement($idTicket, $enchainement, $connectedGroup);\n                if (!$preRequis) {\n                    $message->setMessageComplexe(\"E_AUTOMATE_ENCHAINEMENT\", array('###DETAIL###' => \"ECHEC AUTOMATE : l'état actuel du ticket ne permet pas le lancement de l'enchaînement\"));\n                    $preRequirementException = new PreRequirementException();\n                    return $preRequirementException();"
+    },
+    {
+      "id": "block_15",
+      "condition": "!$preRequis",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 315,
+      "raw_context": "                $this->updateDateActionEnCoursEds($idTicket, $connectedGroup);\n                $preRequis = $this->checkPreRequirementEnchainement($idTicket, $enchainement, $connectedGroup);\n                if (!$preRequis) {\n                    $message->setMessageComplexe(\"E_AUTOMATE_ENCHAINEMENT\", array('###DETAIL###' => \"ECHEC AUTOMATE : l'état actuel du ticket ne permet pas le lancement de l'enchaînement\"));\n                    $preRequirementException = new PreRequirementException();\n                    return $preRequirementException();"
+    },
+    {
+      "id": "block_16",
+      "condition": "!$preRequis",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 326,
+      "raw_context": "                $this->updateDateActionEnCoursEds($idTicket, $connectedGroup);\n                $preRequis = $this->checkPreRequirementEnchainement($idTicket, $enchainement, $connectedGroup);\n                if (!$preRequis) {\n                    $message->setMessageComplexe(\"E_AUTOMATE_ENCHAINEMENT\", array('###DETAIL###' => \"ECHEC AUTOMATE : l'état actuel du ticket ne permet pas le lancement de l'enchaînement\"));\n                    $preRequirementException = new PreRequirementException();\n                    return $preRequirementException();"
+    },
+    {
+      "id": "block_17",
+      "condition": "!$preRequis",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 351,
+      "raw_context": "                $this->updateDateActionEnCoursEds($idTicket, $connectedGroup);\n                $preRequis = $this->checkPreRequirementEnchainement($idTicket, $enchainement, $connectedGroup);\n                if (!$preRequis) {\n                    $message->setMessageComplexe(\"E_AUTOMATE_ENCHAINEMENT\", array('###DETAIL###' => \"ECHEC AUTOMATE : l'état actuel du ticket ne permet pas le lancement de l'enchaînement\"));\n                    $preRequirementException = new PreRequirementException();\n                    return $preRequirementException();"
+    },
+    {
+      "id": "block_18",
+      "condition": "$code == 'TRAITEMENT_ALARME_CARTES_CLIENTS' || $code == 'TRAITEMENT_ALARME_EVT' || $code == 'TRAITEMENT_RENDRE_MAIN_EVT'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 370,
+      "raw_context": "    {\n        $dataFg = $this->initApi($idTicket, $connectedGroup);\n        if ($code == 'TRAITEMENT_ALARME_CARTES_CLIENTS' || $code == 'TRAITEMENT_ALARME_EVT' || $code == 'TRAITEMENT_RENDRE_MAIN_EVT') {\n            return ($dataFg['eds_pilote'] == $connectedGroup && $dataFg['evt_incident'] == '64' && ($dataFg['status'] == 'Open' || $dataFg['status'] == 'InProgress' || $dataFg['status'] == 'OnHold'));\n        } else {\n            return true;"
+    },
+    {
+      "id": "block_19",
+      "condition": "key_exists('faultstring', $result) && $result->faultstring != '' && key_exists('detail', $result)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 401,
+      "raw_context": "        );\n        $result = $troubleTicketUpdate->getResponseUpdateDateActionEdsEnchainement($ticketId, $values);\n        if (key_exists('faultstring', $result) && $result->faultstring != '' && key_exists('detail', $result)) {\n            $updateOceaneException = new UpdateOceaneException();\n            return $updateOceaneException();\n        }"
+    },
+    {
+      "id": "block_20",
+      "condition": "$ticketID",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 408,
+      "raw_context": "    }\n\n    public function getEDSActif($ticketID)\n    {\n        $conf = $this->app->config;\n        $env = $conf['ENV'];"
+    },
+    {
+      "id": "block_21",
+      "condition": "isset($result->TroubleTicketResponse->TroubleTicketResponse)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 419,
+      "raw_context": "        $EDSActif = array();\n        $result = $OceaneFg->getResponseFindandGetTroubleTicket($ticketID);\n        if (isset($result->TroubleTicketResponse->TroubleTicketResponse)) {\n            $troubleTicketResponse = $result->TroubleTicketResponse->TroubleTicketResponse;\n\n            $partyRole = $troubleTicketResponse->PartyRole;"
+    },
+    {
+      "id": "block_22",
+      "condition": "$partyRole[$key]->partyRoleType == \"TroubleResolutionContributor\" && property_exists($partyRole[$key], 'Local_PartyIntervention')",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 424,
+      "raw_context": "            $partyRole = $troubleTicketResponse->PartyRole;\n            foreach ($partyRole as $key => $value) {\n                if ($partyRole[$key]->partyRoleType == \"TroubleResolutionContributor\" && property_exists($partyRole[$key], 'Local_PartyIntervention')) {\n                    if (is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Accepted\") {\n                        return $partyRole[$key]->PartyRoleSet->partyRoleSetID;\n                    } else if (is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Requested\" && $partyRole[$key]->Local_PartyIntervention->level == '1') {"
+    },
+    {
+      "id": "block_23",
+      "condition": "is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Accepted\"",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 425,
+      "raw_context": "            foreach ($partyRole as $key => $value) {\n                if ($partyRole[$key]->partyRoleType == \"TroubleResolutionContributor\" && property_exists($partyRole[$key], 'Local_PartyIntervention')) {\n                    if (is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Accepted\") {\n                        return $partyRole[$key]->PartyRoleSet->partyRoleSetID;\n                    } else if (is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Requested\" && $partyRole[$key]->Local_PartyIntervention->level == '1') {\n                        return $partyRole[$key]->PartyRoleSet->partyRoleSetID;"
+    },
+    {
+      "id": "block_24",
+      "condition": "is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Requested\" && $partyRole[$key]->Local_PartyIntervention->level == '1'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 427,
+      "raw_context": "                    if (is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Accepted\") {\n                        return $partyRole[$key]->PartyRoleSet->partyRoleSetID;\n                    } else if (is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Requested\" && $partyRole[$key]->Local_PartyIntervention->level == '1') {\n                        return $partyRole[$key]->PartyRoleSet->partyRoleSetID;\n                    } else if (is_array($partyRole[$key]->Local_PartyIntervention->interventionStatus)) {\n                        foreach ($partyRole[$key]->Local_PartyIntervention->interventionStatus as $k => $v) {"
+    },
+    {
+      "id": "block_25",
+      "condition": "is_array($partyRole[$key]->Local_PartyIntervention->interventionStatus)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 429,
+      "raw_context": "                    } else if (is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Requested\" && $partyRole[$key]->Local_PartyIntervention->level == '1') {\n                        return $partyRole[$key]->PartyRoleSet->partyRoleSetID;\n                    } else if (is_array($partyRole[$key]->Local_PartyIntervention->interventionStatus)) {\n                        foreach ($partyRole[$key]->Local_PartyIntervention->interventionStatus as $k => $v) {\n                            if ($partyRole[$key]->Local_PartyIntervention->interventionStatus[$k]->status == \"Requested\" && $partyRole[$key]->Local_PartyIntervention->interventionStatus[$k + 1]->status == \"Accepted\") {\n                                return $partyRole[$key]->PartyRoleSet->partyRoleSetID;"
+    },
+    {
+      "id": "block_26",
+      "condition": "$partyRole[$key]->Local_PartyIntervention->interventionStatus[$k]->status == \"Requested\" && $partyRole[$key]->Local_PartyIntervention->interventionStatus[$k + 1]->status == \"Accepted\"",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 431,
+      "raw_context": "                    } else if (is_array($partyRole[$key]->Local_PartyIntervention->interventionStatus)) {\n                        foreach ($partyRole[$key]->Local_PartyIntervention->interventionStatus as $k => $v) {\n                            if ($partyRole[$key]->Local_PartyIntervention->interventionStatus[$k]->status == \"Requested\" && $partyRole[$key]->Local_PartyIntervention->interventionStatus[$k + 1]->status == \"Accepted\") {\n                                return $partyRole[$key]->PartyRoleSet->partyRoleSetID;\n                            }\n                        }"
+    },
+    {
+      "id": "block_27",
+      "condition": "isset($result->TroubleTicketResponse->TroubleTicketResponse)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 453,
+      "raw_context": "        $EDSPilote = array();\n        $result = $OceaneFg->getResponseFindandGetTroubleTicket($ticketID);\n        if (isset($result->TroubleTicketResponse->TroubleTicketResponse)) {\n            $troubleTicketResponse = $result->TroubleTicketResponse->TroubleTicketResponse;\n\n            $partyRole = $troubleTicketResponse->PartyRole;"
+    },
+    {
+      "id": "block_28",
+      "condition": "$partyRole[$key]->partyRoleType == \"TroubleResolutionLeader\" && property_exists($partyRole[$key], 'Local_PartyIntervention')",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 458,
+      "raw_context": "            $partyRole = $troubleTicketResponse->PartyRole;\n            foreach ($partyRole as $key => $value) {\n                if ($partyRole[$key]->partyRoleType == \"TroubleResolutionLeader\" && property_exists($partyRole[$key], 'Local_PartyIntervention')) {\n                    if (is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Accepted\") {\n                        return $partyRole[$key]->PartyRoleSet->partyRoleSetID;\n                    } else if (is_array($partyRole[$key]->Local_PartyIntervention->interventionStatus)) {"
+    },
+    {
+      "id": "block_29",
+      "condition": "is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Accepted\"",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 459,
+      "raw_context": "            foreach ($partyRole as $key => $value) {\n                if ($partyRole[$key]->partyRoleType == \"TroubleResolutionLeader\" && property_exists($partyRole[$key], 'Local_PartyIntervention')) {\n                    if (is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Accepted\") {\n                        return $partyRole[$key]->PartyRoleSet->partyRoleSetID;\n                    } else if (is_array($partyRole[$key]->Local_PartyIntervention->interventionStatus)) {\n                        foreach ($partyRole[$key]->Local_PartyIntervention->interventionStatus as $k => $v) {"
+    },
+    {
+      "id": "block_30",
+      "condition": "is_array($partyRole[$key]->Local_PartyIntervention->interventionStatus)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 461,
+      "raw_context": "                    if (is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Accepted\") {\n                        return $partyRole[$key]->PartyRoleSet->partyRoleSetID;\n                    } else if (is_array($partyRole[$key]->Local_PartyIntervention->interventionStatus)) {\n                        foreach ($partyRole[$key]->Local_PartyIntervention->interventionStatus as $k => $v) {\n                            if ($partyRole[$key]->Local_PartyIntervention->interventionStatus[$k]->status == \"Requested\" && $partyRole[$key]->Local_PartyIntervention->interventionStatus[$k + 1]->status == \"Accepted\") {\n                                return $partyRole[$key]->PartyRoleSet->partyRoleSetID;"
+    },
+    {
+      "id": "block_31",
+      "condition": "$partyRole[$key]->Local_PartyIntervention->interventionStatus[$k]->status == \"Requested\" && $partyRole[$key]->Local_PartyIntervention->interventionStatus[$k + 1]->status == \"Accepted\"",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 463,
+      "raw_context": "                    } else if (is_array($partyRole[$key]->Local_PartyIntervention->interventionStatus)) {\n                        foreach ($partyRole[$key]->Local_PartyIntervention->interventionStatus as $k => $v) {\n                            if ($partyRole[$key]->Local_PartyIntervention->interventionStatus[$k]->status == \"Requested\" && $partyRole[$key]->Local_PartyIntervention->interventionStatus[$k + 1]->status == \"Accepted\") {\n                                return $partyRole[$key]->PartyRoleSet->partyRoleSetID;\n                            }\n                        }"
+    },
+    {
+      "id": "block_32",
+      "condition": "$scenarioExist == '0'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 506,
+      "raw_context": "    {\n        $scenarioExist = $this->enchainementRepo->verifierScenarioExist($idScenario);\n        if($scenarioExist == '0')\n        {\n            $badRequestException = new BadRequestException('scenarioId does not exist');\n            return $badRequestException();"
+    },
+    {
+      "id": "block_33",
+      "condition": "$etatScenario == '0'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 517,
+      "raw_context": "    {\n        $etatScenario = $this->enchainementRepo->verifierActivationScenario($idScenario);\n        if($etatScenario == '0')\n        {\n            $scenarioDesactiveException = new ScenarioDesactiveException();\n            return $scenarioDesactiveException();"
+    },
+    {
+      "id": "block_34",
+      "condition": "$typeScenario == '0' && $scenarioType == 'parametrable'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 528,
+      "raw_context": "    {\n        $typeScenario = $this->enchainementRepo->verifierTypeScenario($idScenario);\n        if($typeScenario == '0' && $scenarioType == 'parametrable')\n        {\n            $scenarioTypeException = new BadRequestException(\"Ce scenarioId n'est pas un scenario parametrable\");\n            return $scenarioTypeException();"
+    },
+    {
+      "id": "block_35",
+      "condition": "$typeScenario == '1' && $scenarioType == 'legacy'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 532,
+      "raw_context": "            $scenarioTypeException = new BadRequestException(\"Ce scenarioId n'est pas un scenario parametrable\");\n            return $scenarioTypeException();\n        }elseif($typeScenario == '1' && $scenarioType == 'legacy')\n        {\n            $scenarioTypeException = new BadRequestException(\"Ce scenarioId n'est pas un scenario legacy\");\n            return $scenarioTypeException();"
+    }
+  ],
+  "data_flow": {
+    "inputs": [],
+    "outputs": [],
+    "session_reads": [],
+    "session_writes": []
+  },
+  "dependencies": [
+    {
+      "name": "App\\ApiException\\BadRequestException",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "App\\ApiException\\ScenarioDesactiveException",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "App\\Tools\\OceaneAssistant",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "Hbm\\Common\\Tools\\StringTools",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "Hbm\\Globalapi\\Service\\Soap\\OceaneFg",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "App\\ApiException\\PreRequirementException",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "App\\Tools\\Message",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "Hbm\\Globalapi\\Service\\Soap\\OceaneUpd",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "App\\ApiException\\UpdateOceaneException",
+      "type": "use",
+      "suggested_symfony": null
+    },
+    {
+      "name": "OceaneAssistant",
+      "type": "instantiation",
+      "suggested_symfony": null
+    },
+    {
+      "name": "Message",
+      "type": "instantiation",
+      "suggested_symfony": null
+    },
+    {
+      "name": "PreRequirementException",
+      "type": "instantiation",
+      "suggested_symfony": null
+    },
+    {
+      "name": "BadRequestException",
+      "type": "instantiation",
+      "suggested_symfony": null
+    },
+    {
+      "name": "OceaneUpd",
+      "type": "instantiation",
+      "suggested_symfony": null
+    },
+    {
+      "name": "UpdateOceaneException",
+      "type": "instantiation",
+      "suggested_symfony": null
+    },
+    {
+      "name": "OceaneFg",
+      "type": "instantiation",
+      "suggested_symfony": null
+    },
+    {
+      "name": "ScenarioDesactiveException",
+      "type": "instantiation",
+      "suggested_symfony": null
+    },
+    {
+      "name": "app",
+      "type": "service",
+      "suggested_symfony": "AppService"
+    },
+    {
+      "name": "getOceane",
+      "type": "service",
+      "suggested_symfony": "GetoceaneService"
+    },
+    {
+      "name": "ihmUserRepository",
+      "type": "service",
+      "suggested_symfony": "IhmuserrepositoryService"
+    },
+    {
+      "name": "apiRepository",
+      "type": "service",
+      "suggested_symfony": "ApirepositoryService"
+    },
+    {
+      "name": "astroRepository",
+      "type": "service",
+      "suggested_symfony": "AstrorepositoryService"
+    },
+    {
+      "name": "traceRepository",
+      "type": "service",
+      "suggested_symfony": "TracerepositoryService"
+    },
+    {
+      "name": "assistantRepository",
+      "type": "service",
+      "suggested_symfony": "AssistantrepositoryService"
+    },
+    {
+      "name": "oceaneAssistant",
+      "type": "service",
+      "suggested_symfony": "OceaneassistantService"
+    },
+    {
+      "name": "automatisationRepository",
+      "type": "service",
+      "suggested_symfony": "AutomatisationrepositoryService"
+    },
+    {
+      "name": "globalApiUrlService",
+      "type": "service",
+      "suggested_symfony": "GlobalapiurlserviceService"
+    },
+    {
+      "name": "globalApiRepository",
+      "type": "service",
+      "suggested_symfony": "GlobalapirepositoryService"
+    },
+    {
+      "name": "enchainementRepo",
+      "type": "service",
+      "suggested_symfony": "EnchainementrepoService"
+    }
+  ],
+  "unparsed_sections": [],
+  "flags": [
+    {
+      "id": "missing_branch_1",
+      "type": "missing_branch",
+      "location": "block_1",
+      "fragment": "key_exists('code', $resultatO) && $resultatO['code'] != 60",
+      "question": "Point de décision — key_exists('code', 'resultatO') et 'resultatO'['code'] différent de 60. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 78,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            //Get FindAndGet Data\n            //Check if fg is well received\n            if (key_exists('code', $resultatO) && $resultatO['code'] != 60) {\n                $message = $resultatO['message'] . ' ' . $resultatO['code'];\n            } elseif (key_exists('code', $resultatO) && $resultatO['code'] == 60) {\n                $message = 'Ticket ' . $ticketId . ' est inexistant dans océane !';",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_2",
+      "type": "missing_branch",
+      "location": "block_2",
+      "fragment": "key_exists('code', $resultatO) && $resultatO['code'] == 60",
+      "question": "Point de décision — key_exists('code', 'resultatO') et 'resultatO'['code'] égal à 60. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 80,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            if (key_exists('code', $resultatO) && $resultatO['code'] != 60) {\n                $message = $resultatO['message'] . ' ' . $resultatO['code'];\n            } elseif (key_exists('code', $resultatO) && $resultatO['code'] == 60) {\n                $message = 'Ticket ' . $ticketId . ' est inexistant dans océane !';\n            } elseif (key_exists('id', $resultatO)) {\n                //Hno",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_3",
+      "type": "missing_branch",
+      "location": "block_3",
+      "fragment": "key_exists('id', $resultatO)",
+      "question": "Point de décision — key_exists('id', 'resultatO'). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 82,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            } elseif (key_exists('code', $resultatO) && $resultatO['code'] == 60) {\n                $message = 'Ticket ' . $ticketId . ' est inexistant dans océane !';\n            } elseif (key_exists('id', $resultatO)) {\n                //Hno\n                $hno = $this->getOceane->getHno();\n                //TIKETOCEANEID",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_4",
+      "type": "missing_branch",
+      "location": "block_4",
+      "fragment": "$userData && is_array($userData) && !key_exists('message', $userData)",
+      "question": "Point de décision — 'userData' et is_array('userData') et !key_exists('message', 'userData'). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 125,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                $userData = $this->ihmUserRepository->getByLogin($cuidLow);\n\n                if ($userData && is_array($userData) && !key_exists('message', $userData)) {\n                    $idUser = $userData['ID_UTILISATEUR'];\n                }\n                //URL DATA",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_5",
+      "type": "missing_branch",
+      "location": "block_5",
+      "fragment": "in_array($category, $listIncident)",
+      "question": "Point de décision — in_array('category', 'listIncident'). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 209,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        $listIncident = array(15, 1, 4);\n        //incident\n        if (in_array($category, $listIncident)) {\n            $this->assistantRepository->evtToIncident($astroId, 'incident');\n            $value = 'incident';\n        } // evenement",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_6",
+      "type": "missing_branch",
+      "location": "block_6",
+      "fragment": "$category == '64'",
+      "question": "Point de décision — 'category' égal à '64'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 214,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        } // evenement\n        else {\n            if ($category == '64') {\n                $this->assistantRepository->evtToIncident($astroId, 'événement');\n                $value = 'événement';\n            } else {",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_7",
+      "type": "missing_branch",
+      "location": "block_7",
+      "fragment": "$data['type_ressource'] == 'DSLAM'",
+      "question": "Point de décision — 'data'['type_ressource'] égal à 'DSLAM'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 227,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "    {\n        $idJeuParam = '';\n        if ($data['type_ressource'] == 'DSLAM') {\n            $ressource = $this->oceaneAssistant->detailMateriel($data['ressource'], $data['type_ressource_iadr'], $data['code_detecteur'], $data['description'], $data['id1']);\n            $idRessource = $this->astroRepository->createRessource($ressource);\n            $data['id_ressource'] = $idRessource;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_8",
+      "type": "missing_branch",
+      "location": "block_8",
+      "fragment": "$data['evt_incident'] == '64'",
+      "question": "Point de décision — 'data'['evt_incident'] égal à '64'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 233,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        }\n\n        if ($data['evt_incident'] == '64') {\n            $idJeuParam = $this->astroRepository->getJeuParamByBandeauFonction($data['bandeau_id'], 'ABONDONNER');\n        }\n        $data['id_jeu_param'] = $idJeuParam;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_9",
+      "type": "missing_branch",
+      "location": "block_9",
+      "fragment": "$data['type_ressource'] == 'DSLAM'",
+      "question": "Point de décision — 'data'['type_ressource'] égal à 'DSLAM'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 240,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        $astroId = $this->astroRepository->getAstroIdByTicket($data['ticketoceaneid']);\n\n        if ($data['type_ressource'] == 'DSLAM') {\n            // Si autre chose qu'un DSLAM, on doit créer la ressource du DSLAM uniquement\n            if ($ressource['ID_TYPE_RESSOURCE'] != '1' && $ressource['ID_TYPE_RESSOURCE'] != '9') {\n                $inj['ID_TYPE_RESSOURCE'] = '1';",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_10",
+      "type": "missing_branch",
+      "location": "block_10",
+      "fragment": "$ressource['ID_TYPE_RESSOURCE'] != '1' && $ressource['ID_TYPE_RESSOURCE'] != '9'",
+      "question": "Point de décision — 'ressource'['ID_TYPE_RESSOURCE'] différent de '1' et 'ressource'['ID_TYPE_RESSOURCE'] différent de '9'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 242,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        if ($data['type_ressource'] == 'DSLAM') {\n            // Si autre chose qu'un DSLAM, on doit créer la ressource du DSLAM uniquement\n            if ($ressource['ID_TYPE_RESSOURCE'] != '1' && $ressource['ID_TYPE_RESSOURCE'] != '9') {\n                $inj['ID_TYPE_RESSOURCE'] = '1';\n                $inj['DSLAM'] = $ressource['DSLAM'];\n                $idRessourceDslam = $this->astroRepository->createRessource($inj);",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_11",
+      "type": "missing_branch",
+      "location": "block_11",
+      "fragment": "$enchainement == 'TRAITEMENT_ALARME_ADSL'",
+      "question": "Point de décision — 'enchainement' égal à 'TRAITEMENT_ALARME_ADSL'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 263,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        $astroId = $this->astroRepository->getAstroIdByTicket($idTicket);\n        $message = new Message($this->app, $astroId, $this->messageFile, $this->sessId);\n        if ($enchainement == 'TRAITEMENT_ALARME_ADSL') {\n            $checkIfTAADSL = true;\n            $dataAuto = $this->app->get('AutomatisationRepository')->getCodeAndEnchainementAutomaisation($codeDetecteur);\n            $enchainement = $dataAuto['ENCHAINEMENT'];",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_12",
+      "type": "missing_branch",
+      "location": "block_12",
+      "fragment": "!$preRequis",
+      "question": "Point de décision — !'preRequis'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 273,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                $this->updateDateActionEnCoursEds($idTicket, $connectedGroup);\n                $preRequis = $this->checkPreRequirementEnchainement($idTicket, $enchainement, $connectedGroup);\n                if (!$preRequis) {\n                    $message->setMessageComplexe(\"E_AUTOMATE_ENCHAINEMENT\", array('###DETAIL###' => \"ECHEC AUTOMATE : l'état actuel du ticket ne permet pas le lancement de l'enchaînement\"));\n                    $preRequirementException = new PreRequirementException();\n                    return $preRequirementException();",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_13",
+      "type": "missing_branch",
+      "location": "block_13",
+      "fragment": "!$preRequis",
+      "question": "Point de décision — !'preRequis'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 284,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                $this->updateDateActionEnCoursEds($idTicket, $connectedGroup);\n                $preRequis = $this->checkPreRequirementEnchainement($idTicket, $enchainement, $connectedGroup);\n                if (!$preRequis) {\n                    $message->setMessageComplexe(\"E_AUTOMATE_ENCHAINEMENT\", array('###DETAIL###' => \"ECHEC AUTOMATE : l'état actuel du ticket ne permet pas le lancement de l'enchaînement\"));\n                    $preRequirementException = new PreRequirementException();\n                    return $preRequirementException();",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_14",
+      "type": "missing_branch",
+      "location": "block_14",
+      "fragment": "!$preRequis",
+      "question": "Point de décision — !'preRequis'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 304,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                $this->updateDateActionEnCoursEds($idTicket, $connectedGroup);\n                $preRequis = $this->checkPreRequirementEnchainement($idTicket, $enchainement, $connectedGroup);\n                if (!$preRequis) {\n                    $message->setMessageComplexe(\"E_AUTOMATE_ENCHAINEMENT\", array('###DETAIL###' => \"ECHEC AUTOMATE : l'état actuel du ticket ne permet pas le lancement de l'enchaînement\"));\n                    $preRequirementException = new PreRequirementException();\n                    return $preRequirementException();",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_15",
+      "type": "missing_branch",
+      "location": "block_15",
+      "fragment": "!$preRequis",
+      "question": "Point de décision — !'preRequis'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 315,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                $this->updateDateActionEnCoursEds($idTicket, $connectedGroup);\n                $preRequis = $this->checkPreRequirementEnchainement($idTicket, $enchainement, $connectedGroup);\n                if (!$preRequis) {\n                    $message->setMessageComplexe(\"E_AUTOMATE_ENCHAINEMENT\", array('###DETAIL###' => \"ECHEC AUTOMATE : l'état actuel du ticket ne permet pas le lancement de l'enchaînement\"));\n                    $preRequirementException = new PreRequirementException();\n                    return $preRequirementException();",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_16",
+      "type": "missing_branch",
+      "location": "block_16",
+      "fragment": "!$preRequis",
+      "question": "Point de décision — !'preRequis'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 326,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                $this->updateDateActionEnCoursEds($idTicket, $connectedGroup);\n                $preRequis = $this->checkPreRequirementEnchainement($idTicket, $enchainement, $connectedGroup);\n                if (!$preRequis) {\n                    $message->setMessageComplexe(\"E_AUTOMATE_ENCHAINEMENT\", array('###DETAIL###' => \"ECHEC AUTOMATE : l'état actuel du ticket ne permet pas le lancement de l'enchaînement\"));\n                    $preRequirementException = new PreRequirementException();\n                    return $preRequirementException();",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_17",
+      "type": "missing_branch",
+      "location": "block_17",
+      "fragment": "!$preRequis",
+      "question": "Point de décision — !'preRequis'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 351,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                $this->updateDateActionEnCoursEds($idTicket, $connectedGroup);\n                $preRequis = $this->checkPreRequirementEnchainement($idTicket, $enchainement, $connectedGroup);\n                if (!$preRequis) {\n                    $message->setMessageComplexe(\"E_AUTOMATE_ENCHAINEMENT\", array('###DETAIL###' => \"ECHEC AUTOMATE : l'état actuel du ticket ne permet pas le lancement de l'enchaînement\"));\n                    $preRequirementException = new PreRequirementException();\n                    return $preRequirementException();",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_18",
+      "type": "missing_branch",
+      "location": "block_18",
+      "fragment": "$code == 'TRAITEMENT_ALARME_CARTES_CLIENTS' || $code == 'TRAITEMENT_ALARME_EVT' || $code == 'TRAITEMENT_RENDRE_MAIN_EVT'",
+      "question": "Point de décision — 'code' égal à 'TRAITEMENT_ALARME_CARTES_CLIENTS' ou 'code' égal à 'TRAITEMENT_ALARME_EVT' ou 'code' égal à 'TRAITEMENT_RENDRE_MAIN_EVT'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 370,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "    {\n        $dataFg = $this->initApi($idTicket, $connectedGroup);\n        if ($code == 'TRAITEMENT_ALARME_CARTES_CLIENTS' || $code == 'TRAITEMENT_ALARME_EVT' || $code == 'TRAITEMENT_RENDRE_MAIN_EVT') {\n            return ($dataFg['eds_pilote'] == $connectedGroup && $dataFg['evt_incident'] == '64' && ($dataFg['status'] == 'Open' || $dataFg['status'] == 'InProgress' || $dataFg['status'] == 'OnHold'));\n        } else {\n            return true;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_19",
+      "type": "missing_branch",
+      "location": "block_19",
+      "fragment": "key_exists('faultstring', $result) && $result->faultstring != '' && key_exists('detail', $result)",
+      "question": "Point de décision — key_exists('faultstring', 'result') et 'result'->faultstring différent de '' et key_exists('detail', 'result'). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 401,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        );\n        $result = $troubleTicketUpdate->getResponseUpdateDateActionEdsEnchainement($ticketId, $values);\n        if (key_exists('faultstring', $result) && $result->faultstring != '' && key_exists('detail', $result)) {\n            $updateOceaneException = new UpdateOceaneException();\n            return $updateOceaneException();\n        }",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_20",
+      "type": "missing_branch",
+      "location": "block_20",
+      "fragment": "$ticketID",
+      "question": "Point de décision — 'ticketID'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 408,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "    }\n\n    public function getEDSActif($ticketID)\n    {\n        $conf = $this->app->config;\n        $env = $conf['ENV'];",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_21",
+      "type": "missing_branch",
+      "location": "block_21",
+      "fragment": "isset($result->TroubleTicketResponse->TroubleTicketResponse)",
+      "question": "Point de décision — isset('result'->TroubleTicketResponse->TroubleTicketResponse). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 419,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        $EDSActif = array();\n        $result = $OceaneFg->getResponseFindandGetTroubleTicket($ticketID);\n        if (isset($result->TroubleTicketResponse->TroubleTicketResponse)) {\n            $troubleTicketResponse = $result->TroubleTicketResponse->TroubleTicketResponse;\n\n            $partyRole = $troubleTicketResponse->PartyRole;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_22",
+      "type": "missing_branch",
+      "location": "block_22",
+      "fragment": "$partyRole[$key]->partyRoleType == \"TroubleResolutionContributor\" && property_exists($partyRole[$key], 'Local_PartyIntervention')",
+      "question": "Point de décision — 'partyRole'['key']->partyRoleType égal à \"TroubleResolutionContributor\" et property_exists('partyRole'['key'], 'Local_PartyIntervention'). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 424,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            $partyRole = $troubleTicketResponse->PartyRole;\n            foreach ($partyRole as $key => $value) {\n                if ($partyRole[$key]->partyRoleType == \"TroubleResolutionContributor\" && property_exists($partyRole[$key], 'Local_PartyIntervention')) {\n                    if (is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Accepted\") {\n                        return $partyRole[$key]->PartyRoleSet->partyRoleSetID;\n                    } else if (is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Requested\" && $partyRole[$key]->Local_PartyIntervention->level == '1') {",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_23",
+      "type": "missing_branch",
+      "location": "block_23",
+      "fragment": "is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Accepted\"",
+      "question": "Point de décision — is_object('partyRole'['key']->Local_PartyIntervention->interventionStatus) et 'partyRole'['key']->Local_PartyIntervention->interventionStatus->status égal à \"Accepted\". Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 425,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            foreach ($partyRole as $key => $value) {\n                if ($partyRole[$key]->partyRoleType == \"TroubleResolutionContributor\" && property_exists($partyRole[$key], 'Local_PartyIntervention')) {\n                    if (is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Accepted\") {\n                        return $partyRole[$key]->PartyRoleSet->partyRoleSetID;\n                    } else if (is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Requested\" && $partyRole[$key]->Local_PartyIntervention->level == '1') {\n                        return $partyRole[$key]->PartyRoleSet->partyRoleSetID;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_24",
+      "type": "missing_branch",
+      "location": "block_24",
+      "fragment": "is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Requested\" && $partyRole[$key]->Local_PartyIntervention->level == '1'",
+      "question": "Point de décision — is_object('partyRole'['key']->Local_PartyIntervention->interventionStatus) et 'partyRole'['key']->Local_PartyIntervention->interventionStatus->status égal à \"Requested\" et 'partyRole'['key']->Local_PartyIntervention->level égal à '1'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 427,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                    if (is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Accepted\") {\n                        return $partyRole[$key]->PartyRoleSet->partyRoleSetID;\n                    } else if (is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Requested\" && $partyRole[$key]->Local_PartyIntervention->level == '1') {\n                        return $partyRole[$key]->PartyRoleSet->partyRoleSetID;\n                    } else if (is_array($partyRole[$key]->Local_PartyIntervention->interventionStatus)) {\n                        foreach ($partyRole[$key]->Local_PartyIntervention->interventionStatus as $k => $v) {",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_25",
+      "type": "missing_branch",
+      "location": "block_25",
+      "fragment": "is_array($partyRole[$key]->Local_PartyIntervention->interventionStatus)",
+      "question": "Point de décision — is_array('partyRole'['key']->Local_PartyIntervention->interventionStatus). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 429,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                    } else if (is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Requested\" && $partyRole[$key]->Local_PartyIntervention->level == '1') {\n                        return $partyRole[$key]->PartyRoleSet->partyRoleSetID;\n                    } else if (is_array($partyRole[$key]->Local_PartyIntervention->interventionStatus)) {\n                        foreach ($partyRole[$key]->Local_PartyIntervention->interventionStatus as $k => $v) {\n                            if ($partyRole[$key]->Local_PartyIntervention->interventionStatus[$k]->status == \"Requested\" && $partyRole[$key]->Local_PartyIntervention->interventionStatus[$k + 1]->status == \"Accepted\") {\n                                return $partyRole[$key]->PartyRoleSet->partyRoleSetID;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_26",
+      "type": "missing_branch",
+      "location": "block_26",
+      "fragment": "$partyRole[$key]->Local_PartyIntervention->interventionStatus[$k]->status == \"Requested\" && $partyRole[$key]->Local_PartyIntervention->interventionStatus[$k + 1]->status == \"Accepted\"",
+      "question": "Point de décision — 'partyRole'['key']->Local_PartyIntervention->interventionStatus['k']->status égal à \"Requested\" et 'partyRole'['key']->Local_PartyIntervention->interventionStatus['k' + 1]->status égal à \"Accepted\". Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 431,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                    } else if (is_array($partyRole[$key]->Local_PartyIntervention->interventionStatus)) {\n                        foreach ($partyRole[$key]->Local_PartyIntervention->interventionStatus as $k => $v) {\n                            if ($partyRole[$key]->Local_PartyIntervention->interventionStatus[$k]->status == \"Requested\" && $partyRole[$key]->Local_PartyIntervention->interventionStatus[$k + 1]->status == \"Accepted\") {\n                                return $partyRole[$key]->PartyRoleSet->partyRoleSetID;\n                            }\n                        }",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_27",
+      "type": "missing_branch",
+      "location": "block_27",
+      "fragment": "isset($result->TroubleTicketResponse->TroubleTicketResponse)",
+      "question": "Point de décision — isset('result'->TroubleTicketResponse->TroubleTicketResponse). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 453,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        $EDSPilote = array();\n        $result = $OceaneFg->getResponseFindandGetTroubleTicket($ticketID);\n        if (isset($result->TroubleTicketResponse->TroubleTicketResponse)) {\n            $troubleTicketResponse = $result->TroubleTicketResponse->TroubleTicketResponse;\n\n            $partyRole = $troubleTicketResponse->PartyRole;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_28",
+      "type": "missing_branch",
+      "location": "block_28",
+      "fragment": "$partyRole[$key]->partyRoleType == \"TroubleResolutionLeader\" && property_exists($partyRole[$key], 'Local_PartyIntervention')",
+      "question": "Point de décision — 'partyRole'['key']->partyRoleType égal à \"TroubleResolutionLeader\" et property_exists('partyRole'['key'], 'Local_PartyIntervention'). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 458,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            $partyRole = $troubleTicketResponse->PartyRole;\n            foreach ($partyRole as $key => $value) {\n                if ($partyRole[$key]->partyRoleType == \"TroubleResolutionLeader\" && property_exists($partyRole[$key], 'Local_PartyIntervention')) {\n                    if (is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Accepted\") {\n                        return $partyRole[$key]->PartyRoleSet->partyRoleSetID;\n                    } else if (is_array($partyRole[$key]->Local_PartyIntervention->interventionStatus)) {",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_29",
+      "type": "missing_branch",
+      "location": "block_29",
+      "fragment": "is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Accepted\"",
+      "question": "Point de décision — is_object('partyRole'['key']->Local_PartyIntervention->interventionStatus) et 'partyRole'['key']->Local_PartyIntervention->interventionStatus->status égal à \"Accepted\". Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 459,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            foreach ($partyRole as $key => $value) {\n                if ($partyRole[$key]->partyRoleType == \"TroubleResolutionLeader\" && property_exists($partyRole[$key], 'Local_PartyIntervention')) {\n                    if (is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Accepted\") {\n                        return $partyRole[$key]->PartyRoleSet->partyRoleSetID;\n                    } else if (is_array($partyRole[$key]->Local_PartyIntervention->interventionStatus)) {\n                        foreach ($partyRole[$key]->Local_PartyIntervention->interventionStatus as $k => $v) {",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_30",
+      "type": "missing_branch",
+      "location": "block_30",
+      "fragment": "is_array($partyRole[$key]->Local_PartyIntervention->interventionStatus)",
+      "question": "Point de décision — is_array('partyRole'['key']->Local_PartyIntervention->interventionStatus). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 461,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                    if (is_object($partyRole[$key]->Local_PartyIntervention->interventionStatus) && $partyRole[$key]->Local_PartyIntervention->interventionStatus->status == \"Accepted\") {\n                        return $partyRole[$key]->PartyRoleSet->partyRoleSetID;\n                    } else if (is_array($partyRole[$key]->Local_PartyIntervention->interventionStatus)) {\n                        foreach ($partyRole[$key]->Local_PartyIntervention->interventionStatus as $k => $v) {\n                            if ($partyRole[$key]->Local_PartyIntervention->interventionStatus[$k]->status == \"Requested\" && $partyRole[$key]->Local_PartyIntervention->interventionStatus[$k + 1]->status == \"Accepted\") {\n                                return $partyRole[$key]->PartyRoleSet->partyRoleSetID;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_31",
+      "type": "missing_branch",
+      "location": "block_31",
+      "fragment": "$partyRole[$key]->Local_PartyIntervention->interventionStatus[$k]->status == \"Requested\" && $partyRole[$key]->Local_PartyIntervention->interventionStatus[$k + 1]->status == \"Accepted\"",
+      "question": "Point de décision — 'partyRole'['key']->Local_PartyIntervention->interventionStatus['k']->status égal à \"Requested\" et 'partyRole'['key']->Local_PartyIntervention->interventionStatus['k' + 1]->status égal à \"Accepted\". Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 463,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "                    } else if (is_array($partyRole[$key]->Local_PartyIntervention->interventionStatus)) {\n                        foreach ($partyRole[$key]->Local_PartyIntervention->interventionStatus as $k => $v) {\n                            if ($partyRole[$key]->Local_PartyIntervention->interventionStatus[$k]->status == \"Requested\" && $partyRole[$key]->Local_PartyIntervention->interventionStatus[$k + 1]->status == \"Accepted\") {\n                                return $partyRole[$key]->PartyRoleSet->partyRoleSetID;\n                            }\n                        }",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_32",
+      "type": "missing_branch",
+      "location": "block_32",
+      "fragment": "$scenarioExist == '0'",
+      "question": "Point de décision — 'scenarioExist' égal à '0'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 506,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "    {\n        $scenarioExist = $this->enchainementRepo->verifierScenarioExist($idScenario);\n        if($scenarioExist == '0')\n        {\n            $badRequestException = new BadRequestException('scenarioId does not exist');\n            return $badRequestException();",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_33",
+      "type": "missing_branch",
+      "location": "block_33",
+      "fragment": "$etatScenario == '0'",
+      "question": "Point de décision — 'etatScenario' égal à '0'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 517,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "    {\n        $etatScenario = $this->enchainementRepo->verifierActivationScenario($idScenario);\n        if($etatScenario == '0')\n        {\n            $scenarioDesactiveException = new ScenarioDesactiveException();\n            return $scenarioDesactiveException();",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_34",
+      "type": "missing_branch",
+      "location": "block_34",
+      "fragment": "$typeScenario == '0' && $scenarioType == 'parametrable'",
+      "question": "Point de décision — 'typeScenario' égal à '0' et 'scenarioType' égal à 'parametrable'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 528,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "    {\n        $typeScenario = $this->enchainementRepo->verifierTypeScenario($idScenario);\n        if($typeScenario == '0' && $scenarioType == 'parametrable')\n        {\n            $scenarioTypeException = new BadRequestException(\"Ce scenarioId n'est pas un scenario parametrable\");\n            return $scenarioTypeException();",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_35",
+      "type": "missing_branch",
+      "location": "block_35",
+      "fragment": "$typeScenario == '1' && $scenarioType == 'legacy'",
+      "question": "Point de décision — 'typeScenario' égal à '1' et 'scenarioType' égal à 'legacy'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 532,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            $scenarioTypeException = new BadRequestException(\"Ce scenarioId n'est pas un scenario parametrable\");\n            return $scenarioTypeException();\n        }elseif($typeScenario == '1' && $scenarioType == 'legacy')\n        {\n            $scenarioTypeException = new BadRequestException(\"Ce scenarioId n'est pas un scenario legacy\");\n            return $scenarioTypeException();",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "magic_value_36",
+      "type": "magic_value",
+      "location": "block_2",
+      "fragment": "key_exists('code', $resultatO) && $resultatO['code'] == 60",
+      "question": "Valeur de référence non documentée — La décision « key_exists('code', 'resultatO') et 'resultatO'['code'] égal à 60 » repose sur la valeur '60'. D'où vient cette valeur ? Fait-elle partie d'une liste de référence définie dans le cahier des charges ?",
+      "source_line": 80,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            if (key_exists('code', $resultatO) && $resultatO['code'] != 60) {\n                $message = $resultatO['message'] . ' ' . $resultatO['code'];\n            } elseif (key_exists('code', $resultatO) && $resultatO['code'] == 60) {\n                $message = 'Ticket ' . $ticketId . ' est inexistant dans océane !';\n            } elseif (key_exists('id', $resultatO)) {\n                //Hno",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "magic_value_37",
+      "type": "magic_value",
+      "location": "block_34",
+      "fragment": "$typeScenario == '0' && $scenarioType == 'parametrable'",
+      "question": "Valeur de référence non documentée — La décision « 'typeScenario' égal à '0' et 'scenarioType' égal à 'parametrable' » repose sur la valeur 'parametrable'. D'où vient cette valeur ? Fait-elle partie d'une liste de référence définie dans le cahier des charges ?",
+      "source_line": 528,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "    {\n        $typeScenario = $this->enchainementRepo->verifierTypeScenario($idScenario);\n        if($typeScenario == '0' && $scenarioType == 'parametrable')\n        {\n            $scenarioTypeException = new BadRequestException(\"Ce scenarioId n'est pas un scenario parametrable\");\n            return $scenarioTypeException();",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "magic_value_38",
+      "type": "magic_value",
+      "location": "block_35",
+      "fragment": "$typeScenario == '1' && $scenarioType == 'legacy'",
+      "question": "Valeur de référence non documentée — La décision « 'typeScenario' égal à '1' et 'scenarioType' égal à 'legacy' » repose sur la valeur 'legacy'. D'où vient cette valeur ? Fait-elle partie d'une liste de référence définie dans le cahier des charges ?",
+      "source_line": 532,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            $scenarioTypeException = new BadRequestException(\"Ce scenarioId n'est pas un scenario parametrable\");\n            return $scenarioTypeException();\n        }elseif($typeScenario == '1' && $scenarioType == 'legacy')\n        {\n            $scenarioTypeException = new BadRequestException(\"Ce scenarioId n'est pas un scenario legacy\");\n            return $scenarioTypeException();",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_39",
+      "type": "unmapped_dep",
+      "location": "App\\ApiException\\BadRequestException",
+      "fragment": "use: App\\ApiException\\BadRequestException",
+      "question": "Service tiers non documenté — Le composant 'App\\ApiException\\BadRequestException' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_40",
+      "type": "unmapped_dep",
+      "location": "App\\ApiException\\ScenarioDesactiveException",
+      "fragment": "use: App\\ApiException\\ScenarioDesactiveException",
+      "question": "Service tiers non documenté — Le composant 'App\\ApiException\\ScenarioDesactiveException' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_41",
+      "type": "unmapped_dep",
+      "location": "App\\Tools\\OceaneAssistant",
+      "fragment": "use: App\\Tools\\OceaneAssistant",
+      "question": "Service tiers non documenté — Le composant 'App\\Tools\\OceaneAssistant' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_42",
+      "type": "unmapped_dep",
+      "location": "Hbm\\Common\\Tools\\StringTools",
+      "fragment": "use: Hbm\\Common\\Tools\\StringTools",
+      "question": "Service tiers non documenté — Le composant 'Hbm\\Common\\Tools\\StringTools' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_43",
+      "type": "unmapped_dep",
+      "location": "Hbm\\Globalapi\\Service\\Soap\\OceaneFg",
+      "fragment": "use: Hbm\\Globalapi\\Service\\Soap\\OceaneFg",
+      "question": "Service tiers non documenté — Le composant 'Hbm\\Globalapi\\Service\\Soap\\OceaneFg' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_44",
+      "type": "unmapped_dep",
+      "location": "App\\ApiException\\PreRequirementException",
+      "fragment": "use: App\\ApiException\\PreRequirementException",
+      "question": "Service tiers non documenté — Le composant 'App\\ApiException\\PreRequirementException' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_45",
+      "type": "unmapped_dep",
+      "location": "App\\Tools\\Message",
+      "fragment": "use: App\\Tools\\Message",
+      "question": "Service tiers non documenté — Le composant 'App\\Tools\\Message' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_46",
+      "type": "unmapped_dep",
+      "location": "Hbm\\Globalapi\\Service\\Soap\\OceaneUpd",
+      "fragment": "use: Hbm\\Globalapi\\Service\\Soap\\OceaneUpd",
+      "question": "Service tiers non documenté — Le composant 'Hbm\\Globalapi\\Service\\Soap\\OceaneUpd' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_47",
+      "type": "unmapped_dep",
+      "location": "App\\ApiException\\UpdateOceaneException",
+      "fragment": "use: App\\ApiException\\UpdateOceaneException",
+      "question": "Service tiers non documenté — Le composant 'App\\ApiException\\UpdateOceaneException' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_48",
+      "type": "unmapped_dep",
+      "location": "OceaneAssistant",
+      "fragment": "instantiation: OceaneAssistant",
+      "question": "Service tiers non documenté — Le composant 'OceaneAssistant' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_49",
+      "type": "unmapped_dep",
+      "location": "Message",
+      "fragment": "instantiation: Message",
+      "question": "Service tiers non documenté — Le composant 'Message' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_50",
+      "type": "unmapped_dep",
+      "location": "PreRequirementException",
+      "fragment": "instantiation: PreRequirementException",
+      "question": "Service tiers non documenté — Le composant 'PreRequirementException' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_51",
+      "type": "unmapped_dep",
+      "location": "BadRequestException",
+      "fragment": "instantiation: BadRequestException",
+      "question": "Service tiers non documenté — Le composant 'BadRequestException' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_52",
+      "type": "unmapped_dep",
+      "location": "OceaneUpd",
+      "fragment": "instantiation: OceaneUpd",
+      "question": "Service tiers non documenté — Le composant 'OceaneUpd' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_53",
+      "type": "unmapped_dep",
+      "location": "UpdateOceaneException",
+      "fragment": "instantiation: UpdateOceaneException",
+      "question": "Service tiers non documenté — Le composant 'UpdateOceaneException' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_54",
+      "type": "unmapped_dep",
+      "location": "OceaneFg",
+      "fragment": "instantiation: OceaneFg",
+      "question": "Service tiers non documenté — Le composant 'OceaneFg' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "unmapped_dep_55",
+      "type": "unmapped_dep",
+      "location": "ScenarioDesactiveException",
+      "fragment": "instantiation: ScenarioDesactiveException",
+      "question": "Service tiers non documenté — Le composant 'ScenarioDesactiveException' est utilisé dans ce périmètre sans équivalent identifié dans la cible. Quel est son rôle fonctionnel et quelles données échange-t-il avec le système ?",
+      "source_line": null,
+      "method_name": null,
+      "method_original_name": null,
+      "context_lines": null,
+      "impact_category": "LOGIC_GAP"
+    }
+  ],
+  "llm_insights": []
+}

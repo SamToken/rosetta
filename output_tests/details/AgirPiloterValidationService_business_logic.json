@@ -1,0 +1,340 @@
+{
+  "metadata": {
+    "source_type": "php",
+    "source_file": "tests/AgirPiloterValidationService.php",
+    "controller_name": "AgirPiloterValidationService",
+    "extracted_at": "2026-04-26T09:46:07.866760",
+    "extractor_version": "0.1.0",
+    "confidence_score": 0.29999999999999993
+  },
+  "entry_points": [],
+  "operations": [],
+  "control_flow": [
+    {
+      "id": "block_1",
+      "condition": "key_exists('DATE_RETABLISSEMENT_DEMANDE_INTERVENTION', $regles) && $regles['DATE_RETABLISSEMENT_DEMANDE_INTERVENTION'][\"OBLIGATOIRE\"] === '1'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 23,
+      "raw_context": "        $dateRetab = key_exists('agp_dtretab', $data) ? $data['agp_dtretab'] : '';\n\n        if (key_exists('DATE_RETABLISSEMENT_DEMANDE_INTERVENTION',\n                $regles) && $regles['DATE_RETABLISSEMENT_DEMANDE_INTERVENTION'][\"OBLIGATOIRE\"] === '1') {\n            if (!$this->notEmpty($dateRetab)) {\n                $result = false;"
+    },
+    {
+      "id": "block_2",
+      "condition": "!$this->notEmpty($dateRetab)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 25,
+      "raw_context": "        if (key_exists('DATE_RETABLISSEMENT_DEMANDE_INTERVENTION',\n                $regles) && $regles['DATE_RETABLISSEMENT_DEMANDE_INTERVENTION'][\"OBLIGATOIRE\"] === '1') {\n            if (!$this->notEmpty($dateRetab)) {\n                $result = false;\n                $message[] = 'Champ date rétablissement requis';\n            }"
+    },
+    {
+      "id": "block_3",
+      "condition": "$dateRetab !== ''",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 30,
+      "raw_context": "            }\n        }\n        if ($dateRetab !== '') {\n            if (!$this->isDate($dateRetab, \"d/m/Y H:i\")) {\n                $result = false;\n                $message[] = 'Format date rétablissement invalide';"
+    },
+    {
+      "id": "block_4",
+      "condition": "!$this->isDate($dateRetab, \"d/m/Y H:i\")",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 31,
+      "raw_context": "        }\n        if ($dateRetab !== '') {\n            if (!$this->isDate($dateRetab, \"d/m/Y H:i\")) {\n                $result = false;\n                $message[] = 'Format date rétablissement invalide';\n            }"
+    },
+    {
+      "id": "block_5",
+      "condition": "key_exists('DATE_COURS_EDS_DEMANDE_INTERVENTION', $regles) && $regles['DATE_COURS_EDS_DEMANDE_INTERVENTION'][\"OBLIGATOIRE\"] === '1'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 40,
+      "raw_context": "        $actionCoursEds = key_exists('agp_dtencours', $data) ? $data['agp_dtencours'] : '';\n\n        if (key_exists('DATE_COURS_EDS_DEMANDE_INTERVENTION',\n                $regles) && $regles['DATE_COURS_EDS_DEMANDE_INTERVENTION'][\"OBLIGATOIRE\"] === '1') {\n            if (!$this->notEmpty($actionCoursEds)) {\n                $result = false;"
+    },
+    {
+      "id": "block_6",
+      "condition": "!$this->notEmpty($actionCoursEds)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 42,
+      "raw_context": "        if (key_exists('DATE_COURS_EDS_DEMANDE_INTERVENTION',\n                $regles) && $regles['DATE_COURS_EDS_DEMANDE_INTERVENTION'][\"OBLIGATOIRE\"] === '1') {\n            if (!$this->notEmpty($actionCoursEds)) {\n                $result = false;\n                $message[] = 'Champ date action en cours requis';\n            }"
+    },
+    {
+      "id": "block_7",
+      "condition": "$actionCoursEds !== ''",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 47,
+      "raw_context": "            }\n        }\n        if ($actionCoursEds !== '') {\n            if (!$this->isDate($actionCoursEds, \"d/m/Y H:i\")) {\n                $result = false;\n                $message[] = 'Format date action en cours invalide';"
+    },
+    {
+      "id": "block_8",
+      "condition": "!$this->isDate($actionCoursEds, \"d/m/Y H:i\")",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 48,
+      "raw_context": "        }\n        if ($actionCoursEds !== '') {\n            if (!$this->isDate($actionCoursEds, \"d/m/Y H:i\")) {\n                $result = false;\n                $message[] = 'Format date action en cours invalide';\n            }"
+    },
+    {
+      "id": "block_9",
+      "condition": "key_exists('COMMENTAIRE_DEMANDE_INTERVENTION', $regles) && $regles['COMMENTAIRE_DEMANDE_INTERVENTION'][\"OBLIGATOIRE\"] === '1'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 56,
+      "raw_context": "        // Validation Commentaire charté\n        $commentaire = key_exists('agp_commentaire', $data) ? $data['agp_commentaire'] : '';\n        if (key_exists('COMMENTAIRE_DEMANDE_INTERVENTION',\n                $regles) && $regles['COMMENTAIRE_DEMANDE_INTERVENTION'][\"OBLIGATOIRE\"] === '1') {\n            if (!$this->notEmpty($commentaire)) {\n                $result = false;"
+    },
+    {
+      "id": "block_10",
+      "condition": "!$this->notEmpty($commentaire)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 58,
+      "raw_context": "        if (key_exists('COMMENTAIRE_DEMANDE_INTERVENTION',\n                $regles) && $regles['COMMENTAIRE_DEMANDE_INTERVENTION'][\"OBLIGATOIRE\"] === '1') {\n            if (!$this->notEmpty($commentaire)) {\n                $result = false;\n                $message[] = 'Champ commentaire requis';\n            }"
+    },
+    {
+      "id": "block_11",
+      "condition": "key_exists('ACTION_EN_COURS_EDS', $regles) && $regles['ACTION_EN_COURS_EDS'][\"OBLIGATOIRE\"] === '1'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 66,
+      "raw_context": "        // Validation Action en cours EDS\n        $actionCoursEds = key_exists('agp_action_eds', $data) ? $data['agp_action_eds'] : '';\n        if (key_exists('ACTION_EN_COURS_EDS',\n                $regles) && $regles['ACTION_EN_COURS_EDS'][\"OBLIGATOIRE\"] === '1') {\n            if (!$this->notEmpty($actionCoursEds)) {\n                $result = false;"
+    },
+    {
+      "id": "block_12",
+      "condition": "!$this->notEmpty($actionCoursEds)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 68,
+      "raw_context": "        if (key_exists('ACTION_EN_COURS_EDS',\n                $regles) && $regles['ACTION_EN_COURS_EDS'][\"OBLIGATOIRE\"] === '1') {\n            if (!$this->notEmpty($actionCoursEds)) {\n                $result = false;\n                $message[] = 'Champ action en cours EDS requis';\n            }"
+    },
+    {
+      "id": "block_13",
+      "condition": "key_exists('NIVEAU_URGENCE', $regles) && $regles['NIVEAU_URGENCE'][\"OBLIGATOIRE\"] === '1'",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 75,
+      "raw_context": "        // Validation du Niveau d'urgence\n        $actionCoursEds = key_exists('niveau_urgence', $data) ? $data['niveau_urgence'] : '';\n        if (key_exists('NIVEAU_URGENCE',\n                $regles) && $regles['NIVEAU_URGENCE'][\"OBLIGATOIRE\"] === '1') {\n            if (!$this->notEmpty($actionCoursEds)) {\n                $result = false;"
+    },
+    {
+      "id": "block_14",
+      "condition": "!$this->notEmpty($actionCoursEds)",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 77,
+      "raw_context": "        if (key_exists('NIVEAU_URGENCE',\n                $regles) && $regles['NIVEAU_URGENCE'][\"OBLIGATOIRE\"] === '1') {\n            if (!$this->notEmpty($actionCoursEds)) {\n                $result = false;\n                $message[] = 'Champ niveau d\\'urgence requis';\n            }"
+    },
+    {
+      "id": "block_15",
+      "condition": "!$result",
+      "true_branch": null,
+      "false_branch": null,
+      "operations": [],
+      "source_line": 83,
+      "raw_context": "        }\n\n        if (!$result) {\n            return $message;\n        }\n        return true;"
+    }
+  ],
+  "data_flow": {
+    "inputs": [],
+    "outputs": [],
+    "session_reads": [],
+    "session_writes": []
+  },
+  "dependencies": [],
+  "unparsed_sections": [],
+  "flags": [
+    {
+      "id": "missing_branch_1",
+      "type": "missing_branch",
+      "location": "block_1",
+      "fragment": "key_exists('DATE_RETABLISSEMENT_DEMANDE_INTERVENTION', $regles) && $regles['DATE_RETABLISSEMENT_DEMANDE_INTERVENTION'][\"OBLIGATOIRE\"] === '1'",
+      "question": "Point de décision — key_exists('DATE_RETABLISSEMENT_DEMANDE_INTERVENTION', 'regles') et 'regles'['DATE_RETABLISSEMENT_DEMANDE_INTERVENTION'][\"OBLIGATOIRE\"] égal à = '1'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 23,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        $dateRetab = key_exists('agp_dtretab', $data) ? $data['agp_dtretab'] : '';\n\n        if (key_exists('DATE_RETABLISSEMENT_DEMANDE_INTERVENTION',\n                $regles) && $regles['DATE_RETABLISSEMENT_DEMANDE_INTERVENTION'][\"OBLIGATOIRE\"] === '1') {\n            if (!$this->notEmpty($dateRetab)) {\n                $result = false;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_2",
+      "type": "missing_branch",
+      "location": "block_2",
+      "fragment": "!$this->notEmpty($dateRetab)",
+      "question": "Point de décision — !'this'->notEmpty('dateRetab'). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 25,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        if (key_exists('DATE_RETABLISSEMENT_DEMANDE_INTERVENTION',\n                $regles) && $regles['DATE_RETABLISSEMENT_DEMANDE_INTERVENTION'][\"OBLIGATOIRE\"] === '1') {\n            if (!$this->notEmpty($dateRetab)) {\n                $result = false;\n                $message[] = 'Champ date rétablissement requis';\n            }",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_3",
+      "type": "missing_branch",
+      "location": "block_3",
+      "fragment": "$dateRetab !== ''",
+      "question": "Point de décision — 'dateRetab' différent de = ''. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 30,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            }\n        }\n        if ($dateRetab !== '') {\n            if (!$this->isDate($dateRetab, \"d/m/Y H:i\")) {\n                $result = false;\n                $message[] = 'Format date rétablissement invalide';",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_4",
+      "type": "missing_branch",
+      "location": "block_4",
+      "fragment": "!$this->isDate($dateRetab, \"d/m/Y H:i\")",
+      "question": "Point de décision — !'this'->isDate('dateRetab', \"d/m/Y H:i\"). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 31,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        }\n        if ($dateRetab !== '') {\n            if (!$this->isDate($dateRetab, \"d/m/Y H:i\")) {\n                $result = false;\n                $message[] = 'Format date rétablissement invalide';\n            }",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_5",
+      "type": "missing_branch",
+      "location": "block_5",
+      "fragment": "key_exists('DATE_COURS_EDS_DEMANDE_INTERVENTION', $regles) && $regles['DATE_COURS_EDS_DEMANDE_INTERVENTION'][\"OBLIGATOIRE\"] === '1'",
+      "question": "Point de décision — key_exists('DATE_COURS_EDS_DEMANDE_INTERVENTION', 'regles') et 'regles'['DATE_COURS_EDS_DEMANDE_INTERVENTION'][\"OBLIGATOIRE\"] égal à = '1'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 40,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        $actionCoursEds = key_exists('agp_dtencours', $data) ? $data['agp_dtencours'] : '';\n\n        if (key_exists('DATE_COURS_EDS_DEMANDE_INTERVENTION',\n                $regles) && $regles['DATE_COURS_EDS_DEMANDE_INTERVENTION'][\"OBLIGATOIRE\"] === '1') {\n            if (!$this->notEmpty($actionCoursEds)) {\n                $result = false;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_6",
+      "type": "missing_branch",
+      "location": "block_6",
+      "fragment": "!$this->notEmpty($actionCoursEds)",
+      "question": "Point de décision — !'this'->notEmpty('actionCoursEds'). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 42,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        if (key_exists('DATE_COURS_EDS_DEMANDE_INTERVENTION',\n                $regles) && $regles['DATE_COURS_EDS_DEMANDE_INTERVENTION'][\"OBLIGATOIRE\"] === '1') {\n            if (!$this->notEmpty($actionCoursEds)) {\n                $result = false;\n                $message[] = 'Champ date action en cours requis';\n            }",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_7",
+      "type": "missing_branch",
+      "location": "block_7",
+      "fragment": "$actionCoursEds !== ''",
+      "question": "Point de décision — 'actionCoursEds' différent de = ''. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 47,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "            }\n        }\n        if ($actionCoursEds !== '') {\n            if (!$this->isDate($actionCoursEds, \"d/m/Y H:i\")) {\n                $result = false;\n                $message[] = 'Format date action en cours invalide';",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_8",
+      "type": "missing_branch",
+      "location": "block_8",
+      "fragment": "!$this->isDate($actionCoursEds, \"d/m/Y H:i\")",
+      "question": "Point de décision — !'this'->isDate('actionCoursEds', \"d/m/Y H:i\"). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 48,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        }\n        if ($actionCoursEds !== '') {\n            if (!$this->isDate($actionCoursEds, \"d/m/Y H:i\")) {\n                $result = false;\n                $message[] = 'Format date action en cours invalide';\n            }",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_9",
+      "type": "missing_branch",
+      "location": "block_9",
+      "fragment": "key_exists('COMMENTAIRE_DEMANDE_INTERVENTION', $regles) && $regles['COMMENTAIRE_DEMANDE_INTERVENTION'][\"OBLIGATOIRE\"] === '1'",
+      "question": "Point de décision — key_exists('COMMENTAIRE_DEMANDE_INTERVENTION', 'regles') et 'regles'['COMMENTAIRE_DEMANDE_INTERVENTION'][\"OBLIGATOIRE\"] égal à = '1'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 56,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        // Validation Commentaire charté\n        $commentaire = key_exists('agp_commentaire', $data) ? $data['agp_commentaire'] : '';\n        if (key_exists('COMMENTAIRE_DEMANDE_INTERVENTION',\n                $regles) && $regles['COMMENTAIRE_DEMANDE_INTERVENTION'][\"OBLIGATOIRE\"] === '1') {\n            if (!$this->notEmpty($commentaire)) {\n                $result = false;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_10",
+      "type": "missing_branch",
+      "location": "block_10",
+      "fragment": "!$this->notEmpty($commentaire)",
+      "question": "Point de décision — !'this'->notEmpty('commentaire'). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 58,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        if (key_exists('COMMENTAIRE_DEMANDE_INTERVENTION',\n                $regles) && $regles['COMMENTAIRE_DEMANDE_INTERVENTION'][\"OBLIGATOIRE\"] === '1') {\n            if (!$this->notEmpty($commentaire)) {\n                $result = false;\n                $message[] = 'Champ commentaire requis';\n            }",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_11",
+      "type": "missing_branch",
+      "location": "block_11",
+      "fragment": "key_exists('ACTION_EN_COURS_EDS', $regles) && $regles['ACTION_EN_COURS_EDS'][\"OBLIGATOIRE\"] === '1'",
+      "question": "Point de décision — key_exists('ACTION_EN_COURS_EDS', 'regles') et 'regles'['ACTION_EN_COURS_EDS'][\"OBLIGATOIRE\"] égal à = '1'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 66,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        // Validation Action en cours EDS\n        $actionCoursEds = key_exists('agp_action_eds', $data) ? $data['agp_action_eds'] : '';\n        if (key_exists('ACTION_EN_COURS_EDS',\n                $regles) && $regles['ACTION_EN_COURS_EDS'][\"OBLIGATOIRE\"] === '1') {\n            if (!$this->notEmpty($actionCoursEds)) {\n                $result = false;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_12",
+      "type": "missing_branch",
+      "location": "block_12",
+      "fragment": "!$this->notEmpty($actionCoursEds)",
+      "question": "Point de décision — !'this'->notEmpty('actionCoursEds'). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 68,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        if (key_exists('ACTION_EN_COURS_EDS',\n                $regles) && $regles['ACTION_EN_COURS_EDS'][\"OBLIGATOIRE\"] === '1') {\n            if (!$this->notEmpty($actionCoursEds)) {\n                $result = false;\n                $message[] = 'Champ action en cours EDS requis';\n            }",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_13",
+      "type": "missing_branch",
+      "location": "block_13",
+      "fragment": "key_exists('NIVEAU_URGENCE', $regles) && $regles['NIVEAU_URGENCE'][\"OBLIGATOIRE\"] === '1'",
+      "question": "Point de décision — key_exists('NIVEAU_URGENCE', 'regles') et 'regles'['NIVEAU_URGENCE'][\"OBLIGATOIRE\"] égal à = '1'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 75,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        // Validation du Niveau d'urgence\n        $actionCoursEds = key_exists('niveau_urgence', $data) ? $data['niveau_urgence'] : '';\n        if (key_exists('NIVEAU_URGENCE',\n                $regles) && $regles['NIVEAU_URGENCE'][\"OBLIGATOIRE\"] === '1') {\n            if (!$this->notEmpty($actionCoursEds)) {\n                $result = false;",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_14",
+      "type": "missing_branch",
+      "location": "block_14",
+      "fragment": "!$this->notEmpty($actionCoursEds)",
+      "question": "Point de décision — !'this'->notEmpty('actionCoursEds'). Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 77,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        if (key_exists('NIVEAU_URGENCE',\n                $regles) && $regles['NIVEAU_URGENCE'][\"OBLIGATOIRE\"] === '1') {\n            if (!$this->notEmpty($actionCoursEds)) {\n                $result = false;\n                $message[] = 'Champ niveau d\\'urgence requis';\n            }",
+      "impact_category": "LOGIC_GAP"
+    },
+    {
+      "id": "missing_branch_15",
+      "type": "missing_branch",
+      "location": "block_15",
+      "fragment": "!$result",
+      "question": "Point de décision — !'result'. Quel est le comportement attendu dans le cas contraire ?",
+      "source_line": 83,
+      "method_name": "unknown",
+      "method_original_name": "unknown",
+      "context_lines": "        }\n\n        if (!$result) {\n            return $message;\n        }\n        return true;",
+      "impact_category": "LOGIC_GAP"
+    }
+  ],
+  "llm_insights": []
+}
