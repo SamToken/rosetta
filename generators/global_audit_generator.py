@@ -178,13 +178,19 @@ class GlobalAuditGenerator:
             )
             lines.append("")
 
+        logic_flags = [f for f in ins.all_flags if f.impact_category == "LOGIC_GAP"]
+        unique_logic = len({(f.controller, f.method_name, f.flag_type) for f in logic_flags})
+        total_sujets = ins.critical_count + ins.overload_count + unique_logic
+        logic_col = f"{unique_logic} ({ins.logic_gap_count} occurrences)" if ins.logic_gap_count != unique_logic else str(unique_logic)
+
         lines.append("### Priorités de correction")
         lines.append("")
-        lines.append("| Catégorie | Flags | Action |")
-        lines.append("|-----------|-------|--------|")
+        lines.append("| Catégorie | Sujets à arbitrer | Action |")
+        lines.append("|-----------|------------------|--------|")
         lines.append(f"| 🔴 CRITICAL_CORRUPTION | {ins.critical_count} | Corriger avant toute MEP |")
         lines.append(f"| 🟠 API_OVERLOAD | {ins.overload_count} | Corriger avant migration |")
-        lines.append(f"| 🟡 LOGIC_GAP | {ins.logic_gap_count} | Arbitrage PO requis |")
+        lines.append(f"| 🟡 LOGIC_GAP | {logic_col} | Arbitrage PO requis |")
+        lines.append(f"| **Total** | **{total_sujets} sujets** | |")
         lines.append("")
 
         # Périmètre analysé
