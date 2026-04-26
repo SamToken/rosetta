@@ -174,6 +174,42 @@ class GlobalAuditGenerator:
                 "avant chaque appel suivant. "
                 "Risque 400 Invalid request si prestation inconnue ou service indisponible."
             )
+        if count_by_type.get("situation_coverage", 0) > 0:
+            n += 1
+            c = count_by_type["situation_coverage"]
+            lines.append(
+                f"{n}. **🎯 {c} situation(s) Oracle sans couverture exhaustive** — "
+                "Vérifier que chaque branche `if ($situation === ...)` dispose d'un `else` "
+                "documentant le comportement par défaut. "
+                "Risque de comportement indéfini si Oracle introduit un nouveau code situation."
+            )
+        if count_by_type.get("oceane_state_dependency", 0) > 0:
+            n += 1
+            c = count_by_type["oceane_state_dependency"]
+            lines.append(
+                f"{n}. **🌊 {c} lecture(s) d'état Oceane sans fallback** — "
+                "Vérifier que chaque appel Oceane (getStatutEquipement, getEtatAbonnement…) "
+                "est protégé par un fallback explicite en cas de timeout ou de réponse vide. "
+                "Risque de null pointer ou de prise de décision sur donnée absente."
+            )
+        if count_by_type.get("module_execution_gap", 0) > 0:
+            n += 1
+            c = count_by_type["module_execution_gap"]
+            lines.append(
+                f"{n}. **⚙️ {c} enchaînement(s) de modules sans vérification d'échec** — "
+                "Vérifier que chaque module séquentiel (execute, run, process…) vérifie "
+                "le retour du précédent avant d'appeler le suivant. "
+                "Risque d'échec silencieux propagé jusqu'en bout de chaîne."
+            )
+        if count_by_type.get("hardcoded_situation_code", 0) > 0:
+            n += 1
+            c = count_by_type["hardcoded_situation_code"]
+            lines.append(
+                f"{n}. **🔢 {c} code(s) situation hardcodé(s)** — "
+                "Remplacer les constantes littérales (ex : 'H1', 'TP2') par des constantes "
+                "nommées référencées depuis le référentiel Oracle. "
+                "Risque de désynchronisation si Oracle modifie la codification."
+            )
         if ins.gap_count > 0:
             n += 1
             lines.append(

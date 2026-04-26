@@ -21,8 +21,12 @@ FLAG_LABELS: dict[str, str] = {
     "unmapped_dep":          "❓ Service non mappé",
     "business_logic_unclear": "❓ Logique métier ambiguë",
     "side_effect":           "⚡ Effet de bord",
-    "dynamic_session_key":   "🔑 Session dynamique — risque stale",
-    "chained_api_call":      "🔗 Appels API chaînés — risque payload vide",
+    "dynamic_session_key":      "🔑 Session dynamique — risque stale",
+    "chained_api_call":         "🔗 Appels API chaînés — risque payload vide",
+    "situation_coverage":       "🎯 Situation non couverte — comportement indéfini",
+    "oceane_state_dependency":  "🌊 Dépendance Oceane temps réel — pas de fallback",
+    "module_execution_gap":     "⚙️  Module séquentiel — échec silencieux possible",
+    "hardcoded_situation_code": "🔢 Code situation hardcodé — risque désynchronisation",
 }
 
 # Traductions fragment technique → terme métier (dans l'ordre de priorité)
@@ -206,8 +210,12 @@ class BusinessDocGenerator:
         groups = {
             "security_risk":         ("🔴 Points d'attention sécurité", []),
             "dynamic_session_key":   ("🔑 Session dynamique — risque stale", []),
-            "chained_api_call":      ("🔗 Appels API chaînés — risque payload vide", []),
-            "missing_branch":        ("⚠️ Gaps de logique — Comportements non définis", []),
+            "chained_api_call":         ("🔗 Appels API chaînés — risque payload vide", []),
+            "situation_coverage":       ("🎯 Situation non couverte — comportement indéfini", []),
+            "oceane_state_dependency":  ("🌊 Dépendance Oceane temps réel — pas de fallback", []),
+            "module_execution_gap":     ("⚙️  Module séquentiel — échec silencieux possible", []),
+            "hardcoded_situation_code": ("🔢 Code situation hardcodé — risque désynchronisation", []),
+            "missing_branch":           ("⚠️ Gaps de logique — Comportements non définis", []),
             "magic_value":           ("🔍 Valeurs de référence non documentées", []),
             "business_logic_unclear": ("❓ Règles métier à préciser", []),
             "unmapped_dep":          ("📦 Services tiers non documentés", []),

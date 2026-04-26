@@ -32,8 +32,12 @@ FLAG_TYPES = [
     "unmapped_dep",
     "business_logic_unclear",
     "side_effect",
-    "dynamic_session_key",   # Astro — clé session dynamique (stale data)
-    "chained_api_call",      # Astro — appels API séquentiels sans validation
+    "dynamic_session_key",       # Astro — clé session dynamique (stale data)
+    "chained_api_call",          # Astro — appels API séquentiels sans validation
+    "situation_coverage",        # Astro — situation Oracle non couverte (pas de else)
+    "oceane_state_dependency",   # Astro — lecture état Oceane sans fallback
+    "module_execution_gap",      # Astro — modules séquentiels sans vérification d'échec
+    "hardcoded_situation_code",  # Astro — code situation hardcodé (désync Oracle)
 ]
 
 

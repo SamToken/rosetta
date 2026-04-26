@@ -88,15 +88,56 @@ CHAINED_API_PATTERNS = [
     r"\$payload\s*=.*\$result\w*\n(?!.*empty).*->call", # payload depuis résultat sans guard
 ]
 
+SITUATION_PATTERNS = [
+    r"if\s*\(\s*\$situation\s*===?\s*['\"]",
+    r"if\s*\(\s*\$scenario\s*===?\s*['\"]",
+    r"if\s*\(\s*\$etape\s*===?\s*['\"]",
+    r"if\s*\(\s*\$typeEncha[iî]nement\s*===?\s*['\"]",
+    r"===?\s*['\"][A-Z][0-9]{1,2}['\"]",
+    r"===?\s*['\"][HSTPpP][0-9]+['\"]",
+]
+
+OCEANE_STATE_PATTERNS = [
+    r"oceane.*getTicket",
+    r"oceane.*getEtat",
+    r"oceane.*getStatut",
+    r"oceane.*getSituation",
+    r"getTicketOceane",
+    r"ticketOceaneArray",
+    r"oceane.*->get(?!.*if\s*\(.*null)",
+    r"oceane.*->fetch(?!.*empty)",
+]
+
+MODULE_SEQUENCE_PATTERNS = [
+    r"retablir\s*\(\)",
+    r"cloture[rR]\s*\(\)",
+    r"demandeIntervention\s*\(\)",
+    r"qualifier\s*\(\)",
+    r"piloter\s*\(\)",
+    r"diagnostiquer\s*\(\)",
+    r"rendre\s*\(\)",
+    r"->execute\w+\(\)[\s\n]+(?!if|try|\$result).*->execute\w+\(\)",
+]
+
+HARDCODED_SITUATION_PATTERNS = [
+    r"===?\s*['\"][A-Z]{1,2}[0-9]{1,2}['\"]",
+    r"\$(situation|scenario|etape|module)\s*===?\s*['\"][^'\"]{1,5}['\"]",
+    r"===?\s*'(?!self::|CONST_)[A-Z0-9_]{1,8}'",
+]
+
 IMPACT_CATEGORY_MAP: dict[str, ImpactCategory] = {
-    "security_risk":         ImpactCategory.CRITICAL_CORRUPTION,
-    "dynamic_session_key":   ImpactCategory.CRITICAL_CORRUPTION,
-    "chained_api_call":      ImpactCategory.API_OVERLOAD,
-    "side_effect":           ImpactCategory.API_OVERLOAD,
-    "business_logic_unclear": ImpactCategory.API_OVERLOAD,
-    "missing_branch":        ImpactCategory.LOGIC_GAP,
-    "magic_value":           ImpactCategory.LOGIC_GAP,
-    "unmapped_dep":          ImpactCategory.LOGIC_GAP,
+    "security_risk":             ImpactCategory.CRITICAL_CORRUPTION,
+    "dynamic_session_key":       ImpactCategory.CRITICAL_CORRUPTION,
+    "situation_coverage":        ImpactCategory.CRITICAL_CORRUPTION,
+    "oceane_state_dependency":   ImpactCategory.CRITICAL_CORRUPTION,
+    "chained_api_call":          ImpactCategory.API_OVERLOAD,
+    "side_effect":               ImpactCategory.API_OVERLOAD,
+    "business_logic_unclear":    ImpactCategory.API_OVERLOAD,
+    "module_execution_gap":      ImpactCategory.API_OVERLOAD,
+    "missing_branch":            ImpactCategory.LOGIC_GAP,
+    "magic_value":               ImpactCategory.LOGIC_GAP,
+    "unmapped_dep":              ImpactCategory.LOGIC_GAP,
+    "hardcoded_situation_code":  ImpactCategory.LOGIC_GAP,
 }
 
 MAGIC_VALUE_PATTERNS = [
@@ -144,6 +185,10 @@ class FlagEngine:
         flags.extend(self._check_side_effects_after_write(ir))
         flags.extend(self._detect_dynamic_session_key(ir))
         flags.extend(self._detect_chained_api_call(ir))
+        flags.extend(self._detect_situation_coverage(ir))
+        flags.extend(self._detect_oceane_state_dependency(ir))
+        flags.extend(self._detect_module_execution_gap(ir))
+        flags.extend(self._detect_hardcoded_situation_code(ir))
         for flag in flags:
             flag.impact_category = IMPACT_CATEGORY_MAP.get(flag.type, ImpactCategory.LOGIC_GAP)
         return flags
@@ -457,8 +502,180 @@ class FlagEngine:
         return flags
 
     # =========================================================================
+    # Règle 9 — Situation Oracle non couverte (pas de else final)
+    # =========================================================================
+
+    def _detect_situation_coverage(self, ir: IRSchema) -> list[Flag]:
+        flags = []
+        for ep in ir.entry_points:
+            if not ep.raw_code:
+                continue
+            for pattern in SITUATION_PATTERNS:
+                match = re.search(pattern, ep.raw_code, re.IGNORECASE)
+                if not match:
+                    continue
+                if self._has_final_else(ep.raw_code, match.start()):
+                    break  # chaîne couverte par un else → pas de flag
+                segment = ep.raw_code[match.start():match.start() + 1000]
+                covered = re.findall(r"===?\s*['\"]([^'\"]+)['\"]", segment)
+                covered_str = ", ".join(f"'{v}'" for v in covered[:5]) if covered else "?"
+                fragment = self._extract_line(ep.raw_code, match.start())
+                context = self._extract_context_lines(ep.raw_code, match.start(), max_lines=7)
+                abs_line = (ep.start_line or 0) + ep.raw_code[:match.start()].count('\n')
+                flags.append(Flag(
+                    id=self._next_id("situation_coverage"),
+                    type="situation_coverage",
+                    location=ep.name,
+                    fragment=fragment,
+                    question=(
+                        f"{len(covered)} situation(s) couverte(s) explicitement ({covered_str}). "
+                        "Que se passe-t-il si Oceane retourne une situation non listée dans ce code ? "
+                        "Existe-t-il une situation par défaut ?"
+                    ),
+                    source_line=abs_line if ep.start_line else None,
+                    method_name=ep.name,
+                    method_original_name=ep.original_name,
+                    context_lines=context,
+                ))
+                break  # 1 flag par entry_point max
+        return flags
+
+    # =========================================================================
+    # Règle 10 — Dépendance état Oceane temps réel sans fallback
+    # =========================================================================
+
+    def _detect_oceane_state_dependency(self, ir: IRSchema) -> list[Flag]:
+        flags = []
+        for ep in ir.entry_points:
+            if not ep.raw_code:
+                continue
+            for pattern in OCEANE_STATE_PATTERNS:
+                match = re.search(pattern, ep.raw_code, re.IGNORECASE)
+                if not match:
+                    continue
+                fragment = self._extract_line(ep.raw_code, match.start())
+                context = self._extract_context_lines(ep.raw_code, match.start(), max_lines=7)
+                abs_line = (ep.start_line or 0) + ep.raw_code[:match.start()].count('\n')
+                flags.append(Flag(
+                    id=self._next_id("oceane_state_dependency"),
+                    type="oceane_state_dependency",
+                    location=ep.name,
+                    fragment=fragment,
+                    question=(
+                        "L'état du ticket est lu depuis Oceane en temps réel à cette étape — "
+                        "3 cas non documentés : "
+                        "(1) Oceane indisponible → que faire ? "
+                        "(2) Oceane retourne null → continuer ou bloquer ? "
+                        "(3) État retourné non prévu par l'enchaînement → quelle situation déclenchée ?"
+                    ),
+                    source_line=abs_line if ep.start_line else None,
+                    method_name=ep.name,
+                    method_original_name=ep.original_name,
+                    context_lines=context,
+                ))
+                break  # 1 flag par entry_point max
+        return flags
+
+    # =========================================================================
+    # Règle 11 — Modules séquentiels sans vérification d'échec
+    # =========================================================================
+
+    def _detect_module_execution_gap(self, ir: IRSchema) -> list[Flag]:
+        flags = []
+        simple_pats = MODULE_SEQUENCE_PATTERNS[:7]
+        generic_pats = MODULE_SEQUENCE_PATTERNS[7:]
+        for ep in ir.entry_points:
+            if not ep.raw_code:
+                continue
+            match = None
+            for pattern in generic_pats:
+                m = re.search(pattern, ep.raw_code, re.IGNORECASE | re.DOTALL)
+                if m:
+                    match = m
+                    break
+            if not match:
+                hits = [(p, re.search(p, ep.raw_code, re.IGNORECASE)) for p in simple_pats]
+                hits = [(p, m) for p, m in hits if m]
+                if len(hits) >= 2:
+                    match = hits[0][1]
+            if not match:
+                continue
+            module_names = [
+                re.search(r'\w+', p).group()
+                for p in simple_pats
+                if re.search(p, ep.raw_code, re.IGNORECASE)
+            ]
+            modules_str = " → ".join(module_names[:3]) if module_names else "module(s)"
+            fragment = self._extract_line(ep.raw_code, match.start())
+            context = self._extract_context_lines(ep.raw_code, match.start(), max_lines=7)
+            abs_line = (ep.start_line or 0) + ep.raw_code[:match.start()].count('\n')
+            flags.append(Flag(
+                id=self._next_id("module_execution_gap"),
+                type="module_execution_gap",
+                location=ep.name,
+                fragment=fragment,
+                question=(
+                    f"Ces modules s'exécutent en séquence ({modules_str}) — "
+                    "si l'un d'eux échoue ou retourne une erreur, "
+                    "le suivant est-il déclenché quand même ? "
+                    "Quel est le comportement attendu en cas d'échec partiel de l'enchaînement ?"
+                ),
+                source_line=abs_line if ep.start_line else None,
+                method_name=ep.name,
+                method_original_name=ep.original_name,
+                context_lines=context,
+            ))
+        return flags
+
+    # =========================================================================
+    # Règle 12 — Code situation hardcodé (désynchronisation Oracle possible)
+    # =========================================================================
+
+    def _detect_hardcoded_situation_code(self, ir: IRSchema) -> list[Flag]:
+        flags = []
+        seen: set[tuple] = set()
+        for ep in ir.entry_points:
+            if not ep.raw_code:
+                continue
+            for pattern in HARDCODED_SITUATION_PATTERNS:
+                for match in re.finditer(pattern, ep.raw_code, re.IGNORECASE):
+                    raw_val = re.search(r"['\"]([^'\"]+)['\"]", match.group())
+                    value = raw_val.group(1) if raw_val else match.group().strip("=? '\"")
+                    key = (ep.name, value)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    fragment = self._extract_line(ep.raw_code, match.start())
+                    context = self._extract_context_lines(ep.raw_code, match.start(), max_lines=5)
+                    abs_line = (ep.start_line or 0) + ep.raw_code[:match.start()].count('\n')
+                    flags.append(Flag(
+                        id=self._next_id("hardcoded_situation_code"),
+                        type="hardcoded_situation_code",
+                        location=ep.name,
+                        fragment=fragment,
+                        question=(
+                            f"Le code situation '{value}' est hardcodé — "
+                            "vient-il d'une table de référence Oracle ? "
+                            "Est-il synchronisé avec les enchaînements configurés "
+                            "dans l'interface admin ? "
+                            "Existe-t-il une constante PHP correspondante ?"
+                        ),
+                        source_line=abs_line if ep.start_line else None,
+                        method_name=ep.name,
+                        method_original_name=ep.original_name,
+                        context_lines=context,
+                    ))
+        return flags
+
+    # =========================================================================
     # Helpers
     # =========================================================================
+
+    @staticmethod
+    def _has_final_else(raw_code: str, start: int, window: int = 2000) -> bool:
+        """Vérifie si la chaîne if/elseif à partir de start se termine par un else."""
+        segment = raw_code[start:start + window]
+        return bool(re.search(r'\}\s*else\s*(?!\s*if\b)', segment, re.IGNORECASE))
 
     @staticmethod
     def _extract_line(code: str, pos: int) -> str:
