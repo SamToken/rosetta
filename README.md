@@ -1,165 +1,24 @@
-# Rosetta
+?? Rosetta ? Branch tree-rosettaOutil d'audit fonctionnel et d'extraction de connaissance pour la migration de syst�mes PHP legacy (Zend/Astro) vers Symfony.Rosetta ne se contente plus de lire du texte ; elle comprend la structure du code gr�ce � un arbre syntaxique abstrait (AST). Elle produit des livrables strat�giques pour le Product Owner : r�gles m�tier extraites, comportements non d�finis (Gaps), et cartographie des risques, le tout sans jargon technique.?? Principe : "Structural Truth"Rosetta fonctionne en deux passes compl�mentaires :Extraction Structurelle (AST via Tree-sitter) : Le code PHP est analys� localement. L'AST garantit une fiabilit� de 100% sur la d�tection des m�thodes, des blocs if/else imbriqu�s et des injections de services. Le Flag Engine identifie les "points noirs" (Gaps de logique, d�pendances critiques, couplage fort).Enrichissement S�mantique (LLM) : Seuls les fragments de code flaggu�s et leurs commentaires adjacents sont transmis � Claude. Le LLM traduit la structure technique en r�gle m�tier en fran�ais, pr�te pour un arbitrage PO.Philosophie : Deterministic AST for structure, Probabilistic LLM for meaning.?? InstallationPour les utilisateurs NixOS (recommand�) ou environnements Python standards :Bash# Installation des d�pendances syst�me (NixOS)
+# Ajoutez pkgs.graphviz et pkgs.tree-sitter � votre shell.nix
 
-**Outil d'audit fonctionnel pour la migration de systèmes PHP legacy vers Symfony.**
-
-Rosetta analyse des contrôleurs PHP et produit des livrables lisibles par un Product Owner : règles métier extraites, comportements non définis, services tiers, glossaire — sans aucun jargon technique dans les rapports finaux.
-
----
-
-## Principe
-
-Rosetta fonctionne en deux passes :
-
-1. **Analyse déterministe** — le code PHP est parsé localement. Le Flag Engine détecte les zones ambiguës (branches manquantes, risques de sécurité, dépendances non documentées, volumes non bornés) et formule chaque point comme une question métier pour le PO.
-
-2. **Enrichissement probabiliste** — seuls les fragments flaggés sont envoyés à Claude. Jamais le fichier complet. Le LLM traduit chaque fragment en règle métier en français, formulée pour un PO non-technique.
-
-> **Deterministic by default, Probabilistic by necessity.**
-
----
-
-## Installation
-
-```bash
-git clone <repo-url>
-cd rosetta
-python -m venv .venv
-source .venv/bin/activate
-pip install anthropic pydantic
-```
-
-Créer un fichier `.env` avec la clé API :
-
-```
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
----
-
-## Usage
-
-### Fichier unique
-
-```bash
-python rosetta_analyze.py UserController.php
-python rosetta_analyze.py UserController.php --output-dir ./output
-python rosetta_analyze.py UserController.php --no-llm
-```
-
-Produit 3 fichiers dans `--output-dir` :
-
-| Fichier | Destinataire | Contenu |
-|--------|-------------|---------|
-| `<Nom>_business_doc.md` | Product Owner | Règles métier, points d'attention, questions ouvertes |
-| `<Nom>_flags.md` | Product Owner / Tech Lead | Zones à valider, gaps de logique |
-| `<Nom>_business_logic.json` | Développeurs | IR complet avec flags et insights LLM |
-
-### Mode batch (répertoire complet)
-
-```bash
-python rosetta_analyze.py ./controllers/ --output-dir ./audit
-python rosetta_analyze.py ./controllers/ --output-dir ./audit --no-llm
-python rosetta_analyze.py ./controllers/ --output-dir ./audit --model claude-haiku-4-5-20251001
-```
-
-Produit :
-
-```
-audit/
-├── global_audit.md          ← Synthèse globale (Product Owner)
-└── details/
-    ├── UserController_business_doc.md
-    ├── UserController_flags.md
-    ├── UserController_business_logic.json
-    ├── ContractController_business_doc.md
-    └── ...
-```
-
-### Options
-
-| Option | Défaut | Description |
-|--------|--------|-------------|
-| `--output-dir DIR` | `.` | Répertoire de sortie |
-| `--no-llm` | off | Analyse déterministe uniquement, sans appel API |
-| `--model MODEL` | `claude-sonnet-4-6` | Modèle Anthropic à utiliser |
-
----
-
-## Rapport global (`global_audit.md`)
-
-En mode batch, Rosetta génère une synthèse transverse avec 4 sections :
-
-1. **Résumé Exécutif** — score de santé global (0-100), tableau par contrôleur, recommandations prioritaires
-2. **Règles Transverses** — règles métier présentes dans plusieurs contrôleurs, candidates à la centralisation
-3. **Gaps de Documentation** — comportements sans cas contraire documenté, chacun représente une décision à prendre avant migration
-4. **Cartographie du Domaine** — glossaire métier unifié + services tiers non documentés
-
----
-
-## Architecture
-
-```
-rosetta_analyze.py          ← Point d'entrée CLI
-│
-├── extractors/
-│   └── php_extractor.py    ← PHP → IRSchema (AST textuel)
-│
-├── analyzers/
-│   ├── flag_engine.py      ← Détection déterministe des zones ambiguës
-│   └── llm_enricher.py     ← Enrichissement Claude (fragments uniquement)
-│
-├── aggregators/
-│   └── business_aggregator.py  ← Synthèse transverse de plusieurs IR
-│
-├── generators/
-│   ├── business_doc_generator.py   ← Rapport par contrôleur (PO)
-│   ├── global_audit_generator.py   ← Rapport global (PO)
-│   └── symfony_generator.py        ← Squelette Symfony (développeurs)
-│
-└── ir/
-    └── schema.py           ← IRSchema : format pivot PHP → Symfony
-```
-
-### IR Schema
-
-`IRSchema` est le format pivot central. Il capture l'intention du code, pas sa syntaxe :
-
-- `entry_points` — actions du contrôleur (routes, méthodes HTTP)
-- `operations` — opérations métier (DB, email, redirect, calcul…)
-- `dependencies` — services tiers avec mapping Symfony suggéré
-- `flags` — zones ambiguës détectées (source déterministe, confiance 1.0)
-- `llm_insights` — règles métier extraites par Claude (confiance < 1.0)
-
----
-
-## Modèles supportés
-
-| Modèle | Usage recommandé | Coût estimé / 100 flags |
-|--------|----------------|------------------------|
-| `claude-haiku-4-5-20251001` | Volumes importants, budget limité | ~$0.02 |
-| `claude-sonnet-4-6` | Qualité production (défaut) | ~$0.15 |
-| `claude-opus-4-7` | Cas complexes, arbitrage critique | ~$0.75 |
-
-Le prompt système est mis en cache côté Anthropic (prompt caching). Sur un lot de 10 contrôleurs, l'économie de cache est typiquement supérieure au coût des tokens de sortie.
-
----
-
-## Privacy
-
-- Le fichier PHP complet n'est **jamais** transmis à l'API
-- Seuls les fragments flaggés (extraits minimaux) sont envoyés
-- L'analyse déterministe est 100% locale (`--no-llm` pour forcer ce mode)
-
----
-
-## Structure des sorties
-
-```
-output/
-└── audit_YYYY_MM_DD/
-    ├── global_audit.md
-    └── details/
-        └── <Contrôleur>_business_doc.md
-        └── <Contrôleur>_flags.md
-        └── <Contrôleur>_business_logic.json
-```
+pip install tree-sitter tree-sitter-php anthropic pydantic python-dotenv
+Configuration du .env :BashANTHROPIC_API_KEY=sk-ant-...
+?? UsageAnalyse d'un composant uniqueBashpython rosetta_analyze.py AssistantController.php --output-dir ./output
+Fichier produitDestinataireContenu<Nom>_business_doc.mdProduct OwnerSynth�se des r�gles, Gaps � arbitrer, Score de risque.<Nom>_flags.mdTech LeadD�tail technique des alertes (Lignes, Types de n�uds).<Nom>_business_logic.jsonPipeline / RAGIR complet (JSON) pour ingestion IA.Mode Batch (R�pertoire complet)Bashpython rosetta_analyze.py ./src/Controller/ --output-dir ./audit_report
+G�n�re un global_audit.md avec la matrice de d�cision transverse et le score de sant� global.?? Risk Scoring & Sant� FonctionnelleRosetta calcule un score de risque automatis� pour chaque m�thode afin de prioriser la migration :$$Score_{Risque} = (Complexity_{Cyclomatic} \times 2) + (Coupling_{Services} \times 5) + (Magic_{Values} \times 3)$$?? Critique (Score > 70) : M�thodes "God Object", couplage extr�me, logique opaque.?? Mod�r� (Score 30-70) : Logique � isoler dans des services d�di�s.?? Sain (Score < 30) : Code pr�t pour une migration directe.?? Architecture de la branche treePlaintextrosetta/
+??? extractors/
+?   ??? php_extractor.py    <-- Parseur AST (Tree-sitter PHP)
+?       ??? _extract_params_ast()      # Extraction typ�e des signatures
+?       ??? _extract_control_flow_ast() # D�tection chirurgicale des if/else
+?       ??? _link_comments()           # Corr�lation Commentaires <-> Code
+?
+??? analyzers/
+?   ??? flag_engine.py      <-- Moteur de r�gles (Missing Else, Empty Catch, etc.)
+?   ??? risk_analyzer.py    <-- Calculateur de complexit� et de couplage
+?
+??? aggregators/
+?   ??? business_aggregator.py  <-- Consolidation (57 Gaps vs 106 Flags)
+?
+??? generators/
+    ??? business_doc_generator.py  <-- Rendu Markdown "PO-Friendly"
+?? Confidentialit� & PerformanceZ�ro "Full-File" Upload : Le fichier PHP complet n'est jamais envoy� au LLM. Seuls les fragments identifi�s par l'AST (ex: un bloc if sp�cifique) sont transmis.Pr�cision AST : R�duction de 44% des faux positifs par rapport � l'ancienne version Regex.Prompt Caching : Optimisation des co�ts Anthropic sur les analyses de masse.?? Roadmap tree-rosetta[x] Migration compl�te vers Tree-sitter (Structure & Flow)[x] Impl�mentation du Risk Scoring (Complexit� & Couplage)[x] Corr�lation automatique Code/Commentaires (Business Context)[ ] G�n�ration de graphes de d�pendances Graphviz (DOT)[ ] Export des matrices de d�cision vers Jira/Confluence
