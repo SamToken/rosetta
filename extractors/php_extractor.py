@@ -474,16 +474,22 @@ class PHPExtractor:
             condition = ' '.join(condition.split())
 
             line_num = content[:match.start()].count('\n') + 1
-            line_idx = line_num - 1  # 0-indexed
+            line_idx = line_num - 1
             ctx_start = max(0, line_idx - 2)
             ctx_end = min(len(all_lines), line_idx + 4)
             raw_context = '\n'.join(all_lines[ctx_start:ctx_end])
+
+            # Détecter si un else/elseif suit dans les 2000 caractères
+            segment = content[match.start():match.start() + 2000]
+            has_else = bool(re.search(r'\}\s*else\s*(?:if\s*\(|{)', segment))
 
             blocks.append(ControlBlock(
                 id=self._next_block_id(),
                 condition=condition,
                 source_line=line_num,
                 raw_context=raw_context,
+                true_branch="défini",
+                false_branch="défini" if has_else else None,
             ))
 
         return blocks
