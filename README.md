@@ -1,128 +1,95 @@
-# 🌿 Rosetta — Branch tree-rosetta
+# Rosetta — Knowledge Base & Anti-Drift Pipeline
 
-Outil d'audit fonctionnel et d'extraction de connaissance pour la migration de systèmes PHP legacy Zend vers Symfony.
+Outil privé de cartographie des règles métier du projet ASTRO (legacy PHP 7.3).
 
-Rosetta ne se contente plus de lire du texte ; elle comprend la structure du code grâce à un **arbre syntaxique abstrait (AST)**. Elle produit des livrables stratégiques pour le Product Owner :
-- Règles métier extraites
-- Comportements non définis (Gaps)
-- Cartographie des risques
+## Architecture
 
-Le tout **sans jargon technique**.
+```
+~/repos/rosetta/  (privé — ton repo)        ~/repos/astro/  (corporate — read-only)
+─────────────────────────────────────        ──────────────────────────────────────
+config.yaml       ← pointe vers astro       .github/copilot-skills/  ← versionné
+kb/                                            (rien d'autre de Rosetta ici)
+  orchestra/      ← 5 fiches
+  airele/         ← 8 fiches
+  enrichissement-alarmes/ ← 6 fiches
+scripts/
+  kb_drift_check.py
+  kb_update_anchors.py
+  install_hook.sh
+audits/           ← rapports partagés en réunion
+```
 
----
-
-## 🎯 Principe : "Structural Truth"
-
-Rosetta fonctionne en deux passes complémentaires :
-
-### 1. Extraction Structurelle (AST via Tree-sitter)
-
-Le code PHP est analysé localement. L'AST garantit une fiabilité de **100%** sur :
-- Détection des méthodes
-- Blocs if/else imbriqués
-- Injections de services
-
-Le **Flag Engine** identifie les "points noirs" :
-- Gaps de logique
-- Dépendances critiques
-- Couplage fort
-
-### 2. Enrichissement Sémantique (LLM)
-
-Seuls les fragments de code flaggués et leurs commentaires adjacents sont transmis à Claude. Le LLM traduit la structure technique en **règle métier en français**, prête pour un arbitrage PO.
-
-**Philosophie** : _Deterministic AST for structure, Probabilistic LLM for meaning._
+**Principe** : Rosetta ne vit JAMAIS dans le repo corporate.
+Les scripts lisent le code source Astro via `config.yaml → source_repo`.
 
 ---
 
-## 🛠 Installation
-
-Pour les utilisateurs **NixOS** (recommandé) ou environnements Python standards :
+## Setup NixOS (une seule fois)
 
 ```bash
-# Installation des dépendances
-pip install tree-sitter tree-sitter-php anthropic pydantic python-dotenv
+# 1. Cloner Astro (si pas déjà fait)
+git clone <astro_corporate_url> ~/repos/astro
+
+# 2. Installer le hook (dans .git/hooks d'Astro, pas versionné)
+bash ~/repos/rosetta/scripts/install_hook.sh
+
+# 3. Tester
+python3 ~/repos/rosetta/scripts/kb_drift_check.py
 ```
 
-### Configuration du .env
+Prérequis : `python3`, `git` — aucune dépendance pip.
 
+---
+
+## Usage quotidien
+
+### Vérifier les drifts
 ```bash
-ANTHROPIC_API_KEY=sk-ant-...
+cd ~/repos/rosetta
+python3 scripts/kb_drift_check.py
 ```
 
----
-
-## 🚀 Usage
-
-### Analyse d'un composant unique
-
+### Mettre à jour les ancres (hash, commit)
 ```bash
-python rosetta_analyze.py AssistantController.php --output-dir ./output
+python3 scripts/kb_update_anchors.py              # dry-run
+python3 scripts/kb_update_anchors.py --apply       # applique
+python3 scripts/kb_update_anchors.py --apply --file kb/airele/regle_FALLBACK_OCEANE_GISEMENT.md
 ```
 
-| Fichier produit | Destinataire | Contenu |
-|---|---|---|
-| `<Nom>_business_doc.md` | Product Owner | Synthèse des règles, Gaps à arbitrer, Score de risque |
-| `<Nom>_flags.md` | Tech Lead | Détail technique des alertes (Lignes, Types de nœuds) |
-| `<Nom>_business_logic.json` | Pipeline / RAG | IR complet (JSON) pour ingestion IA |
-
-### Mode Batch (Répertoire complet)
-
-```bash
-python rosetta_analyze.py ./src/Controller/ --output-dir ./audit_report
+### Workflow post-MR
 ```
-
-Génère un `global_audit.md` avec la matrice de décision transverse et le score de santé global.
-
----
-
-## 📊 Risk Scoring & Santé Fonctionnelle
-
-Rosetta calcule un score de risque automatisé pour chaque méthode afin de prioriser la migration :
-
-$$Score_{Risque} = (Complexity_{Cyclomatic} \times 2) + (Coupling_{Services} \times 5) + (Magic_{Values} \times 3)$$
-
-- 🔴 **Critique** (Score > 70) : Méthodes "God Object", couplage extrême, logique opaque
-- 🟡 **Modéré** (Score 30-70) : Logique à isoler dans des services dédiés
-- 🟢 **Sain** (Score < 30) : Code prêt pour une migration directe
-
----
-
-## 🏗 Architecture de la branche tree
-
-```
-rosetta/
-├── extractors/
-│   └── php_extractor.py         # Parseur AST (Tree-sitter PHP)
-│       ├── _extract_params_ast()
-│       ├── _extract_control_flow_ast()
-│       └── _link_comments()
-│
-├── analyzers/
-│   ├── flag_engine.py           # Moteur de règles
-│   └── risk_analyzer.py         # Calculateur de complexité
-│
-├── aggregators/
-│   └── business_aggregator.py   # Consolidation (57 Gaps vs 106 Flags)
-│
-└── generators/
-    └── business_doc_generator.py # Rendu Markdown
+1. Collègue merge une MR sur Astro
+2. Sur NixOS : cd ~/repos/astro && git pull
+3. cd ~/repos/rosetta && python3 scripts/kb_drift_check.py
+4. Si drift → python3 scripts/kb_update_anchors.py --apply
+5. Si anchor_method a changé → mettre à jour la fiche manuellement
+6. git add kb/ && git commit -m "KB: sync post-MR"
 ```
 
 ---
 
-## 🔒 Confidentialité & Performance
+## config.yaml
 
-- **Zéro "Full-File" Upload** : Le fichier PHP complet n'est jamais envoyé au LLM. Seuls les fragments identifiés par l'AST sont transmis.
-- **Précision AST** : Réduction de 44% des faux positifs par rapport à l'ancienne version Regex
-- **Prompt Caching** : Optimisation des coûts Anthropic sur les analyses de masse
+| Champ | Rôle |
+|-------|------|
+| `source_repo` | Chemin vers le clone Astro corporate |
+| `kb_dir` | Dossier des fiches KB (dans ce repo) |
+| `drift.max_age_days` | Warning si fiche plus ancienne que N jours |
+| `drift.block_on_drift` | Le hook bloque le commit si `true` |
+| `drift.allow_simulated_hash` | Accepter les `sha256:simul*` |
+| `domains.*` | Mapping domaine → fichiers PHP source |
 
 ---
 
-## 📈 Roadmap
+## Ce qu'on partage / ce qu'on garde
 
-- [x] Migration complète vers Tree-sitter (Structure & Flow)
-- [x] Implémentation du Risk Scoring (Complexité & Couplage)
-- [x] Corrélation automatique Code/Commentaires (Business Context)
-- [ ] Génération de graphes de dépendances Graphviz (DOT)
-- [ ] Export des matrices de décision vers Jira/Confluence
+| Élément | Partagé ? | Comment |
+|---------|-----------|---------|
+| Audits (rapports) | ✅ Oui | PDF/MD en réunion |
+| Fiches KB | ❌ Non | Restent dans ce repo privé |
+| Scripts Rosetta | ❌ Non | Propriété personnelle |
+| Skills Copilot | ✅ Oui | Dans `.github/copilot-skills/` d'Astro |
+
+---
+
+*Rosetta — outil d'audit statique PHP · Samah Toutouh · 2026*

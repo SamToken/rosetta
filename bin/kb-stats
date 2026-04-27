@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+source /home/nixos/projects/rosetta/.venv/bin/activate
+exec python3 /home/nixos/projects/rosetta/rosetta_kb.py stats "$@"

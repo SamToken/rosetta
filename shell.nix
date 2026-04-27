@@ -10,6 +10,8 @@ pkgs.mkShell {
       python-pkgs.pip
       python-pkgs.setuptools
       python-pkgs.wheel
+      python-pkgs.pyyaml
+      python-pkgs.python-frontmatter
     ]))
   ];
 }

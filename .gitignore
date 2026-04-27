@@ -145,3 +145,10 @@ global_audit.md
 /tmp/rosetta_*/
 ../rosetta-memory/
 tests/
+
+# KB local — données corporate, jamais pushées
+kb/
+
+# Windows Zone Identifier (WSL artefacts)
+*:Zone.Identifier
+*:Avecto.Zone.Identifier
