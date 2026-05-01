@@ -55,6 +55,130 @@ TECH_TO_BUSINESS: list[tuple[str, str]] = [
 class BusinessDocGenerator:
     """Génère la documentation métier depuis un IRSchema enrichi."""
 
+    def generate_po_brief(self, ir: IRSchema) -> str:
+        """Brief PO compact — format table, une ligne par concept unique."""
+        from collections import defaultdict
+        import re as _re
+
+        flags = ir.flags
+        insights_by_flag = {ins.flag_id: ins for ins in ir.llm_insights}
+        controller = ir.metadata.controller_name
+        now = datetime.now().strftime("%Y-%m-%d")
+
+        CLUSTER_A = {"magic_value", "hardcoded_situation_code"}
+        CLUSTER_B = {"missing_branch", "external_state_dependency", "dynamic_session_key"}
+        SKIP = {"unmapped_dep", "strong_coupling"}
+
+        def _extract_lit(fragment: str) -> str:
+            for m in _re.finditer(r"""['"]([^'"]{2,})['"]""", fragment):
+                return m.group(1)
+            for m in _re.finditer(r'\b([A-Z][A-Z0-9_]{2,})\b', fragment):
+                return m.group(1)
+            return fragment[:30].strip()
+
+        # Clustering
+        groups: dict[tuple, list] = defaultdict(list)
+        for flag in flags:
+            if flag.type in SKIP:
+                continue
+            if flag.type in CLUSTER_A:
+                key = (flag.type, _extract_lit(flag.fragment))
+            elif flag.type in CLUSTER_B:
+                key = (flag.type, flag.method_name or flag.location)
+            else:
+                key = (flag.type, flag.id)
+            insight = insights_by_flag.get(flag.id)
+            groups[key].append({"flag": flag, "insight": insight})
+
+        # Statistiques par type
+        type_stats: dict[str, dict] = {}
+        for (ftype, _), members in groups.items():
+            if ftype not in type_stats:
+                type_stats[ftype] = {"flags": 0, "uniques": 0}
+            type_stats[ftype]["flags"] += len(members)
+            type_stats[ftype]["uniques"] += 1
+
+        total_flags = len(ir.flags)
+        total_concepts = len(groups)
+
+        lines: list[str] = []
+        lines.append(f"# {controller} — Brief PO")
+        lines.append(f"{now} | {len(ir.flags)} flags | {total_concepts} questions à valider")
+        lines.append("")
+
+        # Tableau de synthèse
+        TYPE_META = {
+            "dynamic_session_key":      ("🔴", "Session dynamique",       "Vérifier nettoyage"),
+            "external_state_dependency":("🔴", "Dépendance externe",      "Documenter fallback"),
+            "hardcoded_situation_code": ("🟡", "Code hardcodé",           "Arbitrage PO"),
+            "missing_branch":           ("🟡", "Branche manquante",       "Arbitrage PO"),
+            "magic_value":              ("🟡", "Valeur magique",          "Arbitrage PO"),
+        }
+        lines.append("## Vue d'ensemble")
+        lines.append("")
+        lines.append("| Type | Flags | Concepts uniques | Action |")
+        lines.append("|------|-------|-----------------|--------|")
+        for ftype, stats in sorted(type_stats.items(),
+                                   key=lambda kv: TYPE_META.get(kv[0], ("🟢",))[0]):
+            icon, label, action = TYPE_META.get(ftype, ("⚪", ftype, "—"))
+            lines.append(f"| {icon} {label} | {stats['flags']} | {stats['uniques']} | {action} |")
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+        # Sections par type
+        SECTION_ORDER = [
+            ("dynamic_session_key",      "🔴 SESSION DYNAMIQUE — risque de données périmées"),
+            ("external_state_dependency","🔴 DÉPENDANCES EXTERNES — fallback non documenté"),
+            ("hardcoded_situation_code", "🟡 CODES SITUATION HARDCODÉS"),
+            ("magic_value",              "🟡 VALEURS MAGIQUES — sens non documenté"),
+            ("missing_branch",           "🟡 BRANCHES MANQUANTES — comportements non définis"),
+        ]
+
+        for ftype, section_title in SECTION_ORDER:
+            section_groups = {k: v for k, v in groups.items() if k[0] == ftype}
+            if not section_groups:
+                continue
+
+            lines.append(f"## {section_title}")
+            lines.append("")
+
+            if ftype in CLUSTER_A:
+                lines.append("| Valeur | Méthode(s) | ×N | Question |")
+                lines.append("|--------|-----------|-----|---------|")
+                for (_, value), members in sorted(section_groups.items(),
+                                                   key=lambda kv: -len(kv[1])):
+                    methods = ", ".join(sorted({
+                        m["flag"].method_name or m["flag"].location
+                        for m in members
+                    })[:3])
+                    rep = min(members, key=lambda m: m["insight"].confidence
+                              if m["insight"] else 1.0)
+                    q = (rep["insight"].missing_context if rep["insight"] and rep["insight"].missing_context
+                         else rep["flag"].question)
+                    q = q[:100].replace("|", "·") + ("…" if len(q) > 100 else "")
+                    n = len(members)
+                    lines.append(f"| `{value}` | {methods} | ×{n} | {q} |")
+            else:
+                lines.append("| Méthode | ×N | Question |")
+                lines.append("|---------|-----|---------|")
+                for (_, method), members in sorted(section_groups.items(),
+                                                    key=lambda kv: -len(kv[1])):
+                    rep = min(members, key=lambda m: m["insight"].confidence
+                              if m["insight"] else 1.0)
+                    q = (rep["insight"].missing_context if rep["insight"] and rep["insight"].missing_context
+                         else rep["flag"].question)
+                    q = q[:100].replace("|", "·") + ("…" if len(q) > 100 else "")
+                    n = len(members)
+                    lines.append(f"| `{method}()` | ×{n} | {q} |")
+
+            lines.append("")
+            lines.append("---")
+            lines.append("")
+
+        lines.append("*Brief généré par **Rosetta** — outil d'audit statique PHP*")
+        return "\n".join(lines)
+
     def generate(
         self,
         ir: IRSchema,

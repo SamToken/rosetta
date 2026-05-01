@@ -20,3 +20,5 @@ alias kb-stats="nix-shell /home/nixos/projects/rosetta/shell.nix --run 'python3 
 alias kb-lookup="nix-shell /home/nixos/projects/rosetta/shell.nix --run 'python3 /home/nixos/projects/rosetta/rosetta_kb.py --kb-path \${ROSETTA_KB} lookup'"
 alias kb-search="nix-shell /home/nixos/projects/rosetta/shell.nix --run 'python3 /home/nixos/projects/rosetta/rosetta_kb.py --kb-path \${ROSETTA_KB} search'"
 alias kb-prompt="nix-shell /home/nixos/projects/rosetta/shell.nix --run 'python3 /home/nixos/projects/rosetta/rosetta_kb.py --kb-path \${ROSETTA_KB} export-prompt'"
+alias kb-brief="nix-shell /home/nixos/projects/rosetta/shell.nix --run 'python3 /home/nixos/projects/rosetta/rosetta_kb.py --kb-path \${ROSETTA_KB} export-brief'"
+alias kb-inject="python3 /home/nixos/projects/rosetta/tools/inject_pending.py"

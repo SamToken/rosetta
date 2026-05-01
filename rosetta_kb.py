@@ -911,6 +911,140 @@ def cmd_export_prompt(args: argparse.Namespace, kb_path: Path) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Commande : export-brief  (brief PO)
+# ---------------------------------------------------------------------------
+
+_TYPE_LABELS = {
+    "magic_value":               "Valeur non documentée",
+    "hardcoded_situation_code":  "Code situation hardcodé",
+    "missing_branch":            "Branche non documentée",
+    "external_state_dependency": "Dépendance état externe",
+    "dynamic_session_key":       "Clé session dynamique",
+}
+
+_PRIO_ICONS = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+
+
+def _humanize_concept(concept: str) -> str:
+    """'magic_value::automatisation' → 'Valeur non documentée — "automatisation"'"""
+    if "::" in concept:
+        ftype, value = concept.split("::", 1)
+        label = _TYPE_LABELS.get(ftype, ftype)
+        return f'{label} — "{value}"'
+    return concept
+
+
+def _build_brief_markdown(entries: list[dict], domaine: str, titre: str = "") -> str:
+    lines: list[str] = []
+
+    lines.append(f"# Brief PO — {titre or domaine}")
+    lines.append(f"{date.today().isoformat()} · {len(entries)} concept(s) à valider")
+    lines.append("")
+
+    # Synthèse par type
+    from collections import Counter
+    type_counts = Counter(e.get("flag_type", "?") for e in entries)
+    prio_counts = Counter(e.get("priorite", "low") for e in entries)
+
+    lines.append("| Type | Concepts | Priorité |")
+    lines.append("|------|----------|---------|")
+    TYPE_META = {
+        "dynamic_session_key":      ("🔴", "Session dynamique"),
+        "external_state_dependency":("🔴", "Dépendance externe"),
+        "hardcoded_situation_code": ("🟡", "Code hardcodé"),
+        "missing_branch":           ("🟡", "Branche manquante"),
+        "magic_value":              ("🟡", "Valeur magique"),
+    }
+    for ftype, count in sorted(type_counts.items(),
+                                key=lambda kv: TYPE_META.get(kv[0], ("🟢", kv[0]))[0]):
+        icon, label = TYPE_META.get(ftype, ("⚪", ftype))
+        lines.append(f"| {icon} {label} | {count} | — |")
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+
+    # Sections par type
+    SECTION_ORDER = [
+        ("dynamic_session_key",      "🔴 SESSION DYNAMIQUE"),
+        ("external_state_dependency","🔴 DÉPENDANCES EXTERNES"),
+        ("hardcoded_situation_code", "🟡 CODES HARDCODÉS"),
+        ("magic_value",              "🟡 VALEURS MAGIQUES"),
+        ("missing_branch",           "🟡 BRANCHES MANQUANTES"),
+    ]
+
+    CLUSTER_A = {"magic_value", "hardcoded_situation_code"}
+
+    for ftype, section_title in SECTION_ORDER:
+        section_entries = [e for e in entries if e.get("flag_type") == ftype]
+        if not section_entries:
+            continue
+
+        section_entries = sorted(section_entries, key=lambda e: -e.get("occurrences", 1))
+        lines.append(f"## {section_title}")
+        lines.append("")
+
+        if ftype in CLUSTER_A:
+            lines.append("| Valeur | Méthode(s) | ×N | Question | Réponse |")
+            lines.append("|--------|-----------|-----|---------|---------|")
+            for entry in section_entries:
+                concept = entry.get("concept", "")
+                value = concept.split("::", 1)[-1] if "::" in concept else concept
+                fichiers = entry.get("fichiers", [])
+                methods = ", ".join(f.split(":")[0] for f in fichiers[:2])
+                q = entry.get("question", "")[:90].replace("|", "·")
+                n = entry.get("occurrences", 1)
+                lines.append(f"| `{value}` | {methods} | ×{n} | {q}… |  |")
+        else:
+            lines.append("| Méthode | ×N | Question | Réponse |")
+            lines.append("|---------|-----|---------|---------|")
+            for entry in section_entries:
+                concept = entry.get("concept", "")
+                method = concept.split("::", 1)[-1] if "::" in concept else concept
+                q = entry.get("question", "")[:90].replace("|", "·")
+                n = entry.get("occurrences", 1)
+                lines.append(f"| `{method}()` | ×{n} | {q}… |  |")
+
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+    lines.append("*Brief généré par **Rosetta***")
+    return "\n".join(lines)
+
+
+def cmd_export_brief(args: argparse.Namespace, kb_path: Path) -> int:
+    pending = _load_pending(kb_path)
+
+    domaine_filter = getattr(args, "domaine", None) or None
+    prio_filter = getattr(args, "priorite", None) or None
+
+    entries = list(pending.values())
+
+    if domaine_filter:
+        entries = [e for e in entries if e.get("domaine") == domaine_filter]
+    if prio_filter:
+        entries = [e for e in entries if e.get("priorite") == prio_filter]
+
+    # Exclure les entrées déjà validées
+    entries = [e for e in entries if not e.get("validated")]
+
+    if not entries:
+        print("(Aucune entrée pending correspondant aux filtres)")
+        return 0
+
+    domaine_label = domaine_filter or "tous domaines"
+    md = _build_brief_markdown(entries, domaine=domaine_label)
+
+    if getattr(args, "output", None):
+        out = Path(args.output).expanduser()
+        out.write_text(md, encoding="utf-8")
+        print(f"[✓] Brief PO écrit dans {out} ({len(entries)} entrées)")
+    else:
+        print(md)
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # Commande : split
 # ---------------------------------------------------------------------------
 
@@ -1361,6 +1495,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--output", help="Fichier de sortie (défaut: stdout)")
 
+    # ── export-brief ──────────────────────────────────────────────────────────
+    p = sub.add_parser("export-brief", help="Générer un brief PO à partir du pending_validation")
+    p.add_argument("--domaine", help="Filtrer par domaine (ex: demande-intervention)")
+    p.add_argument(
+        "--priorite", choices=["high", "medium", "low"],
+        help="Filtrer par priorité (défaut: toutes)",
+    )
+    p.add_argument("--output", help="Fichier de sortie .md (défaut: stdout)")
+
     return parser
 
 
@@ -1383,6 +1526,7 @@ COMMANDS = {
     "split":           cmd_split,
     "import":          cmd_import,
     "export-prompt":   cmd_export_prompt,
+    "export-brief":    cmd_export_brief,
 }
 
 

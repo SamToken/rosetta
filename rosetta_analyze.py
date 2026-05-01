@@ -254,7 +254,10 @@ def _analyze_single(
     flags_out = output_dir / f"{stem}_flags.md"
     flags_out.write_text(gen.generate_flags_summary(ir), encoding="utf-8")
 
-    print(f"        → {doc_out.relative_to(output_dir.parent) if output_dir.parent != output_dir else doc_out}")
+    brief_out = output_dir / f"{stem}_brief_po.md"
+    brief_out.write_text(gen.generate_po_brief(ir), encoding="utf-8")
+
+    print(f"        → {brief_out.relative_to(output_dir.parent) if output_dir.parent != output_dir else brief_out}")
 
     # ------------------------------------------------------------------
     # Étape 4b — Génération des fiches KB (optionnel, --kb-output-dir)
@@ -409,8 +412,12 @@ def _regen_from_json(
     flags_out = output_dir / f"{stem}_flags.md"
     flags_out.write_text(gen.generate_flags_summary(ir), encoding="utf-8")
 
+    brief_out = output_dir / f"{stem}_brief_po.md"
+    brief_out.write_text(gen.generate_po_brief(ir), encoding="utf-8")
+
     print(f"   → {doc_out}")
     print(f"   → {flags_out}")
+    print(f"   → {brief_out}")
     if retry_failed and usage:
         _print_usage_summary(usage, model)
     print("\n✅ Régénération terminée")
