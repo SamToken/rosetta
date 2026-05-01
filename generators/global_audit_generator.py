@@ -21,7 +21,7 @@ from aggregators.business_aggregator import AggregatedInsights, DecisionGap, Cri
 from analyzers.llm_enricher import TokenUsage, PRICING
 
 _TECHNICAL_NOISE = [r'\$_POST', r'\bmd5\b', r'SELECT\s*\*']
-_PRIORITY_KEYWORDS = ("oceane", "adelia", "oceaneassistant")
+_PRIORITY_KEYWORDS: tuple = ()
 
 # Correction 2 — traduction des termes techniques → langage PO
 # L'ordre compte : les patterns combinés avant les patterns simples
@@ -69,20 +69,20 @@ _PO_CONDITION_TRANSLATIONS = [
 
 # Types de flags consolidés dans gaps_complets (patterns répétitifs)
 _CONSOLIDATABLE = frozenset({
-    "dynamic_session_key", "oceane_state_dependency",
+    "dynamic_session_key", "external_state_dependency",
     "strong_coupling", "chained_api_call",
 })
 
 _CONSOLIDATED_LABELS = {
     "dynamic_session_key":    ("🔑", "Clé de session dynamique"),
-    "oceane_state_dependency": ("🌊", "Dépendance Oceane temps réel"),
+    "external_state_dependency": ("🌐", "Dépendance service externe temps réel"),
     "strong_coupling":        ("🔧", "Couplage fort"),
     "chained_api_call":       ("🔗", "Appels API chaînés"),
 }
 
 _CONSOLIDATED_QUESTIONS = {
     "dynamic_session_key":    "Cette clé est-elle nettoyée explicitement dans TOUS les chemins de sortie ?",
-    "oceane_state_dependency": "Quel est le comportement si Oceane est indisponible ou retourne une réponse vide ?",
+    "external_state_dependency": "Quel est le comportement si le service externe est indisponible ou retourne une réponse vide ?",
     "strong_coupling":        "Cette méthode est-elle testable de façon isolée ? Peut-on injecter les services autrement ?",
     "chained_api_call":       "Le résultat intermédiaire est-il validé (!empty / null check) avant chaque appel suivant ?",
 }
@@ -210,7 +210,7 @@ class GlobalAuditGenerator:
         lines.append("")
         n = 0
 
-        # Comptage par type pour les recommandations spécifiques Astro
+        # Comptage par type pour les recommandations prioritaires
         count_by_type: dict[str, int] = {}
         for f in ins.all_flags:
             count_by_type[f.flag_type] = count_by_type.get(f.flag_type, 0) + 1
@@ -242,13 +242,13 @@ class GlobalAuditGenerator:
                 "documentant le comportement par défaut. "
                 "Risque de comportement indéfini si Oracle introduit un nouveau code situation."
             )
-        if count_by_type.get("oceane_state_dependency", 0) > 0:
+        if count_by_type.get("external_state_dependency", 0) > 0:
             n += 1
-            c = count_by_type["oceane_state_dependency"]
+            c = count_by_type["external_state_dependency"]
             lines.append(
-                f"{n}. **🌊 {c} lecture(s) d'état Oceane sans fallback** — "
-                "Vérifier que chaque appel Oceane (getStatutEquipement, getEtatAbonnement…) "
-                "est protégé par un fallback explicite en cas de timeout ou de réponse vide. "
+                f"{n}. **🌐 {c} lecture(s) d'état service externe sans fallback** — "
+                "Vérifier que chaque appel vers un service externe est protégé par un fallback "
+                "explicite en cas de timeout ou de réponse vide. "
                 "Risque de null pointer ou de prise de décision sur donnée absente."
             )
         if count_by_type.get("module_execution_gap", 0) > 0:
@@ -330,7 +330,7 @@ class GlobalAuditGenerator:
         """Règles implicites identifiées par reverse engineering — sans LLM."""
         rule_types = {
             'hardcoded_situation_code',
-            'oceane_state_dependency',
+            'external_state_dependency',
             'dynamic_session_key',
             'chained_api_call',
         }
@@ -353,7 +353,7 @@ class GlobalAuditGenerator:
             else:
                 shown = ", ".join(f"`{m}()`" for m in names[:3])
                 corr_str = f"{shown} + {len(names) - 3} autres"
-            badge = "🔴" if row.pattern in ("dynamic_session_key", "oceane_state_dependency", "security_risk") else "🟠"
+            badge = "🔴" if row.pattern in ("dynamic_session_key", "external_state_dependency", "security_risk") else "🟠"
             lines.append(
                 f"| `{row.method_name}()` | {row.pattern} | {corr_str} | {badge} {row.risk_label} |"
             )

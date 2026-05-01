@@ -40,7 +40,7 @@ def _load_kb(kb_path: Path) -> dict:
     else:
         data = {}
     data.setdefault("meta", {
-        "projet": "ASO",
+        "projet": "monprojet",
         "version": "2.0.0",
         "last_updated": str(date.today()),
         "maintainer": "Samah",
@@ -472,7 +472,7 @@ def cmd_stats(args: argparse.Namespace, kb_path: Path) -> int:
     total = len(all_entries)
 
     print(f"\n{'='*55}")
-    print(f"  ROSETTA KB — {meta.get('projet', 'ASO')}  v{meta.get('version', '?')}")
+    print(f"  ROSETTA KB — {meta.get("projet", "KB")}  v{meta.get('version', '?')}")
     print(f"  Mis à jour : {meta.get('last_updated', '?')}  |  {meta.get('maintainer', '?')}")
     print(f"{'='*55}")
     print(f"  SECTIONS")
@@ -548,7 +548,7 @@ def cmd_export(args: argparse.Namespace, kb_path: Path) -> int:
     meta = data.get("meta", {})
     lines: list[str] = []
 
-    lines.append(f"# KB Rosetta — {meta.get('projet', 'ASO')}")
+    lines.append(f"# KB Rosetta — {meta.get("projet", "KB")}")
     lines.append(f"*Version {meta.get('version', '?')} — {meta.get('last_updated', '?')}*\n")
 
     def _section_md(title: str, bucket: dict | None) -> None:
@@ -661,7 +661,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--confiance", default="high", choices=["high", "medium", "inferred"])
     p.add_argument("--champ", help="Champ Oracle/PHP concerné")
     p.add_argument("--table", help="Table Oracle")
-    p.add_argument("--domaine", help="Domaine ASO")
+    p.add_argument("--domaine", help="Domaine métier")
     p.add_argument("--lie-a", dest="lie_a", help="Codes liés (séparés par virgule)")
     p.add_argument("--notes", help="Notes complémentaires")
     p.add_argument("--force", action="store_true", help="Écraser même si confiance high")
@@ -693,7 +693,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # ── capture-colonne ───────────────────────────────────────────────────────
     p = sub.add_parser("capture-colonne", help="Capturer une colonne Oracle obscure")
-    p.add_argument("--nom", required=True, help="Nom exact de la colonne (ex: C_TYP_FLX)")
+    p.add_argument("--nom", required=True, help="Nom exact de la colonne (ex: COL_TYPE)")
     p.add_argument("--label", required=True, help="Libellé lisible")
     p.add_argument("--table", help="Table Oracle propriétaire")
     p.add_argument("--type", dest="type_oracle", help="Type Oracle (ex: VARCHAR2(1))")
@@ -708,7 +708,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # ── capture-vue ───────────────────────────────────────────────────────────
     p = sub.add_parser("capture-vue", help="Capturer une vue Oracle")
-    p.add_argument("--nom", required=True, help="Nom de la vue (ex: V_TICKET_SLA)")
+    p.add_argument("--nom", required=True, help="Nom de la vue (ex: V_NOM_VUE)")
     p.add_argument("--label", required=True, help="Libellé lisible")
     p.add_argument("--semantique", help="Ce que calcule la vue")
     p.add_argument("--tables", help="Tables source (séparées par virgule)")
@@ -720,9 +720,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # ── capture-requete ───────────────────────────────────────────────────────
     p = sub.add_parser("capture-requete", help="Capturer une requête complexe 100+ lignes")
-    p.add_argument("--nom", required=True, help="Nom court (ex: RQ_SLA_BREACH_WEEKEND)")
+    p.add_argument("--nom", required=True, help="Nom court (ex: RQ_NOM_REQUETE)")
     p.add_argument("--label", help="Libellé lisible (obligatoire si entrée nouvelle)")
-    p.add_argument("--fichier", help="Fichier source (relatif à Astro)")
+    p.add_argument("--fichier", help="Fichier source (relatif à la racine du repo source)")
     p.add_argument("--lignes", help="Plage de lignes (ex: L145-L287)")
     p.add_argument("--semantique", help="Ce que fait la requête")
     p.add_argument("--constantes", help="Magic strings (ex: '8=Heure début,18=Heure fin')")

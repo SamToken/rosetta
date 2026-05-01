@@ -295,7 +295,7 @@ class BusinessAggregator:
                 # Valeurs UPPERCASE comparées : == 'DSLAM', == 'GTR'
                 for m in re.finditer(r"(?:==|!=|!==|===)\s*['\"]([A-Z][A-Z0-9_]{2,})['\"]", frag):
                     _add(m.group(1), ctrl, frag)
-                # Clés de tableau UPPERCASE : ['GTR'], ['ADELIA_MANUEL']
+                # Clés de tableau UPPERCASE : ['GTR'], ['KEY_MANUEL']
                 for m in re.finditer(r"\['([A-Z][A-Z0-9_]{2,})'\]", frag):
                     _add(m.group(1), ctrl, frag)
                 # Constantes de classe : self::DSLAM
@@ -433,7 +433,7 @@ class BusinessAggregator:
         """Pour chaque méthode critique, trouve les méthodes partageant le même pattern de flag."""
         _RISK_LABELS = {
             "dynamic_session_key":    "Vérifier nettoyage session",
-            "oceane_state_dependency": "Vérifier fallback Oceane",
+            "external_state_dependency": "Vérifier fallback service externe",
             "strong_coupling":        "Vérifier injection services",
             "chained_api_call":       "Vérifier chaîne d'appels",
             "missing_branch":         "Vérifier branche manquante",

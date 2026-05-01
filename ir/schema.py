@@ -65,7 +65,7 @@ class FlagType(str, Enum):
     DYNAMIC_SESSION_KEY     = "dynamic_session_key"
     CHAINED_API_CALL        = "chained_api_call"
     SITUATION_COVERAGE      = "situation_coverage"
-    OCEANE_STATE_DEPENDENCY = "oceane_state_dependency"
+    EXTERNAL_STATE_DEPENDENCY = "external_state_dependency"
     MODULE_EXECUTION_GAP    = "module_execution_gap"
     HARDCODED_SITUATION     = "hardcoded_situation_code"
     EMPTY_CATCH             = "empty_catch"

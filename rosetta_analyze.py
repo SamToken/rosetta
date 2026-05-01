@@ -259,7 +259,7 @@ def _analyze_single(
 _ALL_RULE_TYPES = [
     "missing_branch", "magic_value", "security_risk", "unmapped_dep",
     "business_logic_unclear", "side_effect", "dynamic_session_key",
-    "chained_api_call", "situation_coverage", "oceane_state_dependency",
+    "chained_api_call", "situation_coverage", "external_state_dependency",
     "module_execution_gap", "hardcoded_situation_code",
     "empty_catch", "strong_coupling", "chained_method_call",
 ]

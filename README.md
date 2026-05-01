@@ -48,7 +48,7 @@ make kb-full
 ### Recherche & validation
 
 ```bash
-python3 rosetta_kb.py lookup --code REBALANCEMENT_ORDRE_APRES_SUPPRESSION
+python3 rosetta_kb.py lookup --code MA_REGLE_METIER
 python3 rosetta_kb.py search --texte "SLA"
 python3 rosetta_kb.py pending
 python3 rosetta_kb.py validate --id PV-001 --label "..." --source "PO validé"

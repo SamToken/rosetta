@@ -75,7 +75,7 @@ CONDITION_TRANSLATIONS: list[tuple[re.Pattern, str]] = [
 
 DYNAMIC_SESSION_PATTERNS = [
     r"->get\(['\"][\w]+['\"].*\.\s*\$",        # Session->get('key'. $var)
-    r"cable_infos_",                             # clé Astro spécifique
+    r"cable_infos_",                             # clé dynamique composite
     r"_infos_\.\$",                              # pattern clé dynamique _infos_.$var
     r"_data_\.\$",                               # pattern clé dynamique _data_.$var
     r"key_exists\(['\"][\w]+['\"],.*\$session",  # key_exists sur variable session
@@ -84,10 +84,10 @@ DYNAMIC_SESSION_PATTERNS = [
 ]
 
 CHAINED_API_PATTERNS = [
-    r"scenarioCode.*71.*scenarioCode.*10389",    # scénarios Orchestra connus
-    r"getSecondCall\w+\(\)",                      # méthodes chaînées Astro
-    r"lancerEtx\w+\(\)",                         # déclencheurs ETX Astro
-    r"(orchestra|oceane|adelia).*call.*\n.*\1.*call",  # même service appelé 2×
+    r"scenarioCode.*\d+.*scenarioCode.*\d+",      # même scenarioCode appelé 2× avec IDs distincts
+    r"getSecondCall\w+\(\)",                      # méthodes chaînées séquentielles
+    r"lancer\w+\(\)",                             # déclencheurs API externes
+    r"(\$\w+Service).*call.*\n.*\1.*call",        # même service appelé 2×
     r"getFirst\w+.*\n(?!.*empty).*getSecond\w+",       # getFirst→getSecond sans empty check
     r"\$payload\s*=.*\$result\w*\n(?!.*empty).*->call", # payload depuis résultat sans guard
 ]
@@ -101,15 +101,14 @@ SITUATION_PATTERNS = [
     r"===?\s*['\"][HSTPpP][0-9]+['\"]",
 ]
 
-OCEANE_STATE_PATTERNS = [
-    r"oceane.*getTicket",
-    r"oceane.*getEtat",
-    r"oceane.*getStatut",
-    r"oceane.*getSituation",
-    r"getTicketOceane",
-    r"ticketOceaneArray",
-    r"oceane.*->get(?!.*if\s*\(.*null)",
-    r"oceane.*->fetch(?!.*empty)",
+EXTERNAL_STATE_PATTERNS = [
+    r"\$\w+Service->get\w+Ticket",
+    r"\$\w+Service->get\w+Etat",
+    r"\$\w+Service->get\w+Statut",
+    r"\$\w+Service->get\w+Situation",
+    r"get\w+Array\b",
+    r"\$\w+->get(?!.*if\s*\(.*null)",
+    r"\$\w+->fetch(?!.*empty)",
 ]
 
 MODULE_SEQUENCE_PATTERNS = [
@@ -133,7 +132,7 @@ IMPACT_CATEGORY_MAP: dict[str, ImpactCategory] = {
     "security_risk":             ImpactCategory.CRITICAL_CORRUPTION,
     "dynamic_session_key":       ImpactCategory.CRITICAL_CORRUPTION,
     "situation_coverage":        ImpactCategory.CRITICAL_CORRUPTION,
-    "oceane_state_dependency":   ImpactCategory.CRITICAL_CORRUPTION,
+    "external_state_dependency":  ImpactCategory.CRITICAL_CORRUPTION,
     "chained_api_call":          ImpactCategory.API_OVERLOAD,
     "side_effect":               ImpactCategory.API_OVERLOAD,
     "business_logic_unclear":    ImpactCategory.API_OVERLOAD,
@@ -205,7 +204,7 @@ class FlagEngine:
         flags.extend(self._detect_dynamic_session_key(ir))
         flags.extend(self._detect_chained_api_call(ir))
         flags.extend(self._detect_situation_coverage(ir))
-        flags.extend(self._detect_oceane_state_dependency(ir))
+        flags.extend(self._detect_external_state_dependency(ir))
         flags.extend(self._detect_module_execution_gap(ir))
         flags.extend(self._detect_hardcoded_situation_code(ir))
         flags.extend(self._detect_empty_catch(ir))
@@ -459,7 +458,7 @@ class FlagEngine:
         return flags
 
     # =========================================================================
-    # Règle 7 — Clés de session dynamiques (Astro — stale data)
+    # Règle 7 — Clés de session dynamiques (stale data)
     # =========================================================================
 
     def _detect_dynamic_session_key(self, ir: IRSchema) -> list[Flag]:
@@ -495,7 +494,7 @@ class FlagEngine:
         return flags
 
     # =========================================================================
-    # Règle 8 — Appels API séquentiels sans validation (Astro — payload vide)
+    # Règle 8 — Appels API séquentiels sans validation (payload vide)
     # =========================================================================
 
     def _detect_chained_api_call(self, ir: IRSchema) -> list[Flag]:
@@ -559,7 +558,7 @@ class FlagEngine:
                     fragment=fragment,
                     question=(
                         f"{len(covered)} situation(s) couverte(s) explicitement ({covered_str}). "
-                        "Que se passe-t-il si Oceane retourne une situation non listée dans ce code ? "
+                        "Que se passe-t-il si le service externe retourne une valeur non listée dans ce code ? "
                         "Existe-t-il une situation par défaut ?"
                     ),
                     source_line=abs_line if ep.start_line else None,
@@ -571,15 +570,15 @@ class FlagEngine:
         return flags
 
     # =========================================================================
-    # Règle 10 — Dépendance état Oceane temps réel sans fallback
+    # Règle 10 — Dépendance service externe temps réel sans fallback
     # =========================================================================
 
-    def _detect_oceane_state_dependency(self, ir: IRSchema) -> list[Flag]:
+    def _detect_external_state_dependency(self, ir: IRSchema) -> list[Flag]:
         flags = []
         for ep in ir.entry_points:
             if not ep.raw_code:
                 continue
-            for pattern in OCEANE_STATE_PATTERNS:
+            for pattern in EXTERNAL_STATE_PATTERNS:
                 match = re.search(pattern, ep.raw_code, re.IGNORECASE)
                 if not match:
                     continue
@@ -587,15 +586,15 @@ class FlagEngine:
                 context = self._extract_context_lines(ep.raw_code, match.start(), max_lines=7)
                 abs_line = (ep.start_line or 0) + ep.raw_code[:match.start()].count('\n')
                 flags.append(Flag(
-                    id=self._next_id("oceane_state_dependency"),
-                    type="oceane_state_dependency",
+                    id=self._next_id("external_state_dependency"),
+                    type="external_state_dependency",
                     location=ep.name,
                     fragment=fragment,
                     question=(
-                        "L'état du ticket est lu depuis Oceane en temps réel à cette étape — "
+                        "L'état est lu depuis un service externe en temps réel à cette étape — "
                         "3 cas non documentés : "
-                        "(1) Oceane indisponible → que faire ? "
-                        "(2) Oceane retourne null → continuer ou bloquer ? "
+                        "(1) Service externe indisponible → que faire ? "
+                        "(2) Service externe retourne null → continuer ou bloquer ? "
                         "(3) État retourné non prévu par l'enchaînement → quelle situation déclenchée ?"
                     ),
                     source_line=abs_line if ep.start_line else None,
