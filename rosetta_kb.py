@@ -28,7 +28,7 @@ import yaml
 # Constantes
 # ---------------------------------------------------------------------------
 
-DEFAULT_KB_PATH = os.environ.get("ROSETTA_KB", "~/rosetta-data/knowledge_base.yaml")
+DEFAULT_KB_PATH = os.environ.get("ROSETTA_KB", "~/rosetta-data/kb")
 CONFIDENCE_ORDER = {"high": 2, "medium": 1, "inferred": 0}
 CONFIDENCE_LABELS = {"high": "[HIGH]", "medium": "[MED] ", "inferred": "[INF] "}
 

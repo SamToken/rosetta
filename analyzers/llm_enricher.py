@@ -281,16 +281,34 @@ class LLMEnricher:
             print(f"  📚 {self._kb_hits} flag(s) résolus depuis le KB (0 token LLM)")
         return ir
 
+    # Tokens trop génériques pour être lookupés (PHP builtins, opérateurs)
+    _KB_STOPWORDS = {
+        "true", "false", "null", "ok", "ko", "yes", "no", "oui", "non",
+        "string", "array", "boolean", "integer", "float", "object",
+        "get", "set", "is", "has", "id", "key", "val", "value",
+        "message", "error", "status", "etat", "code", "type", "mode",
+        "response", "result", "data", "item", "list", "index",
+    }
+
     def _extract_kb_tokens(self, flag: Flag) -> list[str]:
         """Extrait les identifiants lookupables dans le KB depuis le fragment."""
         raw = flag.fragment
         candidates: list[str] = []
-        # Littéraux entre guillemets en MAJUSCULES : 'TP2', "ST_OUV", 'C_TYP_FLX'
-        for m in re.finditer(r"""['"]([A-Z][A-Z0-9_]{1,})['"]""", raw):
-            candidates.append(m.group(1))
-        # Constantes PHP SCREAMING_SNAKE_CASE (au moins un underscore pour éviter NULL, TRUE…)
+
+        # 1. Tout littéral entre guillemets (lowercase_snake, mixte, tirets)
+        for m in re.finditer(r"""['"]([A-Za-z][A-Za-z0-9_\-]{1,50})['"]""", raw):
+            val = m.group(1)
+            if val.lower() not in self._KB_STOPWORDS:
+                candidates.append(val)
+
+        # 2. Constantes PHP SCREAMING_SNAKE_CASE non quotées
         for m in re.finditer(r'\b([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)\b', raw):
             candidates.append(m.group(1))
+
+        # 3. Codes numériques entre guillemets
+        for m in re.finditer(r"""['"](\d{2,6})['"]""", raw):
+            candidates.append(m.group(1))
+
         seen: set[str] = set()
         return [t for t in candidates if not (t in seen or seen.add(t))]
 
