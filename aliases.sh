@@ -19,3 +19,4 @@ alias kb-import="nix-shell /home/nixos/projects/rosetta/shell.nix --run 'python3
 alias kb-stats="nix-shell /home/nixos/projects/rosetta/shell.nix --run 'python3 /home/nixos/projects/rosetta/rosetta_kb.py --kb-path \${ROSETTA_KB} stats'"
 alias kb-lookup="nix-shell /home/nixos/projects/rosetta/shell.nix --run 'python3 /home/nixos/projects/rosetta/rosetta_kb.py --kb-path \${ROSETTA_KB} lookup'"
 alias kb-search="nix-shell /home/nixos/projects/rosetta/shell.nix --run 'python3 /home/nixos/projects/rosetta/rosetta_kb.py --kb-path \${ROSETTA_KB} search'"
+alias kb-prompt="nix-shell /home/nixos/projects/rosetta/shell.nix --run 'python3 /home/nixos/projects/rosetta/rosetta_kb.py --kb-path \${ROSETTA_KB} export-prompt'"

@@ -736,6 +736,181 @@ def cmd_export(args: argparse.Namespace, kb_path: Path) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Commande : export-prompt
+# ---------------------------------------------------------------------------
+
+_CONF_LEVEL = {"high": 2, "medium": 1, "inferred": 0}
+
+
+def _first_sentence(text: str, max_len: int = 220) -> str:
+    """Première phrase complète d'un texte, tronquée à max_len si nécessaire."""
+    if not text:
+        return ""
+    for sep in ('.', '!', '?'):
+        idx = text.find(sep)
+        if 0 < idx < max_len:
+            return text[:idx + 1].strip()
+    return text[:max_len].strip()
+
+
+def format_kb_for_prompt(
+    data: dict,
+    domaine: str | None = None,
+    confiance_min: str = "medium",
+    max_chars: int = 4_000,
+) -> str:
+    """
+    Sérialise le KB en bloc texte compact injectable dans un prompt LLM.
+
+    Peut être appelée depuis llm_enricher.py ou rosetta_analyze.py.
+    """
+    min_level = _CONF_LEVEL.get(confiance_min, 1)
+
+    def _keep(entry: dict) -> bool:
+        if not isinstance(entry, dict):
+            return False
+        lvl = _CONF_LEVEL.get(entry.get("confiance", "inferred"), 0)
+        if lvl < min_level:
+            return False
+        if domaine and entry.get("domaine") and entry.get("domaine") != domaine:
+            return False
+        return True
+
+    def _valeurs_inline(vals: dict | None) -> str:
+        if not vals:
+            return ""
+        return ", ".join(f"{k}={v}" for k, v in list(vals.items())[:5])
+
+    def _conditions_inline(conds: list | None) -> str:
+        if not conds:
+            return ""
+        return " | ".join(str(c) for c in conds[:3])
+
+    lines: list[str] = []
+    skipped = 0
+
+    def _add(line: str) -> bool:
+        nonlocal skipped
+        projected = sum(len(l) + 1 for l in lines) + len(line) + 1
+        if projected > max_chars:
+            skipped += 1
+            return False
+        lines.append(line)
+        return True
+
+    # ── Codes ──────────────────────────────────────────────────────────────
+    codes = {k: v for k, v in (data.get("codes") or {}).items() if _keep(v)}
+    if codes:
+        _add("## Codes métier")
+        for nom, e in codes.items():
+            conf = e.get("confiance", "?")
+            label = e.get("label", "")
+            sem = _first_sentence(e.get("semantique") or e.get("notes") or "")
+            parts = [f"{nom} [{conf}] — {label}"]
+            if sem and sem != label:
+                parts.append(sem)
+            _add("  " + ". ".join(parts).rstrip(".") + ".")
+
+    # ── Règles ─────────────────────────────────────────────────────────────
+    regles = {k: v for k, v in (data.get("regles") or {}).items() if _keep(v)}
+    if regles:
+        _add("## Règles métier")
+        for nom, e in regles.items():
+            conf = e.get("confiance", "?")
+            label = e.get("label", "")
+            sem = _first_sentence(e.get("semantique") or "")
+            conds = _conditions_inline(e.get("conditions"))
+            parts = [f"{nom} [{conf}] — {label}"]
+            if sem:
+                parts.append(sem)
+            if conds:
+                parts.append(f"Conditions: {conds}")
+            _add("  " + ". ".join(parts).rstrip(".") + ".")
+
+    # ── Colonnes ───────────────────────────────────────────────────────────
+    cols = {k: v for k, v in (data.get("sql_artifacts", {}).get("colonnes") or {}).items() if _keep(v)}
+    if cols:
+        _add("## Colonnes Oracle")
+        for nom, e in cols.items():
+            conf = e.get("confiance", "?")
+            table = e.get("table", "")
+            otype = e.get("type_oracle", "")
+            label = e.get("label", "")
+            sem = _first_sentence(e.get("semantique") or "")
+            vals = _valeurs_inline(e.get("valeurs"))
+            meta = ", ".join(x for x in [table, otype] if x)
+            head = f"{nom} [{meta}, {conf}]" if meta else f"{nom} [{conf}]"
+            parts = [f"{head} — {label}"]
+            if sem:
+                parts.append(sem)
+            if vals:
+                parts.append(f"Valeurs: {vals}")
+            _add("  " + ". ".join(parts).rstrip(".") + ".")
+
+    # ── Vues ───────────────────────────────────────────────────────────────
+    vues = {k: v for k, v in (data.get("sql_artifacts", {}).get("vues") or {}).items() if _keep(v)}
+    if vues:
+        _add("## Vues Oracle")
+        for nom, e in vues.items():
+            conf = e.get("confiance", "?")
+            label = e.get("label", "")
+            sem = _first_sentence(e.get("semantique") or "")
+            piege = e.get("piège_connu", "")
+            parts = [f"{nom} [{conf}] — {label}"]
+            if sem:
+                parts.append(sem)
+            if piege:
+                parts.append(f"Piège: {_first_sentence(piege, 120)}")
+            _add("  " + ". ".join(parts).rstrip(".") + ".")
+
+    # ── Requêtes ───────────────────────────────────────────────────────────
+    reqs = {k: v for k, v in (data.get("sql_artifacts", {}).get("requetes") or {}).items() if _keep(v)}
+    if reqs:
+        _add("## Requêtes nommées")
+        for nom, e in reqs.items():
+            conf = e.get("confiance", "?")
+            label = e.get("label", "")
+            sem = _first_sentence(e.get("semantique") or "")
+            parts = [f"{nom} [{conf}] — {label}"]
+            if sem:
+                parts.append(sem)
+            _add("  " + ". ".join(parts).rstrip(".") + ".")
+
+    if not lines:
+        return ""
+
+    total = sum(len(d) for d in [codes, regles, cols, vues, reqs])
+    dom_label = f"domaine: {domaine} | " if domaine else ""
+    header = f"════ CONTEXTE KB ({dom_label}confiance ≥ {confiance_min} | {total} entrée(s)) ════"
+    footer = "════ FIN CONTEXTE KB ════"
+    if skipped:
+        footer = f"[… {skipped} entrée(s) supplémentaire(s) non incluses — augmenter --max-chars]\n{footer}"
+
+    return "\n".join([header, ""] + lines + ["", footer])
+
+
+def cmd_export_prompt(args: argparse.Namespace, kb_path: Path) -> int:
+    data = _load_kb(kb_path)
+    domaine = getattr(args, "domaine", None) or None
+    confiance_min = getattr(args, "confiance", "medium") or "medium"
+    max_chars = int(getattr(args, "max_chars", 4000) or 4000)
+
+    block = format_kb_for_prompt(data, domaine=domaine, confiance_min=confiance_min, max_chars=max_chars)
+    if not block:
+        print("(KB vide ou aucune entrée ne correspond aux filtres)")
+        return 0
+
+    if args.output:
+        out = Path(args.output).expanduser()
+        out.write_text(block, encoding="utf-8")
+        total_chars = len(block)
+        print(f"[✓] Prompt KB écrit dans {out} ({total_chars} caractères)")
+    else:
+        print(block)
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # Commande : split
 # ---------------------------------------------------------------------------
 
@@ -806,7 +981,7 @@ _IMPORT_TYPE_ROUTES: dict[str, tuple[str, ...]] = {
     "vue":     ("sql_artifacts", "vues"),
     "requete": ("sql_artifacts", "requetes"),
 }
-_CONF_ORDER = {"high": 2, "medium": 1, "inferred": 0}
+# _CONF_LEVEL défini dans la section export-prompt (plus haut)
 
 
 def _import_extract_sections(content: str) -> dict[str, list[str]]:
@@ -994,7 +1169,7 @@ def cmd_import(args: argparse.Namespace, kb_path: Path) -> int:
                 added += 1
                 domain_added = True
                 messages.append(f"[+] {nom} ({fname})")
-            elif _CONF_ORDER.get(existing.get("confiance", "inferred"), 0) >= 2:
+            elif _CONF_LEVEL.get(existing.get("confiance", "inferred"), 0) >= 2:
                 ignored += 1
                 messages.append(f"[!] {nom} ignoré — confiance high existante ({fname})")
             else:
@@ -1173,6 +1348,19 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Simuler l'import sans écrire le KB",
     )
 
+    # ── export-prompt ─────────────────────────────────────────────────────────
+    p = sub.add_parser("export-prompt", help="Exporter le KB au format compact pour injection LLM")
+    p.add_argument("--domaine", help="Filtrer par domaine (ex: ticketing, sav)")
+    p.add_argument(
+        "--confiance", default="medium", choices=["high", "medium", "inferred"],
+        help="Confiance minimale à inclure (défaut: medium)",
+    )
+    p.add_argument(
+        "--max-chars", type=int, default=4000,
+        help="Limite en caractères du bloc généré (défaut: 4000)",
+    )
+    p.add_argument("--output", help="Fichier de sortie (défaut: stdout)")
+
     return parser
 
 
@@ -1194,6 +1382,7 @@ COMMANDS = {
     "export":          cmd_export,
     "split":           cmd_split,
     "import":          cmd_import,
+    "export-prompt":   cmd_export_prompt,
 }
 
 
