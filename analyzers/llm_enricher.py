@@ -189,6 +189,31 @@ class TokenUsage:
         return input_cost + output_cost
 
 
+def _recover_partial_json(raw: str) -> dict | None:
+    """
+    Récupère les champs d'un JSON tronqué par max_tokens.
+    Extrait business_rule, confidence et missing_context par regex
+    même si le JSON n'est pas fermé correctement.
+    """
+    rule_m = re.search(r'"business_rule"\s*:\s*"((?:[^"\\]|\\.)*)', raw, re.DOTALL)
+    if not rule_m:
+        return None
+    rule = rule_m.group(1).rstrip('\\').strip()
+    # Nettoyer une éventuelle fin tronquée (phrase incomplète sans ponctuation)
+    if rule and rule[-1] not in '.!?»"':
+        last_end = max(rule.rfind('.'), rule.rfind('!'), rule.rfind('?'))
+        if last_end > len(rule) // 2:
+            rule = rule[:last_end + 1]
+
+    conf_m = re.search(r'"confidence"\s*:\s*([0-9.]+)', raw)
+    confidence = float(conf_m.group(1)) if conf_m else 0.1
+
+    ctx_m = re.search(r'"missing_context"\s*:\s*"((?:[^"\\]|\\.)*)"', raw, re.DOTALL)
+    missing = ctx_m.group(1).strip() if ctx_m else None
+
+    return {"business_rule": rule, "confidence": confidence, "missing_context": missing}
+
+
 class LLMEnricher:
     """Enrichit les flags d'un IRSchema avec des insights LLM."""
 
@@ -270,7 +295,7 @@ class LLMEnricher:
 
         response = self.client.messages.create(
             model=self.model,
-            max_tokens=200,
+            max_tokens=450,
             system=[{
                 "type": "text",
                 "text": SYSTEM_PROMPT,
@@ -312,24 +337,36 @@ class LLMEnricher:
 
     def _parse_response(self, flag_id: str, raw: str) -> LLMInsight:
         # Supprimer les blocs markdown si le modèle en ajoute malgré l'instruction
-        raw = re.sub(r'^```\w*\s*', '', raw.strip())
-        raw = re.sub(r'\s*```$', '', raw.strip())
-        json_match = re.search(r'\{.*\}', raw, re.DOTALL)
+        cleaned = re.sub(r'^```\w*\s*', '', raw.strip())
+        cleaned = re.sub(r'\s*```$', '', cleaned.strip())
+        json_match = re.search(r'\{.*\}', cleaned, re.DOTALL)
         if json_match:
-            raw = json_match.group(0)
+            cleaned = json_match.group(0)
 
+        data: dict | None = None
+
+        # Tentative 1 : JSON valide
         try:
-            data = json.loads(raw)
+            data = json.loads(cleaned)
         except json.JSONDecodeError:
+            pass
+
+        # Tentative 2 : JSON tronqué par max_tokens — extraction par regex
+        if data is None:
+            data = _recover_partial_json(cleaned)
+
+        if data is None:
             return LLMInsight(
                 flag_id=flag_id,
                 business_rule=f"[Erreur parsing LLM] Réponse brute : {raw[:200]}",
                 confidence=0.1,
             )
 
-        business_rule = str(data.get("business_rule", "Aucune règle extraite"))
+        business_rule = str(data.get("business_rule", "Aucune règle extraite")).strip()
         confidence = min(float(data.get("confidence", 0.5)), 0.99)
         missing = data.get("missing_context") or None
+        if isinstance(missing, str):
+            missing = missing.strip() or None
 
         return LLMInsight(
             flag_id=flag_id,

@@ -318,8 +318,8 @@ def _generate_footer(usage: TokenUsage, model: str) -> str:
     return "\n".join(lines)
 
 
-def _first_sentence(text: str, max_len: int = 80) -> str:
-    """Première question du texte, tronquée à max_len."""
+def _first_sentence(text: str, max_len: int = 220) -> str:
+    """Première question du texte, tronquée à max_len si vraiment trop longue."""
     idx = text.find('?')
     if idx != -1:
         q = text[:idx + 1].strip()
