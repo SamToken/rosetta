@@ -310,6 +310,111 @@ def _print_usage_summary(usage, model: str) -> None:
 
 
 # =============================================================================
+# Régénération depuis IR JSON existant
+# =============================================================================
+
+def _regen_from_json(
+    json_path: Path,
+    output_dir: Path,
+    model: str,
+    retry_failed: bool = False,
+    kb_provider=None,
+) -> None:
+    """Charge un IR JSON et régénère les docs (+ re-enrich si --retry-failed)."""
+    if not json_path.exists():
+        print(f"Erreur : JSON introuvable : {json_path}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"\n📂 Chargement IR depuis {json_path.name} …")
+    ir = IRSchema.from_json(json_path.read_text(encoding="utf-8"))
+
+    failed_ids = {
+        ins.flag_id for ins in ir.llm_insights
+        if "[Erreur parsing LLM]" in (ins.business_rule or "")
+    }
+    total = len(ir.llm_insights)
+    print(f"   {total} insights chargés — {len(failed_ids)} en erreur de parsing")
+
+    usage = None
+
+    if retry_failed and failed_ids:
+        print(f"\n🔁 Re-enrichissement LLM — {len(failed_ids)} flag(s) en erreur ({model})…")
+        try:
+            from analyzers.llm_enricher import LLMEnricher
+            enricher = LLMEnricher(model=model, kb_provider=kb_provider)
+
+            # Index méthodes depuis l'IR
+            method_bodies: dict[str, str] = {}
+            for ep in ir.entry_points:
+                if ep.raw_code:
+                    body = ep.raw_code[:2500]
+                    if ep.original_name:
+                        method_bodies[ep.original_name] = body
+                    if ep.name and ep.name != ep.original_name:
+                        method_bodies[ep.name] = body
+
+            kb_context = ""
+            if kb_provider:
+                kb_context = kb_provider.context_for(ir.metadata.controller_name or "")
+
+            # Remplacer les insights en erreur
+            insights_map = {ins.flag_id: ins for ins in ir.llm_insights}
+            flags_map    = {f.id: f for f in ir.flags}
+
+            for flag_id in failed_ids:
+                flag = flags_map.get(flag_id)
+                if not flag:
+                    continue
+                method_body = (
+                    method_bodies.get(flag.method_original_name or "")
+                    or method_bodies.get(flag.method_name or "")
+                )
+                try:
+                    new_insight = enricher._ask_llm(flag, method_body, kb_context)
+                    insights_map[flag_id] = new_insight
+                except Exception as e:
+                    print(f"  ⚠ Échec re-enrichissement {flag_id} : {e}")
+
+            ir.llm_insights = list(insights_map.values())
+            still_failed = sum(
+                1 for ins in ir.llm_insights
+                if "[Erreur parsing LLM]" in (ins.business_rule or "")
+            )
+            print(f"   ✓ {len(failed_ids) - still_failed} insights récupérés")
+            if still_failed:
+                print(f"   ⚠ {still_failed} toujours en erreur")
+            usage = enricher.usage
+
+        except ImportError as exc:
+            print(f"   ⚠ LLM indisponible : {exc}")
+
+    elif retry_failed and not failed_ids:
+        print("   ✓ Aucun insight en erreur — rien à re-enrichir")
+
+    # Régénération des documents
+    print("\n📄 Génération des documents…")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    stem = json_path.stem.replace("_business_logic", "")
+
+    if retry_failed:
+        updated_json = output_dir / f"{stem}_business_logic.json"
+        updated_json.write_text(ir.to_json(indent=2), encoding="utf-8")
+
+    gen = BusinessDocGenerator()
+    doc_out = output_dir / f"{stem}_business_doc.md"
+    doc_out.write_text(gen.generate(ir, usage=usage, model=model), encoding="utf-8")
+
+    flags_out = output_dir / f"{stem}_flags.md"
+    flags_out.write_text(gen.generate_flags_summary(ir), encoding="utf-8")
+
+    print(f"   → {doc_out}")
+    print(f"   → {flags_out}")
+    if retry_failed and usage:
+        _print_usage_summary(usage, model)
+    print("\n✅ Régénération terminée")
+
+
+# =============================================================================
 # Point d'entrée
 # =============================================================================
 
@@ -394,6 +499,20 @@ def main() -> None:
              "Inféré depuis le nom du fichier si absent.",
     )
     parser.add_argument(
+        "--from-json",
+        default=None,
+        metavar="JSON",
+        help="Charger un IR JSON existant (ex: output/Foo_business_logic.json) "
+             "et régénérer les docs sans relancer l'extraction ni le LLM. "
+             "Combine avec --retry-failed pour ne relancer que les insights en erreur.",
+    )
+    parser.add_argument(
+        "--retry-failed",
+        action="store_true",
+        help="Avec --from-json : relancer le LLM uniquement sur les insights "
+             "[Erreur parsing LLM]. Coût réduit (N_échoués / N_total × coût initial).",
+    )
+    parser.add_argument(
         "--debug-rules",
         action="store_true",
         help="Afficher le détail de déclenchement de chaque règle de détection",
@@ -445,6 +564,19 @@ def main() -> None:
     if args.kb_output_dir:
         kb_output_dir = Path(args.kb_output_dir).expanduser()
         kb_output_dir.mkdir(parents=True, exist_ok=True)
+
+    # ------------------------------------------------------------------
+    # Mode --from-json : régénération depuis un IR JSON existant
+    # ------------------------------------------------------------------
+    if args.from_json:
+        _regen_from_json(
+            json_path=Path(args.from_json),
+            output_dir=output_dir,
+            model=args.model,
+            retry_failed=args.retry_failed,
+            kb_provider=kb_provider,
+        )
+        return
 
     # Résoudre les chemins d'entrée
     input_paths = [Path(p) for p in args.input]
