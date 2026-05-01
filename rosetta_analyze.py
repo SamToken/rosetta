@@ -170,6 +170,8 @@ def _analyze_single(
     bug_check: bool = False,
     call_graph=None,
     kb_provider=None,
+    kb_output_dir: Optional[Path] = None,
+    kb_domain: Optional[str] = None,
 ) -> tuple[IRSchema, Optional[object]]:
     """Analyse un fichier PHP et écrit les 3 fichiers de sortie dans output_dir."""
     stem = php_path.stem
@@ -252,6 +254,18 @@ def _analyze_single(
     flags_out.write_text(gen.generate_flags_summary(ir), encoding="utf-8")
 
     print(f"        → {doc_out.relative_to(output_dir.parent) if output_dir.parent != output_dir else doc_out}")
+
+    # ------------------------------------------------------------------
+    # Étape 4b — Génération des fiches KB (optionnel, --kb-output-dir)
+    # ------------------------------------------------------------------
+    if kb_output_dir and ir.llm_insights:
+        try:
+            from generators.kb_fiche_generator import KBFicheGenerator
+            kb_gen = KBFicheGenerator(kb_output_dir, domain=kb_domain)
+            created, updated, skipped = kb_gen.generate(ir, php_source_path=php_path)
+            print(f"  [KB] {created} fiche(s) créée(s), {updated} mise(s) à jour, {skipped} ignorée(s) (high)")
+        except Exception as exc:
+            print(f"  ⚠ Génération fiches KB échouée : {exc}")
 
     return ir, usage
 
@@ -366,6 +380,20 @@ def main() -> None:
              "comme contexte dans les prompts LLM (ex: ~/projects/myapp/.github/kb)",
     )
     parser.add_argument(
+        "--kb-output-dir",
+        default=None,
+        metavar="DIR",
+        help="Répertoire de sortie pour les fiches KB générées automatiquement "
+             "(ex: ~/projects/rosetta/kb). Crée 1 fiche par (méthode, type_flag).",
+    )
+    parser.add_argument(
+        "--kb-domain",
+        default=None,
+        metavar="DOMAIN",
+        help="Domaine métier pour les fiches KB générées (ex: facturation, sav). "
+             "Inféré depuis le nom du fichier si absent.",
+    )
+    parser.add_argument(
         "--debug-rules",
         action="store_true",
         help="Afficher le détail de déclenchement de chaque règle de détection",
@@ -410,6 +438,14 @@ def main() -> None:
             except ImportError as exc:
                 print(f"⚠ python-frontmatter manquant ({exc}) — KB ignorée")
 
+    # ------------------------------------------------------------------
+    # KB Output Dir (optionnel, --kb-output-dir)
+    # ------------------------------------------------------------------
+    kb_output_dir = None
+    if args.kb_output_dir:
+        kb_output_dir = Path(args.kb_output_dir).expanduser()
+        kb_output_dir.mkdir(parents=True, exist_ok=True)
+
     # Résoudre les chemins d'entrée
     input_paths = [Path(p) for p in args.input]
     for p in input_paths:
@@ -435,6 +471,7 @@ def main() -> None:
         ir, usage = _analyze_single(
             input_path, output_dir, args.no_llm, args.model,
             args.bug_check, call_graph, kb_provider,
+            kb_output_dir=kb_output_dir, kb_domain=getattr(args, "kb_domain", None),
         )
         print()
         print("✅ Analyse terminée")
@@ -507,6 +544,7 @@ def main() -> None:
         ir, usage = _analyze_single(
             php_path, details_dir, args.no_llm, args.model,
             args.bug_check, call_graph, kb_provider,
+            kb_output_dir=kb_output_dir, kb_domain=getattr(args, "kb_domain", None),
         )
         all_irs.append(ir)
         all_usages.append(usage)
