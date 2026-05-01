@@ -156,7 +156,7 @@ class BusinessDocGenerator:
                               if m["insight"] else 1.0)
                     q = (rep["insight"].missing_context if rep["insight"] and rep["insight"].missing_context
                          else rep["flag"].question)
-                    q = q[:100].replace("|", "·") + ("…" if len(q) > 100 else "")
+                    q = q.replace("|", "·")
                     n = len(members)
                     lines.append(f"| `{value}` | {methods} | ×{n} | {q} |")
             else:
@@ -168,7 +168,7 @@ class BusinessDocGenerator:
                               if m["insight"] else 1.0)
                     q = (rep["insight"].missing_context if rep["insight"] and rep["insight"].missing_context
                          else rep["flag"].question)
-                    q = q[:100].replace("|", "·") + ("…" if len(q) > 100 else "")
+                    q = q.replace("|", "·")
                     n = len(members)
                     lines.append(f"| `{method}()` | ×{n} | {q} |")
 

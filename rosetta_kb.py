@@ -991,18 +991,18 @@ def _build_brief_markdown(entries: list[dict], domaine: str, titre: str = "") ->
                 value = concept.split("::", 1)[-1] if "::" in concept else concept
                 fichiers = entry.get("fichiers", [])
                 methods = ", ".join(f.split(":")[0] for f in fichiers[:2])
-                q = entry.get("question", "")[:90].replace("|", "·")
+                q = entry.get("question", "").replace("|", "·")
                 n = entry.get("occurrences", 1)
-                lines.append(f"| `{value}` | {methods} | ×{n} | {q}… |  |")
+                lines.append(f"| `{value}` | {methods} | ×{n} | {q} |  |")
         else:
             lines.append("| Méthode | ×N | Question | Réponse |")
             lines.append("|---------|-----|---------|---------|")
             for entry in section_entries:
                 concept = entry.get("concept", "")
                 method = concept.split("::", 1)[-1] if "::" in concept else concept
-                q = entry.get("question", "")[:90].replace("|", "·")
+                q = entry.get("question", "").replace("|", "·")
                 n = entry.get("occurrences", 1)
-                lines.append(f"| `{method}()` | ×{n} | {q}… |  |")
+                lines.append(f"| `{method}()` | ×{n} | {q} |  |")
 
         lines.append("")
         lines.append("---")
