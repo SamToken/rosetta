@@ -424,7 +424,7 @@ def main() -> None:
     )
     parser.add_argument(
         "input",
-        nargs="+",
+        nargs="*",
         help="Fichier(s) PHP ou répertoire à analyser (récursif si répertoire)",
     )
     parser.add_argument(
@@ -577,6 +577,9 @@ def main() -> None:
             kb_provider=kb_provider,
         )
         return
+
+    if not args.input:
+        parser.error("input requis (sauf avec --from-json)")
 
     # Résoudre les chemins d'entrée
     input_paths = [Path(p) for p in args.input]
