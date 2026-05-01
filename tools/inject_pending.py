@@ -164,12 +164,17 @@ def cluster_insights(flags: list[dict], insights: dict[str, dict]) -> list[dict]
     return result
 
 
-def _first_sentence(text: str, max_len: int = 200) -> str:
+def _first_sentence(text: str, max_len: int = 220) -> str:
     if not text:
         return ""
     m = re.search(r'[.!?]', text)
     end = m.start() + 1 if m else len(text)
-    return text[:end].strip()[:max_len]
+    result = text[:end].strip()
+    if len(result) <= max_len:
+        return result
+    # Couper au dernier espace avant max_len pour ne pas tronquer en plein mot
+    cut = result.rfind(' ', 0, max_len)
+    return result[:cut] + '…' if cut > 0 else result[:max_len]
 
 
 # ---------------------------------------------------------------------------
