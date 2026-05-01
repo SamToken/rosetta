@@ -7,9 +7,7 @@ Outil privé de cartographie des règles métier d'un legacy PHP 7.3.
 ```
 ~/projects/rosetta/          (privé — ce repo)
 ├── kb/
-│   ├── orchestra/           ← fiches domaine diagnostic
-│   ├── airele/              ← fiches domaine airele
-│   └── enrichissement-alarmes/ ← fiches domaine alarmes
+│   └── <domaine>/           ← fiches KB par domaine métier
 ├── kb_import.py             ← import fiches → knowledge_base.yaml
 ├── rosetta_kb.py            ← CLI KB (lookup, stats, validate...)
 ├── aliases.sh               ← kb-import, kb-stats, kb-check, kb-sync
