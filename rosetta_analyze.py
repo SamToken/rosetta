@@ -170,6 +170,7 @@ def _analyze_single(
     bug_check: bool = False,
     call_graph=None,
     kb_provider=None,
+    kb_lookup=None,
     kb_output_dir: Optional[Path] = None,
     kb_domain: Optional[str] = None,
 ) -> tuple[IRSchema, Optional[object]]:
@@ -207,7 +208,7 @@ def _analyze_single(
         print(f"  [3/4] Enrichissement LLM ({model})...")
         try:
             from analyzers.llm_enricher import LLMEnricher
-            enricher = LLMEnricher(model=model, kb_provider=kb_provider)
+            enricher = LLMEnricher(model=model, kb_provider=kb_provider, kb_lookup=kb_lookup)
             ir = enricher.enrich(ir)
             print(f"        ✓ {len(ir.llm_insights)} insights générés")
         except ImportError as exc:
@@ -319,6 +320,7 @@ def _regen_from_json(
     model: str,
     retry_failed: bool = False,
     kb_provider=None,
+    kb_lookup=None,
 ) -> None:
     """Charge un IR JSON et régénère les docs (+ re-enrich si --retry-failed)."""
     if not json_path.exists():
@@ -341,7 +343,7 @@ def _regen_from_json(
         print(f"\n🔁 Re-enrichissement LLM — {len(failed_ids)} flag(s) en erreur ({model})…")
         try:
             from analyzers.llm_enricher import LLMEnricher
-            enricher = LLMEnricher(model=model, kb_provider=kb_provider)
+            enricher = LLMEnricher(model=model, kb_provider=kb_provider, kb_lookup=kb_lookup)
 
             # Index méthodes depuis l'IR
             method_bodies: dict[str, str] = {}
@@ -558,6 +560,18 @@ def main() -> None:
                 print(f"⚠ python-frontmatter manquant ({exc}) — KB ignorée")
 
     # ------------------------------------------------------------------
+    # KB YAML Lookup (optionnel — $ROSETTA_KB ou répertoire kb/)
+    # ------------------------------------------------------------------
+    kb_lookup = None
+    if not args.no_llm:
+        try:
+            from rosetta_kb import lookup_for_enricher as _kb_lookup_fn
+            kb_lookup = _kb_lookup_fn
+            print("  [KB] YAML lookup activé — tokens connus résolus sans LLM")
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
     # KB Output Dir (optionnel, --kb-output-dir)
     # ------------------------------------------------------------------
     kb_output_dir = None
@@ -575,6 +589,7 @@ def main() -> None:
             model=args.model,
             retry_failed=args.retry_failed,
             kb_provider=kb_provider,
+            kb_lookup=kb_lookup,
         )
         return
 
@@ -605,7 +620,7 @@ def main() -> None:
         print(f"\n📄 Analyse : {input_path.name}")
         ir, usage = _analyze_single(
             input_path, output_dir, args.no_llm, args.model,
-            args.bug_check, call_graph, kb_provider,
+            args.bug_check, call_graph, kb_provider, kb_lookup,
             kb_output_dir=kb_output_dir, kb_domain=getattr(args, "kb_domain", None),
         )
         print()
@@ -678,7 +693,7 @@ def main() -> None:
         print(f"[{i}/{len(php_files)}] {php_path.name}")
         ir, usage = _analyze_single(
             php_path, details_dir, args.no_llm, args.model,
-            args.bug_check, call_graph, kb_provider,
+            args.bug_check, call_graph, kb_provider, kb_lookup,
             kb_output_dir=kb_output_dir, kb_domain=getattr(args, "kb_domain", None),
         )
         all_irs.append(ir)

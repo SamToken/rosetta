@@ -13,7 +13,7 @@ Principes :
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Optional, TYPE_CHECKING
+from typing import Callable, Optional, TYPE_CHECKING
 from ir.schema import IRSchema, Flag, LLMInsight
 
 if TYPE_CHECKING:
@@ -221,12 +221,15 @@ class LLMEnricher:
         self,
         model: str = "claude-sonnet-4-6",
         kb_provider: Optional["KBContextProvider"] = None,
+        kb_lookup: Optional[Callable[[str], dict]] = None,
     ):
         import anthropic
         self.client = anthropic.Anthropic()
         self.model = model
         self.usage = TokenUsage()
         self.kb_provider = kb_provider
+        self._kb_lookup = kb_lookup
+        self._kb_hits = 0
 
     def enrich(self, ir: IRSchema) -> IRSchema:
         """Enrichit tous les flags de l'IR. Retourne l'IR modifié."""
@@ -254,6 +257,14 @@ class LLMEnricher:
                 print(f"  ↷ {flag.id} skipped — fragment too minimal")
                 self.usage.skipped_flags += 1
                 continue
+
+            # Tentative KB avant LLM (0 token)
+            kb_insight = self._try_kb_insight(flag)
+            if kb_insight:
+                ir.llm_insights.append(kb_insight)
+                self._kb_hits += 1
+                continue
+
             method_body = (
                 method_bodies.get(flag.method_original_name or "")
                 or method_bodies.get(flag.method_name or "")
@@ -266,7 +277,59 @@ class LLMEnricher:
 
         if self.usage.skipped_flags:
             print(f"  ↷ {self.usage.skipped_flags} flag(s) skipped (fragment trop minimal)")
+        if self._kb_hits:
+            print(f"  📚 {self._kb_hits} flag(s) résolus depuis le KB (0 token LLM)")
         return ir
+
+    def _extract_kb_tokens(self, flag: Flag) -> list[str]:
+        """Extrait les identifiants lookupables dans le KB depuis le fragment."""
+        raw = flag.fragment
+        candidates: list[str] = []
+        # Littéraux entre guillemets en MAJUSCULES : 'TP2', "ST_OUV", 'C_TYP_FLX'
+        for m in re.finditer(r"""['"]([A-Z][A-Z0-9_]{1,})['"]""", raw):
+            candidates.append(m.group(1))
+        # Constantes PHP SCREAMING_SNAKE_CASE (au moins un underscore pour éviter NULL, TRUE…)
+        for m in re.finditer(r'\b([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)\b', raw):
+            candidates.append(m.group(1))
+        seen: set[str] = set()
+        return [t for t in candidates if not (t in seen or seen.add(t))]
+
+    def _try_kb_insight(self, flag: Flag) -> Optional[LLMInsight]:
+        """Résout un flag depuis le KB YAML sans appel LLM. Retourne None si non trouvé."""
+        if not self._kb_lookup:
+            return None
+        for token in self._extract_kb_tokens(flag):
+            result = self._kb_lookup(token)
+            if not result.get("found"):
+                continue
+            confiance = result.get("confiance", "inferred")
+            if confiance == "inferred":
+                continue  # pas fiable — laisser le LLM gérer
+            label = result.get("label") or token
+            semantique = (result.get("semantique") or "").strip()
+            if confiance == "high":
+                if semantique:
+                    # Tronquer à la première phrase complète
+                    end = max(semantique.find('.'), semantique.find('!'), semantique.find('?'))
+                    if 0 < end < 250:
+                        semantique = semantique[:end + 1]
+                rule = f"{label}. {semantique}".strip() if semantique else label
+                return LLMInsight(
+                    flag_id=flag.id,
+                    business_rule=rule,
+                    confidence=0.92,
+                    source="kb",
+                    needs_human_validation=False,
+                )
+            elif confiance == "medium":
+                return LLMInsight(
+                    flag_id=flag.id,
+                    business_rule=f"{label} (à confirmer en session PO).",
+                    confidence=0.55,
+                    source="kb_medium",
+                    needs_human_validation=True,
+                )
+        return None
 
     def _is_worth_enriching(self, flag: Flag) -> bool:
         """Retourne False si le fragment est trop minimal pour apporter de la valeur."""
