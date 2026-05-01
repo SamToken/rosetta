@@ -796,6 +796,224 @@ def cmd_split(args: argparse.Namespace, kb_path: Path) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Import docs Markdown → KB (cmd_import)
+# ---------------------------------------------------------------------------
+
+_IMPORT_TYPE_ROUTES: dict[str, tuple[str, ...]] = {
+    "code":    ("codes",),
+    "regle":   ("regles",),
+    "colonne": ("sql_artifacts", "colonnes"),
+    "vue":     ("sql_artifacts", "vues"),
+    "requete": ("sql_artifacts", "requetes"),
+}
+_CONF_ORDER = {"high": 2, "medium": 1, "inferred": 0}
+
+
+def _import_extract_sections(content: str) -> dict[str, list[str]]:
+    sections: dict[str, list[str]] = {}
+    current: str | None = None
+    for line in content.splitlines():
+        m = re.match(r"^##\s+(.+)", line)
+        if m:
+            current = m.group(1).strip()
+            sections[current] = []
+        elif current is not None:
+            sections[current].append(line)
+    return sections
+
+
+def _import_text(lines: list[str]) -> str:
+    return " ".join(l.strip() for l in lines if l.strip())
+
+
+def _import_parse_table(lines: list[str]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for line in lines:
+        line = line.strip()
+        if not line.startswith("|") or re.match(r"^\|[-| ]+\|$", line):
+            continue
+        parts = [p.strip() for p in line.strip("|").split("|")]
+        if len(parts) >= 2 and parts[0].lower() not in ("valeur", "colonne", "value", "clé", "code"):
+            result[parts[0]] = parts[1]
+    return result
+
+
+def _import_parse_list(lines: list[str]) -> list[str]:
+    result = []
+    for line in lines:
+        line = line.strip()
+        if line.startswith(("- ", "* ", "+ ")):
+            result.append(line[2:].strip())
+        elif re.match(r"^\d+\.\s", line):
+            result.append(re.sub(r"^\d+\.\s+", "", line).strip())
+    return result
+
+
+def _import_build_entry(kb_type: str, meta: dict, sections: dict) -> dict:
+    """Construit une entrée KB depuis le frontmatter et les sections Markdown."""
+    t = _import_text
+    entry: dict[str, Any] = {}
+
+    if "Label" in sections:
+        entry["label"] = t(sections["Label"])
+    sem_lines = sections.get("Semantique") or sections.get("Sémantique") or []
+    if sem_lines:
+        entry["semantique"] = t(sem_lines)
+
+    if kb_type == "code":
+        if meta.get("kb_domaine"):
+            entry["domaine"] = meta["kb_domaine"]
+        refs = _import_parse_list(sections.get("Trouvé dans", []))
+        if refs:
+            entry["contextes"] = [{"champ": r} for r in refs]
+
+    elif kb_type == "regle":
+        conds = _import_parse_list(sections.get("Conditions", []))
+        if conds:
+            entry["conditions"] = conds
+        if meta.get("kb_domaine"):
+            entry["domaine"] = meta["kb_domaine"]
+
+    elif kb_type == "colonne":
+        if meta.get("kb_table"):
+            entry["table"] = meta["kb_table"]
+        if meta.get("kb_type_oracle"):
+            entry["type_oracle"] = meta["kb_type_oracle"]
+        vals = _import_parse_table(sections.get("Valeurs", []))
+        if vals:
+            entry["valeurs"] = vals
+        dists = _import_parse_table(sections.get("Distinctions", []))
+        if dists:
+            entry["distinctions"] = dists
+        refs = _import_parse_list(sections.get("Trouvé dans", []))
+        if refs:
+            entry["trouvé_dans"] = refs
+
+    elif kb_type == "vue":
+        if meta.get("kb_tables"):
+            entry["tables_source"] = [s.strip() for s in str(meta["kb_tables"]).split(",")]
+        piege = sections.get("Piège", [])
+        if piege:
+            entry["piège_connu"] = t(piege)
+
+    elif kb_type == "requete":
+        if meta.get("kb_fichier"):
+            entry["fichier_source"] = meta["kb_fichier"]
+        if meta.get("kb_lignes"):
+            entry["lignes"] = meta["kb_lignes"]
+        consts = _import_parse_table(sections.get("Constantes", []))
+        if consts:
+            entry["constantes_magiques"] = consts
+        concepts = _import_parse_list(sections.get("Concepts", []))
+        if concepts:
+            entry["concepts_métier"] = concepts
+
+    if meta.get("kb_migration"):
+        entry["migration_note"] = meta["kb_migration"]
+    note_lines = sections.get("Notes", [])
+    if note_lines:
+        note = t(note_lines)
+        if note and note.lower() not in ("aucune.", "aucune", "none", "~"):
+            entry["notes"] = note
+
+    entry["source"] = meta.get("kb_source", "kb_import — généré")
+    entry["confiance"] = "medium"
+    return entry
+
+
+def cmd_import(args: argparse.Namespace, kb_path: Path) -> int:
+    """Importe des fiches .md (frontmatter kb_type) dans le KB YAML."""
+    try:
+        import frontmatter as _fm
+    except ImportError:
+        print("Erreur : python-frontmatter requis — pip install python-frontmatter")
+        return 1
+
+    docs_dir = Path(args.docs_dir).expanduser().resolve()
+    if not docs_dir.exists():
+        print(f"Erreur : dossier introuvable : {docs_dir}")
+        return 1
+
+    dry_run: bool = getattr(args, "dry_run", False)
+    added = updated = ignored = errors = 0
+    messages: list[str] = []
+
+    # Collecter et parser tous les .md, grouper par domaine
+    by_domain: dict[str, list[tuple[tuple[str, ...], str, dict, str]]] = {}
+
+    for md_path in sorted(docs_dir.rglob("*.md")):
+        try:
+            post = _fm.loads(md_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            errors += 1
+            messages.append(f"[E] {md_path.name} — frontmatter : {e}")
+            continue
+
+        meta = dict(post.metadata)
+        kb_type = meta.get("kb_type", "").strip().lower()
+        kb_nom = meta.get("kb_nom", "").strip()
+
+        if not kb_type:
+            continue  # pas un fichier KB — ignorer
+        if kb_type not in _IMPORT_TYPE_ROUTES:
+            errors += 1
+            messages.append(f"[E] {md_path.name} — kb_type inconnu : '{kb_type}'")
+            continue
+        if not kb_nom:
+            errors += 1
+            messages.append(f"[E] {md_path.name} — kb_nom manquant")
+            continue
+
+        domain = str(meta.get("kb_domaine") or "commun")
+        sections = _import_extract_sections(post.content)
+        try:
+            entry = _import_build_entry(kb_type, meta, sections)
+        except Exception as e:
+            errors += 1
+            messages.append(f"[E] {md_path.name} — construction entrée : {e}")
+            continue
+
+        route = _IMPORT_TYPE_ROUTES[kb_type]
+        by_domain.setdefault(domain, []).append((route, kb_nom, entry, md_path.name))
+
+    if not by_domain and not errors:
+        print(f"Aucun fichier KB (.md avec kb_type) trouvé dans {docs_dir}")
+        return 0
+
+    # Écrire domaine par domaine
+    for domain, entries in sorted(by_domain.items()):
+        data = _load_for_write(kb_path, domain)
+        domain_added = domain_updated = False
+        for route, nom, entry, fname in entries:
+            node = data
+            for key in route:
+                node = node.setdefault(key, {})
+            existing = node.get(nom)
+            if existing is None:
+                node[nom] = entry
+                added += 1
+                domain_added = True
+                messages.append(f"[+] {nom} ({fname})")
+            elif _CONF_ORDER.get(existing.get("confiance", "inferred"), 0) >= 2:
+                ignored += 1
+                messages.append(f"[!] {nom} ignoré — confiance high existante ({fname})")
+            else:
+                node[nom] = entry
+                updated += 1
+                domain_updated = True
+                messages.append(f"[~] {nom} mis à jour ({fname})")
+        if not dry_run and (domain_added or domain_updated):
+            _save_for_write(kb_path, data, domain)
+
+    prefix = "[dry-run] " if dry_run else ""
+    print(f"{prefix}{added} ajoutée(s), {updated} mise(s) à jour, "
+          f"{ignored} ignorée(s) (high existant), {errors} erreur(s)")
+    for msg in messages:
+        print(f"  {msg}")
+    return 1 if errors else 0
+
+
+# ---------------------------------------------------------------------------
 # API pour llm_enricher.py
 # ---------------------------------------------------------------------------
 
@@ -944,6 +1162,17 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--source", required=True,
                    help="Fichier YAML source (ex: ~/rosetta-data/knowledge_base.yaml)")
 
+    # ── import ────────────────────────────────────────────────────────────────
+    p = sub.add_parser("import", help="Importer des fiches .md (frontmatter kb_type) dans le KB")
+    p.add_argument(
+        "docs_dir",
+        help="Dossier contenant les fiches .md avec frontmatter kb_type",
+    )
+    p.add_argument(
+        "--dry-run", action="store_true",
+        help="Simuler l'import sans écrire le KB",
+    )
+
     return parser
 
 
@@ -964,6 +1193,7 @@ COMMANDS = {
     "search":          cmd_search,
     "export":          cmd_export,
     "split":           cmd_split,
+    "import":          cmd_import,
 }
 
 
