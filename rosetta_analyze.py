@@ -167,6 +167,9 @@ def _analyze_single(
     output_dir: Path,
     no_llm: bool,
     model: str,
+    bug_check: bool = False,
+    call_graph=None,
+    kb_provider=None,
 ) -> tuple[IRSchema, Optional[object]]:
     """Analyse un fichier PHP et écrit les 3 fichiers de sortie dans output_dir."""
     stem = php_path.stem
@@ -202,7 +205,7 @@ def _analyze_single(
         print(f"  [3/4] Enrichissement LLM ({model})...")
         try:
             from analyzers.llm_enricher import LLMEnricher
-            enricher = LLMEnricher(model=model)
+            enricher = LLMEnricher(model=model, kb_provider=kb_provider)
             ir = enricher.enrich(ir)
             print(f"        ✓ {len(ir.llm_insights)} insights générés")
         except ImportError as exc:
@@ -211,6 +214,25 @@ def _analyze_single(
             print(f"        ⚠ Erreur LLM : {exc} — mode déterministe uniquement")
 
     usage = enricher.usage if enricher else None
+
+    # ------------------------------------------------------------------
+    # Étape 3b — Grille de bugs techniques (optionnel, --bug-check)
+    # ------------------------------------------------------------------
+    if bug_check and not no_llm:
+        print(f"  [3b/4] Grille bugs techniques ({model})...")
+        try:
+            from analyzers.bug_enricher import BugEnricher
+            bug_enricher = BugEnricher(model=model, kb_provider=kb_provider)
+            php_source = php_path.read_text(encoding="utf-8", errors="replace")
+            ir = bug_enricher.enrich(ir, php_source, call_graph=call_graph)
+            bug_cost = bug_enricher.usage.total_cost(model)
+            crit = sum(1 for b in ir.bug_findings if b.severity.value == "critical")
+            high = sum(1 for b in ir.bug_findings if b.severity.value == "high")
+            print(f"        ✓ {len(ir.bug_findings)} bug(s) — 🔴{crit} critical / 🟠{high} high | ~${bug_cost:.4f}")
+        except Exception as exc:
+            print(f"        ⚠ Grille bugs échouée : {exc}")
+    elif bug_check and no_llm:
+        print("  [3b/4] Grille bugs désactivée (--no-llm)")
 
     # ------------------------------------------------------------------
     # Étape 4 — Génération des documents
@@ -320,6 +342,30 @@ def main() -> None:
         help="Racine Git pour générer des liens cliquables dans gaps_complets.md (ex: ./application/src)",
     )
     parser.add_argument(
+        "--bug-check",
+        action="store_true",
+        help="Activer la grille de bugs techniques LLM (13 catégories, 1 appel/fichier)",
+    )
+    parser.add_argument(
+        "--call-graph-root",
+        default=None,
+        metavar="DIR",
+        help="Répertoire source PHP à indexer pour le bundling de call graph "
+             "(ex: ./application/src). Active le contexte cross-fichiers pour BugEnricher et LLMEnricher.",
+    )
+    parser.add_argument(
+        "--rebuild-callgraph",
+        action="store_true",
+        help="Force la reconstruction de l'index call graph même si le cache existe",
+    )
+    parser.add_argument(
+        "--kb-root",
+        default=None,
+        metavar="DIR",
+        help="Répertoire de fiches KB (.md avec frontmatter kb_type) à injecter "
+             "comme contexte dans les prompts LLM (ex: ~/projects/myapp/.github/kb)",
+    )
+    parser.add_argument(
         "--debug-rules",
         action="store_true",
         help="Afficher le détail de déclenchement de chaque règle de détection",
@@ -327,6 +373,42 @@ def main() -> None:
 
     args = parser.parse_args()
     output_dir = Path(args.output_dir)
+
+    # ------------------------------------------------------------------
+    # Call Graph Index (optionnel, --call-graph-root)
+    # ------------------------------------------------------------------
+    call_graph = None
+    if args.call_graph_root:
+        cg_root = Path(args.call_graph_root)
+        if not cg_root.is_dir():
+            print(f"⚠ --call-graph-root introuvable : {cg_root}", file=sys.stderr)
+        else:
+            cache_path = cg_root / ".callgraph.json"
+            print(f"\n🔗 Call Graph Index — scan de {cg_root} …", end=" ", flush=True)
+            from analyzers.call_graph import CallGraphIndex
+            call_graph = CallGraphIndex.build(
+                cg_root,
+                cache_path=cache_path,
+                force_rebuild=args.rebuild_callgraph,
+            )
+            print(f"{len(call_graph)} méthodes indexées ✓")
+
+    # ------------------------------------------------------------------
+    # KB Context Provider (optionnel, --kb-root)
+    # ------------------------------------------------------------------
+    kb_provider = None
+    if args.kb_root and not args.no_llm:
+        kb_root = Path(args.kb_root).expanduser()
+        if not kb_root.is_dir():
+            print(f"⚠ --kb-root introuvable : {kb_root}", file=sys.stderr)
+        else:
+            print(f"\n📚 KB Context — chargement depuis {kb_root} …", end=" ", flush=True)
+            try:
+                from analyzers.kb_context import KBContextProvider
+                kb_provider = KBContextProvider(kb_root, verbose=False)
+                print(f"{len(kb_provider)} fiche(s) KB ✓")
+            except ImportError as exc:
+                print(f"⚠ python-frontmatter manquant ({exc}) — KB ignorée")
 
     # Résoudre les chemins d'entrée
     input_paths = [Path(p) for p in args.input]
@@ -350,11 +432,18 @@ def main() -> None:
     if input_path is not None and input_path.is_file():
         output_dir.mkdir(parents=True, exist_ok=True)
         print(f"\n📄 Analyse : {input_path.name}")
-        ir, usage = _analyze_single(input_path, output_dir, args.no_llm, args.model)
+        ir, usage = _analyze_single(
+            input_path, output_dir, args.no_llm, args.model,
+            args.bug_check, call_graph, kb_provider,
+        )
         print()
         print("✅ Analyse terminée")
         print(f"📄 3 fichiers générés dans {output_dir}/")
         print(f"🤖 {len(ir.llm_insights)} flags enrichis / {usage.skipped_flags if usage else 0} skippés")
+        if ir.bug_findings:
+            crit = sum(1 for b in ir.bug_findings if b.severity.value == "critical")
+            high = sum(1 for b in ir.bug_findings if b.severity.value == "high")
+            print(f"🐛 {len(ir.bug_findings)} bug(s) techniques — 🔴{crit} critical / 🟠{high} high")
         _print_usage_summary(usage, args.model)
         if args.debug_rules:
             _print_debug_rules([ir])
@@ -415,7 +504,10 @@ def main() -> None:
 
     for i, php_path in enumerate(php_files, 1):
         print(f"[{i}/{len(php_files)}] {php_path.name}")
-        ir, usage = _analyze_single(php_path, details_dir, args.no_llm, args.model)
+        ir, usage = _analyze_single(
+            php_path, details_dir, args.no_llm, args.model,
+            args.bug_check, call_graph, kb_provider,
+        )
         all_irs.append(ir)
         all_usages.append(usage)
         total_insights += len(ir.llm_insights)

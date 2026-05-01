@@ -11,8 +11,9 @@ Deux sorties :
 import re
 from datetime import datetime
 from typing import Optional
-from ir.schema import IRSchema, Flag, LLMInsight
+from ir.schema import IRSchema, Flag, LLMInsight, BugSeverity
 from analyzers.llm_enricher import TokenUsage, PRICING
+from analyzers.bug_enricher import format_bug_findings_md
 
 FLAG_LABELS: dict[str, str] = {
     "missing_branch":        "⚠️  Branche manquante",
@@ -229,7 +230,9 @@ class BusinessDocGenerator:
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
         lines.append(f"# {controller}Controller — Zones à valider")
-        lines.append(f"Généré le : {now} | {len(ir.flags)} flags | {len(ir.llm_insights)} insights LLM")
+        bug_count = len(ir.bug_findings)
+        bug_suffix = f" | {bug_count} bug(s) techniques" if bug_count else ""
+        lines.append(f"Généré le : {now} | {len(ir.flags)} flags | {len(ir.llm_insights)} insights LLM{bug_suffix}")
         lines.append("")
 
         insights_by_flag = {ins.flag_id: ins for ins in ir.llm_insights}
@@ -274,6 +277,10 @@ class BusinessDocGenerator:
                     if insight.missing_context:
                         lines.append(f"  - ❓ Contexte manquant : {insight.missing_context}")
             lines.append("")
+
+        # Section bugs techniques (si --bug-check a été lancé)
+        if ir.bug_findings:
+            lines.append(format_bug_findings_md(ir.bug_findings))
 
         return "\n".join(lines)
 

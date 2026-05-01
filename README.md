@@ -1,95 +1,71 @@
 # Rosetta — Knowledge Base & Anti-Drift Pipeline
 
-Outil privé de cartographie des règles métier du projet ASTRO (legacy PHP 7.3).
+Outil privé de cartographie des règles métier d'un legacy PHP 7.3.
 
 ## Architecture
 
 ```
-~/repos/rosetta/  (privé — ton repo)        ~/repos/astro/  (corporate — read-only)
-─────────────────────────────────────        ──────────────────────────────────────
-config.yaml       ← pointe vers astro       .github/copilot-skills/  ← versionné
-kb/                                            (rien d'autre de Rosetta ici)
-  orchestra/      ← 5 fiches
-  airele/         ← 8 fiches
-  enrichissement-alarmes/ ← 6 fiches
-scripts/
-  kb_drift_check.py
-  kb_update_anchors.py
-  install_hook.sh
-audits/           ← rapports partagés en réunion
+~/projects/rosetta/          (privé — ce repo)
+├── kb/
+│   ├── orchestra/           ← fiches domaine diagnostic
+│   ├── airele/              ← fiches domaine airele
+│   └── enrichissement-alarmes/ ← fiches domaine alarmes
+├── kb_import.py             ← import fiches → knowledge_base.yaml
+├── rosetta_kb.py            ← CLI KB (lookup, stats, validate...)
+├── aliases.sh               ← kb-import, kb-stats, kb-check, kb-sync
+└── Makefile                 ← kb-full, kb-import, kb-check
+
+~/rosetta-data/              (local uniquement, hors repo)
+└── knowledge_base.yaml      ← source de vérité KB
 ```
 
-**Principe** : Rosetta ne vit JAMAIS dans le repo corporate.
-Les scripts lisent le code source Astro via `config.yaml → source_repo`.
+**Principe** : les fiches KB (`kb/`) restent dans ce repo privé.
+`knowledge_base.yaml` reste local, jamais versionné.
 
 ---
 
 ## Setup NixOS (une seule fois)
 
 ```bash
-# 1. Cloner Astro (si pas déjà fait)
-git clone <astro_corporate_url> ~/repos/astro
-
-# 2. Installer le hook (dans .git/hooks d'Astro, pas versionné)
-bash ~/repos/rosetta/scripts/install_hook.sh
-
-# 3. Tester
-python3 ~/repos/rosetta/scripts/kb_drift_check.py
+nix-shell   # installe pyyaml + python-frontmatter
 ```
-
-Prérequis : `python3`, `git` — aucune dépendance pip.
 
 ---
 
 ## Usage quotidien
 
-### Vérifier les drifts
 ```bash
-cd ~/repos/rosetta
-python3 scripts/kb_drift_check.py
+# Importer toutes les fiches dans knowledge_base.yaml
+kb-import
+# ou : python3 kb_import.py
+
+# Dashboard KB
+kb-stats
+# ou : python3 rosetta_kb.py stats
+
+# Pipeline complet (import + stats)
+make kb-full
 ```
 
-### Mettre à jour les ancres (hash, commit)
+### Recherche & validation
+
 ```bash
-python3 scripts/kb_update_anchors.py              # dry-run
-python3 scripts/kb_update_anchors.py --apply       # applique
-python3 scripts/kb_update_anchors.py --apply --file kb/airele/regle_FALLBACK_OCEANE_GISEMENT.md
+python3 rosetta_kb.py lookup --code REBALANCEMENT_ORDRE_APRES_SUPPRESSION
+python3 rosetta_kb.py search --texte "SLA"
+python3 rosetta_kb.py pending
+python3 rosetta_kb.py validate --id PV-001 --label "..." --source "PO validé"
 ```
-
-### Workflow post-MR
-```
-1. Collègue merge une MR sur Astro
-2. Sur NixOS : cd ~/repos/astro && git pull
-3. cd ~/repos/rosetta && python3 scripts/kb_drift_check.py
-4. Si drift → python3 scripts/kb_update_anchors.py --apply
-5. Si anchor_method a changé → mettre à jour la fiche manuellement
-6. git add kb/ && git commit -m "KB: sync post-MR"
-```
-
----
-
-## config.yaml
-
-| Champ | Rôle |
-|-------|------|
-| `source_repo` | Chemin vers le clone Astro corporate |
-| `kb_dir` | Dossier des fiches KB (dans ce repo) |
-| `drift.max_age_days` | Warning si fiche plus ancienne que N jours |
-| `drift.block_on_drift` | Le hook bloque le commit si `true` |
-| `drift.allow_simulated_hash` | Accepter les `sha256:simul*` |
-| `domains.*` | Mapping domaine → fichiers PHP source |
 
 ---
 
 ## Ce qu'on partage / ce qu'on garde
 
-| Élément | Partagé ? | Comment |
-|---------|-----------|---------|
-| Audits (rapports) | ✅ Oui | PDF/MD en réunion |
-| Fiches KB | ❌ Non | Restent dans ce repo privé |
-| Scripts Rosetta | ❌ Non | Propriété personnelle |
-| Skills Copilot | ✅ Oui | Dans `.github/copilot-skills/` d'Astro |
+| Élément | Partagé ? |
+|---------|-----------|
+| Fiches KB (`kb/`) | ❌ Repo privé uniquement |
+| `knowledge_base.yaml` | ❌ Local uniquement |
+| Scripts Rosetta | ❌ Repo privé uniquement |
 
 ---
 
-*Rosetta — outil d'audit statique PHP · Samah Toutouh · 2026*
+*Rosetta — Knowledge Base pipeline · Samah Toutouh · 2026*

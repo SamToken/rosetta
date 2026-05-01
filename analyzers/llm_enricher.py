@@ -13,7 +13,11 @@ Principes :
 import json
 import re
 from dataclasses import dataclass, field
+from typing import Optional, TYPE_CHECKING
 from ir.schema import IRSchema, Flag, LLMInsight
+
+if TYPE_CHECKING:
+    from analyzers.kb_context import KBContextProvider
 
 SYSTEM_PROMPT = """Tu es un Business Analyst senior spécialisé en reverse engineering de logique métier sur des systèmes d'information télécom.
 
@@ -188,21 +192,49 @@ class TokenUsage:
 class LLMEnricher:
     """Enrichit les flags d'un IRSchema avec des insights LLM."""
 
-    def __init__(self, model: str = "claude-sonnet-4-6"):
+    def __init__(
+        self,
+        model: str = "claude-sonnet-4-6",
+        kb_provider: Optional["KBContextProvider"] = None,
+    ):
         import anthropic
         self.client = anthropic.Anthropic()
         self.model = model
         self.usage = TokenUsage()
+        self.kb_provider = kb_provider
 
     def enrich(self, ir: IRSchema) -> IRSchema:
         """Enrichit tous les flags de l'IR. Retourne l'IR modifié."""
+        # Index des corps de méthodes depuis l'IR — contexte complet pour le LLM
+        method_bodies: dict[str, str] = {}
+        for ep in ir.entry_points:
+            if ep.raw_code:
+                body = ep.raw_code[:2500]  # ~500 lignes max
+                if ep.original_name:
+                    method_bodies[ep.original_name] = body
+                if ep.name and ep.name != ep.original_name:
+                    method_bodies[ep.name] = body
+
+        # Contexte KB une seule fois par fichier (évite N appels identiques)
+        kb_context = ""
+        if self.kb_provider:
+            kb_context = self.kb_provider.context_for(
+                ir.metadata.controller_name or ""
+            )
+            if kb_context:
+                print(f"  [KB] Contexte injecté : {kb_context.count('[') - kb_context.count('[KB')} règle(s) KB")
+
         for flag in ir.flags:
             if not self._is_worth_enriching(flag):
                 print(f"  ↷ {flag.id} skipped — fragment too minimal")
                 self.usage.skipped_flags += 1
                 continue
+            method_body = (
+                method_bodies.get(flag.method_original_name or "")
+                or method_bodies.get(flag.method_name or "")
+            )
             try:
-                insight = self._ask_llm(flag)
+                insight = self._ask_llm(flag, method_body, kb_context)
                 ir.llm_insights.append(insight)
             except Exception as e:
                 print(f"  ⚠ Échec pour flag {flag.id} : {e}")
@@ -228,8 +260,13 @@ class LLMEnricher:
 
         return True
 
-    def _ask_llm(self, flag: Flag) -> LLMInsight:
-        user_message = self._build_prompt(flag)
+    def _ask_llm(
+        self,
+        flag: Flag,
+        method_body: Optional[str] = None,
+        kb_context: str = "",
+    ) -> LLMInsight:
+        user_message = self._build_prompt(flag, method_body, kb_context)
 
         response = self.client.messages.create(
             model=self.model,
@@ -252,12 +289,26 @@ class LLMEnricher:
         raw = response.content[0].text.strip()
         return self._parse_response(flag.id, raw)
 
-    def _build_prompt(self, flag: Flag) -> str:
-        return (
-            f"Fragment de code :\n"
+    def _build_prompt(
+        self,
+        flag: Flag,
+        method_body: Optional[str] = None,
+        kb_context: str = "",
+    ) -> str:
+        parts: list[str] = []
+        if kb_context:
+            parts.append(kb_context)
+        if method_body:
+            parts.append(
+                f"Méthode complète ({flag.method_name or flag.method_original_name}) :\n"
+                f"```php\n{method_body}\n```"
+            )
+        parts.append(
+            f"Fragment concerné :\n"
             f"```\n{flag.fragment}\n```\n\n"
             f"Question métier :\n{flag.question}"
         )
+        return "\n\n".join(parts)
 
     def _parse_response(self, flag_id: str, raw: str) -> LLMInsight:
         # Supprimer les blocs markdown si le modèle en ajoute malgré l'instruction

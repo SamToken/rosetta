@@ -25,6 +25,31 @@ class ImpactCategory(str, Enum):
     LOGIC_GAP           = "LOGIC_GAP"
 
 
+class BugSeverity(str, Enum):
+    """Sévérité d'un bug technique détecté par la grille LLM."""
+    CRITICAL = "critical"  # erreur fatale / crash production possible
+    HIGH     = "high"      # comportement incorrect silencieux ou donnée corrompue
+    MEDIUM   = "medium"    # warning PHP ou résultat inattendu dans certains cas
+    LOW      = "low"       # risque de régression migration PHP 8.2+
+
+
+class BugCategory(str, Enum):
+    """Catégories de bugs détectés par la grille structurée (BugEnricher)."""
+    UNINIT_VAR           = "uninit_variable"       # variable réutilisée sans réinit entre cases
+    PHP82_COMPAT         = "php82_compat"          # propriété dynamique, false[0], null['key']
+    OPERATOR_PRECEDENCE  = "operator_precedence"   # &&/|| sans parenthèses dans condition complexe
+    STRPOS_LOOSE         = "strpos_type_unsafe"    # strpos sans !== false
+    DATE_FORMAT          = "date_format_invalid"   # date() avec format non-PHP
+    SWITCH_FALLTHROUGH   = "switch_fallthrough"    # case sans break tombant dans le suivant
+    FOREACH_NULL         = "foreach_null_guard"    # foreach sur variable potentiellement null
+    SLEEP_BLOCKING       = "sleep_blocking"        # sleep() bloquant dans un worker PHP synchrone
+    STATE_MUTATION       = "instance_state_mutation" # $this->x modifié dans méthode réentrante
+    NULL_DEREF           = "null_dereference"      # appel méthode/propriété sur variable nullable
+    ARRAY_UNCHECKED      = "array_access_unchecked" # accès $arr['k']['sub'] sans isset
+    FINALLY_SCOPE        = "finally_scope_logic"   # code métier après finally non atteint si exception
+    PARAM_ORDER          = "parameter_order"       # arguments inversés vs signature déclarée
+
+
 class FlagType(str, Enum):
     """Types de flag — validation Pydantic garantit qu'aucun type inconnu ne peut être créé."""
 
@@ -190,6 +215,17 @@ class LLMInsight(BaseModel):
     validated_by: Optional[str] = None
 
 
+class BugFinding(BaseModel):
+    """Bug technique détecté par la grille structurée BugEnricher (source LLM, 1 appel/fichier)."""
+    category: BugCategory
+    severity: BugSeverity
+    method_name: Optional[str] = None   # méthode PHP concernée
+    fragment: str                        # extrait de code exact (1-3 lignes)
+    description: str                     # explication précise du bug
+    fix: Optional[str] = None           # correction minimale suggérée
+    source: str = "llm_bug_check"
+
+
 class IRSchema(BaseModel):
     """
     Intermediate Representation complète d'un contrôleur.
@@ -211,6 +247,9 @@ class IRSchema(BaseModel):
 
     # Enrichissements LLM (confiance < 1.0, toujours séparés)
     llm_insights: list[LLMInsight] = Field(default_factory=list)
+
+    # Bugs techniques détectés par grille structurée (1 appel LLM/fichier, --bug-check)
+    bug_findings: list[BugFinding] = Field(default_factory=list)
 
     # ==========================================================================
     # Méthodes utilitaires
