@@ -9,15 +9,17 @@ Structure du livrable :
   2. Règles Transverses & Redondances
   3. Gaps de Documentation (CRITIQUE)
   4. Cartographie du Domaine
-     4.1 Glossaire Métier Unifié
-     4.2 Services Tiers Identifiés
+     4.1 Termes métier non documentés
+     4.2 Champs de données partagés
+     4.3 Services Tiers Identifiés
+     4.4 Codes à usage divergent
 """
 
 import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-from aggregators.business_aggregator import AggregatedInsights, DecisionGap, CriticalMethod, ImpactRow
+from aggregators.business_aggregator import AggregatedInsights, DecisionGap, CriticalMethod, ImpactRow, CodeDivergence
 from analyzers.llm_enricher import TokenUsage, PRICING
 
 _TECHNICAL_NOISE = [r'\$_POST', r'\bmd5\b', r'SELECT\s*\*']
@@ -745,6 +747,26 @@ class GlobalAuditGenerator:
                 controllers_str = ", ".join(dep.controllers)
                 priority = "🔴 Haute" if dep.count > 1 else "🟡 Normale"
                 lines.append(f"| `{dep.name}` | {dep.dep_type} | {controllers_str} | {priority} |")
+        lines.append("")
+
+        # 4.4 Codes à usage divergent
+        lines.append("### 4.4 Codes à usage divergent")
+        lines.append("")
+        if not ins.code_divergences:
+            lines.append("*Aucun code à usage divergent détecté sur ce périmètre.*")
+        else:
+            lines.append(
+                "Ces constantes apparaissent dans plusieurs contrôleurs avec des **types d'usage différents**. "
+                "Une sémantique unifiée est requise dans le référentiel de la cible avant migration."
+            )
+            lines.append("")
+            lines.append("| Code | Usages (contrôleur → type) |")
+            lines.append("|------|---------------------------|")
+            for div in ins.code_divergences:
+                usages_str = ", ".join(
+                    f"{ctrl} → `{ftype}`" for ctrl, ftype in div.usages
+                )
+                lines.append(f"| `{div.code}` | {usages_str} |")
         lines.append("")
         lines.append("---")
         lines.append("")

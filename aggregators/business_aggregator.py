@@ -56,6 +56,14 @@ class CommonDependency:
 
 
 @dataclass
+class CodeDivergence:
+    """Constante/code métier utilisé avec des flag_types différents selon le contrôleur."""
+    code: str                      # ex: 'TP2'
+    usages: list[tuple[str, str]]  # [(controller, flag_type), ...]
+    examples: list[str]            # fragments représentatifs (max 2)
+
+
+@dataclass
 class DecisionGap:
     """Gap de logique nécessitant un arbitrage PO."""
     condition_fragment: str   # condition technique brute
@@ -116,6 +124,7 @@ class AggregatedInsights:
     glossary: list[GlossaryEntry] = field(default_factory=list)
     magic_glossary: list[GlossaryEntry] = field(default_factory=list)
     common_deps: list[CommonDependency] = field(default_factory=list)
+    code_divergences: list[CodeDivergence] = field(default_factory=list)
     decision_gaps: list[DecisionGap] = field(default_factory=list)  # tous types, triés par impact
     all_flags: list[DecisionGap] = field(default_factory=list)      # tous types, pour top-5 PO
     controller_summaries: list[ControllerSummary] = field(default_factory=list)
@@ -158,6 +167,7 @@ class BusinessAggregator:
         result.glossary = self._build_glossary(irs)
         result.magic_glossary = self._build_magic_glossary(irs)
         result.common_deps = self._map_common_deps(irs)
+        result.code_divergences = self._detect_code_divergences(irs)
         result.decision_gaps = self._collect_decision_gaps(irs)
         result.all_flags = self._collect_all_flags(irs)
         result.controller_summaries = self._build_summaries(irs)
@@ -318,6 +328,62 @@ class BusinessAggregator:
                     contexts=data["contexts"][:2],
                 ))
         return sorted(entries, key=lambda e: (-e.count, e.field_name))
+
+    # -------------------------------------------------------------------------
+    # 2c. Divergences d'usage des codes partagés
+    # -------------------------------------------------------------------------
+
+    def _detect_code_divergences(self, irs: list[IRSchema]) -> list[CodeDivergence]:
+        """Détecte les constantes utilisées avec des flag_types différents selon le contrôleur.
+
+        Un même code `TP2` traité comme `hardcoded_situation_code` dans A et comme
+        `magic_value` dans B indique une sémantique ambiguë à résoudre avant migration.
+        """
+        # code → list of (controller, flag_type, fragment)
+        code_map: dict[str, list[tuple[str, str, str]]] = {}
+
+        _CANDIDATE_TYPES = {"magic_value", "hardcoded_situation_code", "missing_branch"}
+
+        for ir in irs:
+            ctrl = ir.metadata.controller_name
+            for flag in ir.flags:
+                if flag.type not in _CANDIDATE_TYPES:
+                    continue
+                frag = flag.fragment
+                literals: set[str] = set()
+                for m in re.finditer(r"(?:==|!=|!==|===)\s*['\"]([A-Z][A-Z0-9_]{2,})['\"]", frag):
+                    literals.add(m.group(1))
+                for m in re.finditer(r"\['([A-Z][A-Z0-9_]{2,})'\]", frag):
+                    literals.add(m.group(1))
+                for m in re.finditer(r"self::([A-Z][A-Z0-9_]{2,})", frag):
+                    literals.add(m.group(1))
+
+                for lit in literals:
+                    if lit.lower() in _GLOSSARY_GENERIC:
+                        continue
+                    if lit not in code_map:
+                        code_map[lit] = []
+                    code_map[lit].append((ctrl, str(flag.type), frag[:80]))
+
+        divergences = []
+        for code, entries in code_map.items():
+            controllers = {c for c, _, _ in entries}
+            flag_types = {ft for _, ft, _ in entries}
+            if len(controllers) < 2 or len(flag_types) < 2:
+                continue
+            seen: set[tuple[str, str]] = set()
+            unique_usages: list[tuple[str, str]] = []
+            examples: list[str] = []
+            for ctrl, ft, frag in entries:
+                key = (ctrl, ft)
+                if key not in seen:
+                    seen.add(key)
+                    unique_usages.append((ctrl, ft))
+                if len(examples) < 2 and frag not in examples:
+                    examples.append(frag)
+            divergences.append(CodeDivergence(code=code, usages=unique_usages, examples=examples))
+
+        return sorted(divergences, key=lambda d: (-len(d.usages), d.code))
 
     # -------------------------------------------------------------------------
     # 3. Dépendances communes
