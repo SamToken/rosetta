@@ -211,12 +211,24 @@ def _analyze_single(
             enricher = LLMEnricher(model=model, kb_provider=kb_provider, kb_lookup=kb_lookup)
             ir = enricher.enrich(ir)
             print(f"        ✓ {len(ir.llm_insights)} insights générés")
+            if enricher._kb_lookup:
+                cov = enricher.coverage
+                total_ev = cov.flags_kb_resolved + cov.flags_llm_needed
+                if total_ev:
+                    print(
+                        f"  📊 Couverture KB : {cov.coverage_pct}% "
+                        f"({cov.flags_kb_resolved}/{total_ev} flags résolus sans LLM)"
+                    )
+                    if cov.top_candidates:
+                        top3 = ", ".join(f"{t}({n}×)" for t, n in cov.top_candidates[:3])
+                        print(f"     → À enrichir en KB : {top3}")
         except ImportError as exc:
             print(f"        ⚠ LLM indisponible ({exc}) — mode déterministe uniquement")
         except Exception as exc:
             print(f"        ⚠ Erreur LLM : {exc} — mode déterministe uniquement")
 
     usage = enricher.usage if enricher else None
+    kb_coverage = enricher.coverage if enricher else None
 
     # ------------------------------------------------------------------
     # Étape 3b — Grille de bugs techniques (optionnel, --bug-check)
@@ -255,7 +267,7 @@ def _analyze_single(
     flags_out.write_text(gen.generate_flags_summary(ir), encoding="utf-8")
 
     brief_out = output_dir / f"{stem}_brief_po.md"
-    brief_out.write_text(gen.generate_po_brief(ir), encoding="utf-8")
+    brief_out.write_text(gen.generate_po_brief(ir, kb_coverage=kb_coverage), encoding="utf-8")
 
     print(f"        → {brief_out.relative_to(output_dir.parent) if output_dir.parent != output_dir else brief_out}")
 

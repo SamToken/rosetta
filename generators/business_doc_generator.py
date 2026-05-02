@@ -55,7 +55,7 @@ TECH_TO_BUSINESS: list[tuple[str, str]] = [
 class BusinessDocGenerator:
     """Génère la documentation métier depuis un IRSchema enrichi."""
 
-    def generate_po_brief(self, ir: IRSchema) -> str:
+    def generate_po_brief(self, ir: IRSchema, kb_coverage=None) -> str:
         """Brief PO compact — format table, une ligne par concept unique."""
         from collections import defaultdict
         import re as _re
@@ -175,6 +175,33 @@ class BusinessDocGenerator:
             lines.append("")
             lines.append("---")
             lines.append("")
+
+        if kb_coverage is not None:
+            total_ev = kb_coverage.flags_kb_resolved + kb_coverage.flags_llm_needed
+            if total_ev > 0:
+                pct = kb_coverage.coverage_pct
+                lines.append("## Couverture KB")
+                lines.append("")
+                lines.append("| Métrique | Valeur |")
+                lines.append("|----------|--------|")
+                lines.append(
+                    f"| Flags résolus sans LLM (KB) "
+                    f"| {kb_coverage.flags_kb_resolved} / {total_ev} ({pct}%) |"
+                )
+                found = kb_coverage.tokens_found_high + kb_coverage.tokens_found_medium
+                if found:
+                    lines.append(
+                        f"| Tokens matchés en KB "
+                        f"| {kb_coverage.tokens_found_high} high · {kb_coverage.tokens_found_medium} medium |"
+                    )
+                if kb_coverage.top_candidates:
+                    top = ", ".join(
+                        f"`{tok}` ({n}×)" for tok, n in kb_coverage.top_candidates[:5]
+                    )
+                    lines.append(f"| Top candidats à capturer | {top} |")
+                lines.append("")
+                lines.append("---")
+                lines.append("")
 
         lines.append("*Brief généré par **Rosetta** — outil d'audit statique PHP*")
         return "\n".join(lines)

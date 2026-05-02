@@ -156,6 +156,27 @@ PRICING: dict[str, dict[str, float]] = {
 
 
 @dataclass
+class KBCoverageReport:
+    """Coverage stats from one enrichment session — KB hits vs LLM calls."""
+    tokens_tried: int = 0
+    tokens_found_high: int = 0
+    tokens_found_medium: int = 0
+    flags_kb_resolved: int = 0
+    flags_llm_needed: int = 0
+    flags_skipped: int = 0
+    missing_tokens: dict = field(default_factory=dict)
+
+    @property
+    def coverage_pct(self) -> float:
+        total = self.flags_kb_resolved + self.flags_llm_needed
+        return round(100.0 * self.flags_kb_resolved / total, 1) if total else 0.0
+
+    @property
+    def top_candidates(self) -> list:
+        return sorted(self.missing_tokens.items(), key=lambda x: -x[1])[:10]
+
+
+@dataclass
 class TokenUsage:
     """Consommation de tokens pour une session d'enrichissement."""
     input_tokens: int = 0
@@ -230,6 +251,7 @@ class LLMEnricher:
         self.kb_provider = kb_provider
         self._kb_lookup = kb_lookup
         self._kb_hits = 0
+        self.coverage = KBCoverageReport()
 
     def enrich(self, ir: IRSchema) -> IRSchema:
         """Enrichit tous les flags de l'IR. Retourne l'IR modifié."""
@@ -256,6 +278,7 @@ class LLMEnricher:
             if not self._is_worth_enriching(flag):
                 print(f"  ↷ {flag.id} skipped — fragment too minimal")
                 self.usage.skipped_flags += 1
+                self.coverage.flags_skipped += 1
                 continue
 
             # Tentative KB avant LLM (0 token)
@@ -263,7 +286,15 @@ class LLMEnricher:
             if kb_insight:
                 ir.llm_insights.append(kb_insight)
                 self._kb_hits += 1
+                self.coverage.flags_kb_resolved += 1
                 continue
+
+            self.coverage.flags_llm_needed += 1
+            if self._kb_lookup:
+                for tok in self._extract_kb_tokens(flag):
+                    self.coverage.missing_tokens[tok] = (
+                        self.coverage.missing_tokens.get(tok, 0) + 1
+                    )
 
             method_body = (
                 method_bodies.get(flag.method_original_name or "")
@@ -317,10 +348,15 @@ class LLMEnricher:
         if not self._kb_lookup:
             return None
         for token in self._extract_kb_tokens(flag):
+            self.coverage.tokens_tried += 1
             result = self._kb_lookup(token)
             if not result.get("found"):
                 continue
             confiance = result.get("confiance", "inferred")
+            if confiance == "high":
+                self.coverage.tokens_found_high += 1
+            elif confiance == "medium":
+                self.coverage.tokens_found_medium += 1
             if confiance == "inferred":
                 continue  # pas fiable — laisser le LLM gérer
             label = result.get("label") or token
