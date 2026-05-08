@@ -631,6 +631,10 @@ def main() -> None:
     else:
         input_path = None  # plusieurs fichiers explicites
 
+    # Auto-inférer kb_domain depuis le nom du fichier si absent
+    if not getattr(args, "kb_domain", None) and input_path is not None and input_path.is_file():
+        args.kb_domain = input_path.stem  # OrchestraService.php → OrchestraService
+
     # ======================================================================
     # Mode fichier unique (comportement original)
     # ======================================================================

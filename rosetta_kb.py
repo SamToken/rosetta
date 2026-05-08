@@ -83,13 +83,30 @@ def _global_file(kb_dir: Path) -> Path:
     return kb_dir / "_global.yaml"
 
 
+def _normalize_domain(name: str) -> str:
+    """Convertit un nom de fichier PHP ou domaine court en identifiant YAML.
+
+    Exemples :
+      'OrchestraService.php'                              → 'OrchestraService'
+      'application/src/Service/OrchestraService.php'     → 'OrchestraService'
+      'orchestra-service'                                 → 'orchestra-service'
+    """
+    p = Path(name)
+    if p.suffix.lower() == ".php":
+        return p.stem
+    return name
+
+
 def _domain_file(kb_dir: Path, domain: str) -> Path:
-    domain_safe = re.sub(r"[^\w-]", "_", domain)
+    domain_safe = re.sub(r"[^A-Za-z0-9_-]", "_", domain)
     return kb_dir / f"{domain_safe}.yaml"
 
 
 def _domain_of(args: argparse.Namespace) -> str:
-    return getattr(args, "domaine", None) or "commun"
+    raw = getattr(args, "domaine", None)
+    if not raw:
+        return "commun"
+    return _normalize_domain(raw)
 
 
 # ---------------------------------------------------------------------------
@@ -215,6 +232,36 @@ def _next_pending_id(pending: dict) -> str:
     while f"PV-{n:03d}" in pending:
         n += 1
     return f"PV-{n:03d}"
+
+
+# Types de flags qui indiquent une décision d'architecture, pas un token KB
+_PENDING_DECISION_FLAG_TYPES: frozenset[str] = frozenset({
+    "missing_branch", "external_state_dependency", "dynamic_session_key",
+})
+_PENDING_DECISION_CODE_RE = re.compile(
+    r"^(BRANCHES_MANQUANTES_|DI-missing_branch--|DI-external_state--|FALLBACK_)",
+    re.IGNORECASE,
+)
+
+
+def _detect_pending_type(
+    code: str,
+    kb_data: dict,
+    flag_type: str | None = None,
+) -> tuple[int, str]:
+    """Détermine pending_type (1/2/3) et destination d'un pending.
+
+    1 → token existe en KB (medium/inferred)  → destination: kb_upgrade
+    2 → token absent du KB                    → destination: kb_new_entry
+    3 → décision comportement/architecture    → destination: migration_notes
+    """
+    if flag_type in _PENDING_DECISION_FLAG_TYPES:
+        return 3, "migration_notes"
+    if _PENDING_DECISION_CODE_RE.match(code):
+        return 3, "migration_notes"
+    if _lookup_all(kb_data, code):
+        return 1, "kb_upgrade"
+    return 2, "kb_new_entry"
 
 
 # ---------------------------------------------------------------------------
@@ -429,9 +476,14 @@ def cmd_add_pending(args: argparse.Namespace, kb_path: Path) -> int:
     if args.domaine:
         item["domaine"] = args.domaine
 
+    kb_data = _load_kb(kb_path)
+    ptype, dest = _detect_pending_type(args.code, kb_data, flag_type=getattr(args, "kb_type", None))
+    item["pending_type"] = ptype
+    item["destination"] = dest
+
     pending[pid] = item
     _save_pending(kb_path, pending)
-    print(f"[+] {pid} — '{args.code}' ajouté en pending (priorité: {args.priorite})")
+    print(f"[+] {pid} — '{args.code}' ajouté en pending (priorité: {args.priorite}) [{dest}]")
     return 0
 
 
@@ -1111,6 +1163,7 @@ def cmd_split(args: argparse.Namespace, kb_path: Path) -> int:
 _IMPORT_TYPE_ROUTES: dict[str, tuple[str, ...]] = {
     "code":    ("codes",),
     "regle":   ("regles",),
+    "bug":     ("regles",),
     "colonne": ("sql_artifacts", "colonnes"),
     "vue":     ("sql_artifacts", "vues"),
     "requete": ("sql_artifacts", "requetes"),
@@ -1176,12 +1229,23 @@ def _import_build_entry(kb_type: str, meta: dict, sections: dict) -> dict:
         if refs:
             entry["contextes"] = [{"champ": r} for r in refs]
 
-    elif kb_type == "regle":
+    elif kb_type in ("regle", "bug"):
         conds = _import_parse_list(sections.get("Conditions", []))
         if conds:
             entry["conditions"] = conds
         if meta.get("kb_domaine"):
             entry["domaine"] = meta["kb_domaine"]
+        if kb_type == "bug":
+            if "label" in entry and not entry["label"].startswith("[BUG]"):
+                entry["label"] = "[BUG] " + entry["label"]
+            sev_lines = sections.get("Sévérité", [])
+            if sev_lines:
+                entry.setdefault("notes", "")
+                sev = _import_text(sev_lines)
+                entry["notes"] = f"Sévérité: {sev}. " + entry.get("notes", "")
+            refs = _import_parse_list(sections.get("Trouvé dans", []))
+            if refs:
+                entry["contextes"] = [{"champ": r} for r in refs]
 
     elif kb_type == "colonne":
         if meta.get("kb_table"):
@@ -1252,7 +1316,7 @@ def cmd_import(args: argparse.Namespace, kb_path: Path) -> int:
 
     for md_path in sorted(docs_dir.rglob("*.md")):
         try:
-            post = _fm.loads(md_path.read_text(encoding="utf-8"))
+            post = _fm.loads(md_path.read_text(encoding="utf-8-sig"))
         except Exception as e:
             errors += 1
             messages.append(f"[E] {md_path.name} — frontmatter : {e}")

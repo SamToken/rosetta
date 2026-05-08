@@ -32,7 +32,7 @@ from collections import defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from rosetta_kb import _load_pending, _save_pending, _resolve_kb
+from rosetta_kb import _load_pending, _save_pending, _resolve_kb, _load_kb, _detect_pending_type
 
 # ---------------------------------------------------------------------------
 # Constantes
@@ -234,6 +234,7 @@ def main() -> int:
 
     kb_path = _resolve_kb(args.kb_path)
     pending = _load_pending(kb_path)
+    kb_data = _load_kb(kb_path)
 
     added = updated = skipped = 0
 
@@ -246,6 +247,7 @@ def main() -> int:
 
     for cluster in clusters:
         code = cluster["code"]
+        ptype, dest = _detect_pending_type(code, kb_data, flag_type=cluster["flag_type"])
         entry = {
             "code": code,
             "concept": cluster["concept"],
@@ -257,6 +259,8 @@ def main() -> int:
             "flag_type": cluster["flag_type"],
             "occurrences": cluster["occurrences"],
             "type": "po_question",
+            "pending_type": ptype,
+            "destination": dest,
         }
 
         if code in pending:
