@@ -681,6 +681,7 @@ Puis importer :
 
 ### 🔴 Bloquant pour la démo
 
+- [x] Analyse PHP fichiers >32K — chunking par méthode dans `bug_enricher.py` (`_chunk_source` + `_find_method_boundaries`) — RetablirCloturerIhmService.php (40K) → 2 chunks propres, 0 troncature
 - [ ] Vérifier pourquoi les bugs ConfigScenarioService n'apparaissent pas encore dans les sorties démo — `kb_type: bug` codé mais les entrées ne remontent pas encore dans les documents générés ni dans le contexte KB LLM
 
 ---

@@ -21,7 +21,7 @@ from analyzers.llm_enricher import TokenUsage, PRICING
 if TYPE_CHECKING:
     from analyzers.kb_context import KBContextProvider
 
-# Taille max du source envoyé au LLM (~8 000 tokens input)
+# Taille max du source envoyé au LLM (~8 000 tokens input) — par chunk
 MAX_SOURCE_CHARS = 32_000
 
 SYSTEM_PROMPT = """Tu es un expert en audit de code PHP, spécialisé dans la détection de bugs sémantiques et de risques de compatibilité dans du code legacy.
@@ -169,16 +169,39 @@ class BugEnricher:
         php_source: str,
         call_graph: Optional["CallGraphIndex"] = None,  # type: ignore[name-defined]
     ) -> IRSchema:
-        """Analyse le source complet et ajoute les BugFinding à ir.bug_findings."""
-        source = _truncate(php_source)
-        bundle = call_graph.bundle_for_source(source) if call_graph else ""
+        """Analyse le source complet et ajoute les BugFinding à ir.bug_findings.
+
+        Les fichiers > MAX_SOURCE_CHARS sont découpés en chunks par méthode PHP
+        pour garantir qu'aucune méthode n'est silencieusement tronquée.
+        """
+        chunks = _chunk_source(php_source)
+        bundle = call_graph.bundle_for_source(php_source) if call_graph else ""
         kb_context = ""
         if self.kb_provider:
             kb_context = self.kb_provider.context_for(
                 ir.metadata.controller_name or ""
             )
-        findings = self._analyze(source, ir.metadata.controller_name, bundle, kb_context)
-        ir.bug_findings.extend(findings)
+
+        if len(chunks) > 1:
+            print(f"  ⚡ Fichier volumineux — analyse en {len(chunks)} chunks "
+                  f"({len(php_source):,} chars / {len(chunks)} × ≤{MAX_SOURCE_CHARS:,})")
+
+        all_findings: list[BugFinding] = []
+        for i, chunk in enumerate(chunks):
+            label = ir.metadata.controller_name
+            if len(chunks) > 1:
+                label = f"{ir.metadata.controller_name} [chunk {i + 1}/{len(chunks)}]"
+            findings = self._analyze(chunk, label, bundle, kb_context)
+            all_findings.extend(findings)
+
+        # Dédupliquer par fragment (même bug peut apparaître dans le contexte chevauchant)
+        seen: set[str] = set()
+        for finding in all_findings:
+            key = finding.fragment[:80]
+            if key not in seen:
+                seen.add(key)
+                ir.bug_findings.append(finding)
+
         return ir
 
     def _analyze(
@@ -218,13 +241,70 @@ class BugEnricher:
         return _parse_response(response.content[0].text.strip())
 
 
-def _truncate(source: str) -> str:
+def _find_method_boundaries(lines: list[str]) -> list[tuple[int, int]]:
+    """
+    Retourne les (start_idx, end_idx) 0-basés de chaque méthode PHP dans le source.
+    Détecte toutes les visibilités : public/private/protected/abstract/static/final.
+    """
+    method_re = re.compile(
+        r"^\s+(?:(?:public|private|protected|abstract|static|final)\s+)*function\s+\w+"
+    )
+    starts = [i for i, ln in enumerate(lines) if method_re.match(ln)]
+    if not starts:
+        return []
+    spans = []
+    for i, start in enumerate(starts):
+        end = starts[i + 1] - 1 if i + 1 < len(starts) else len(lines) - 1
+        spans.append((start, end))
+    return spans
+
+
+def _chunk_source(source: str) -> list[str]:
+    """
+    Découpe le source PHP en chunks par méthode, chacun ≤ MAX_SOURCE_CHARS.
+
+    Garantit qu'aucune méthode n'est tronquée en milieu de corps.
+    Si une méthode seule dépasse MAX_SOURCE_CHARS, elle passe entière dans son chunk
+    (on ne peut pas couper à l'intérieur d'une méthode sans perdre du contexte).
+    Retourne [source] si le fichier tient en un chunk.
+    """
     if len(source) <= MAX_SOURCE_CHARS:
-        return source
-    cutoff = source.rfind("\n", 0, MAX_SOURCE_CHARS)
-    if cutoff == -1:
-        cutoff = MAX_SOURCE_CHARS
-    return source[:cutoff] + "\n\n// [... fichier tronqué — analyse partielle ...]"
+        return [source]
+
+    lines = source.splitlines(keepends=True)
+    spans = _find_method_boundaries(lines)
+
+    if not spans:
+        # Aucune méthode détectée — fallback sur la limite dure avec marqueur
+        cutoff = source.rfind("\n", 0, MAX_SOURCE_CHARS)
+        if cutoff == -1:
+            cutoff = MAX_SOURCE_CHARS
+        return [source[:cutoff] + "\n\n// [... fichier tronqué — analyse partielle ...]"]
+
+    # En-tête de classe = tout ce qui précède la première méthode
+    header = "".join(lines[: spans[0][0]])
+    header_len = len(header)
+
+    chunks: list[str] = []
+    current_parts: list[str] = []
+    current_len = header_len
+
+    for start, end in spans:
+        method_text = "".join(lines[start : end + 1])
+        method_len = len(method_text)
+
+        if current_parts and current_len + method_len > MAX_SOURCE_CHARS:
+            chunks.append(header + "".join(current_parts) + "}\n")
+            current_parts = []
+            current_len = header_len
+
+        current_parts.append(method_text)
+        current_len += method_len
+
+    if current_parts:
+        chunks.append(header + "".join(current_parts) + "}\n")
+
+    return chunks if chunks else [source]
 
 
 def _parse_response(raw: str) -> list[BugFinding]:
