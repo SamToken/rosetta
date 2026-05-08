@@ -1124,11 +1124,17 @@ def _truncate(text: str, max_len: int = 120) -> str:
 
 
 def _first_sentence(text: str, max_len: int = 300) -> str:
-    """Retourne la première phrase complète (jusqu'au premier . ! ?), max max_len chars."""
+    """Retourne la première phrase complète.
+
+    Coupe sur [.!?] suivi d'un espace + majuscule (ou fin de texte) pour éviter
+    de couper sur '1. ' dans les listes numérotées ou sur des abréviations.
+    """
     text = (text or "").replace("\n", " ").strip()
-    m = re.search(r'[.!?](?:\s|$)', text[:max_len + 60])
-    if m and m.end() <= max_len:
-        return text[:m.end()].strip()
+    # Fin de phrase = ponctuation (non précédée d'un chiffre) suivie d'espace+majuscule ou fin de chaîne
+    for m in re.finditer(r'(?<!\d)[.!?](?=\s+[A-ZÀ-Ÿ«"(]|\s*$)', text[:max_len + 60]):
+        end = m.end()
+        if end <= max_len:
+            return text[:end].strip()
     if len(text) <= max_len:
         return text
     cut = text.rfind(" ", 0, max_len)
