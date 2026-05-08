@@ -687,6 +687,7 @@ Puis importer :
 
 ### 🟡 Important mais pas bloquant
 
+- [ ] KB lisible humain — exporter KB + règles métier + brief PO dans un format Markdown structuré lisible par un humain en réunion (pas uniquement consommable par un agent IA) — priorité : réunion de fusion projet
 - [ ] Migration rétroactive des pending existants — ajouter `pending_type` + `destination` aux ~115 entrées dans `_global.yaml` sans ces champs (commande explicite `rosetta_kb.py migrate-pending`)
 - [ ] Rate limiting mesuré — quantifier combien de fichiers PHP Rosetta peut traiter en une session sans corruption KB ni timeout LLM
 
@@ -695,4 +696,4 @@ Puis importer :
 ### 🔵 Plus tard
 
 - [ ] Endpoint API — exposer Rosetta hors CLI (HTTP REST ou socket) pour intégration VS Code / Copilot
-- [ ] Brief PO cross-domaine — regrouper les pending par domaine métier (pas par fichier PHP) : tout ce qui touche OCEANE ensemble, tout ce qui touche les modules ensemble, etc.
+- [ ] Brief PO cross-domaine — regrouper les pending par domaine métier (pas par fichier PHP) : tout ce qui touche OCEANE ensemble, tout ce qui touche les modules ensemble, etc. — priorité après le KB humain (réunion fusion cloturer ticket)

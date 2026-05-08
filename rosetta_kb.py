@@ -1097,6 +1097,219 @@ def cmd_export_brief(args: argparse.Namespace, kb_path: Path) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Commande : export-human
+# ---------------------------------------------------------------------------
+
+def _conf_badge(conf: str) -> str:
+    return {"high": "✅ validé PO", "medium": "⚠️ inféré", "inferred": "🔍 non validé"}.get(conf, conf)
+
+
+def _migration_badge(note: str) -> str:
+    if not note:
+        return ""
+    note_l = note.lower()
+    if note_l.startswith("non"):
+        return "🟢 aucune"
+    if note_l.startswith("partiel"):
+        return "🟡 partielle"
+    return "🔴 requise"
+
+
+def _truncate(text: str, max_len: int = 120) -> str:
+    text = (text or "").replace("\n", " ").strip()
+    if len(text) <= max_len:
+        return text
+    cut = text.rfind(" ", 0, max_len)
+    return (text[:cut] if cut > 0 else text[:max_len]) + "…"
+
+
+def cmd_export_human(args: argparse.Namespace, kb_path: Path) -> int:
+    """Génère un document Markdown lisible humain pour une réunion (fusion, PO, etc.)."""
+    kb_data = _load_kb(kb_path)
+    pending  = _load_pending(kb_path)
+
+    domaines_raw = getattr(args, "domaine", None) or ""
+    domaines = [d.strip() for d in domaines_raw.split(",") if d.strip()] if domaines_raw else []
+
+    def _in_scope(entry: dict) -> bool:
+        if not domaines:
+            return True
+        return entry.get("domaine", "") in domaines
+
+    # ── Collecte KB ──────────────────────────────────────────────────────────
+    regles, bugs, codes = [], [], []
+    for code, entry in (kb_data.get("regles") or {}).items():
+        if not _in_scope(entry):
+            continue
+        label = entry.get("label", code)
+        if label.startswith("[BUG]"):
+            bugs.append((code, entry))
+        else:
+            regles.append((code, entry))
+
+    for code, entry in (kb_data.get("codes") or {}).items():
+        if _in_scope(entry):
+            codes.append((code, entry))
+
+    # ── Collecte pending ─────────────────────────────────────────────────────
+    pending_items = [
+        p for p in pending.values()
+        if not p.get("validated") and _in_scope(p)
+    ]
+    PRIO = {"high": 0, "medium": 1, "low": 2}
+    pending_items.sort(key=lambda p: PRIO.get(p.get("priorite", "low"), 9))
+
+    # ── Séparation pending par type ───────────────────────────────────────────
+    pending_decisions = [p for p in pending_items if p.get("pending_type") == 3]
+    pending_new       = [p for p in pending_items if p.get("pending_type") == 2]
+    pending_upgrade   = [p for p in pending_items if p.get("pending_type") == 1]
+
+    titre_domaine = ", ".join(domaines) if domaines else "tous domaines"
+    date_str = __import__("datetime").date.today().isoformat()
+
+    lines = [
+        f"# {titre_domaine} — Dossier de fusion",
+        f"> Généré par **Rosetta** · {date_str} · "
+        f"{len(regles)} règles · {len(codes)} codes · "
+        f"{len(bugs)} bugs · {len(pending_items)} questions ouvertes",
+        "",
+        "---",
+        "",
+    ]
+
+    # ── Section 1 : Règles métier ─────────────────────────────────────────────
+    if regles:
+        lines += [
+            "## 1. Règles métier documentées",
+            "",
+            "| Règle | Comportement | Confiance | Migration |",
+            "|-------|-------------|-----------|-----------|",
+        ]
+        for code, e in sorted(regles, key=lambda x: x[1].get("confiance", "z")):
+            sem = _truncate(e.get("semantique", e.get("label", "")), 120)
+            mig = _migration_badge(e.get("migration_note", ""))
+            lines.append(f"| `{code}` | {sem} | {_conf_badge(e.get('confiance',''))} | {mig} |")
+        lines += [""]
+
+    # ── Section 2 : Codes et constantes ──────────────────────────────────────
+    if codes:
+        lines += [
+            "## 2. Codes et constantes connus",
+            "",
+            "| Token | Label | Contexte | Confiance | Migration |",
+            "|-------|-------|---------|-----------|-----------|",
+        ]
+        for code, e in sorted(codes, key=lambda x: x[1].get("confiance", "z")):
+            label = e.get("label", "")
+            ctx_list = e.get("contextes", [])
+            ctx = ctx_list[0].get("champ", "") if ctx_list else ""
+            mig = _migration_badge(e.get("migration_note", ""))
+            lines.append(f"| `{code}` | {_truncate(label, 60)} | {_truncate(ctx, 50)} | {_conf_badge(e.get('confiance',''))} | {mig} |")
+        lines += [""]
+
+    # ── Section 3 : Bugs ──────────────────────────────────────────────────────
+    if bugs:
+        lines += [
+            "## 3. Bugs identifiés avant migration",
+            "",
+            "| Bug | Description | Sévérité |",
+            "|-----|------------|---------|",
+        ]
+        for code, e in bugs:
+            label = e.get("label", code).replace("[BUG] ", "")
+            notes = e.get("notes", "")
+            sev = ""
+            if "🔴" in notes or "Critique" in notes:
+                sev = "🔴 Critique"
+            elif "🟠" in notes or "Important" in notes:
+                sev = "🟠 Important"
+            else:
+                sev = "🟡 Moyen"
+            lines.append(f"| `{code}` | {_truncate(label, 100)} | {sev} |")
+        lines += [""]
+
+    # ── Section 4 : Questions ouvertes ────────────────────────────────────────
+    if pending_items:
+        lines += ["## 4. Questions ouvertes — Arbitrage requis", ""]
+
+        def _prio_icon(p: str) -> str:
+            return {"high": "🔴", "medium": "🟡", "low": "⚪"}.get(p, "")
+
+        if pending_decisions:
+            lines += [
+                "### 4a. Décisions d'architecture / comportement",
+                "",
+                "| Priorité | Méthode | Question |",
+                "|----------|---------|---------|",
+            ]
+            for p in pending_decisions:
+                icon = _prio_icon(p.get("priorite", ""))
+                method = (p.get("fichiers") or [""])[0].split(":")[0] if p.get("fichiers") else p.get("concept", "")
+                q = _truncate(p.get("question", ""), 140)
+                lines.append(f"| {icon} {p.get('priorite','').upper()} | `{method}` | {q} |")
+            lines += [""]
+
+        if pending_new:
+            lines += [
+                "### 4b. Tokens non documentés — à capturer en KB",
+                "",
+                "| Priorité | Token / Concept | Question |",
+                "|----------|----------------|---------|",
+            ]
+            for p in pending_new:
+                icon = _prio_icon(p.get("priorite", ""))
+                concept = p.get("concept", p.get("code", ""))
+                q = _truncate(p.get("question", ""), 140)
+                lines.append(f"| {icon} {p.get('priorite','').upper()} | `{concept}` | {q} |")
+            lines += [""]
+
+        if pending_upgrade:
+            lines += [
+                "### 4c. Tokens en KB — à valider PO (confiance à monter)",
+                "",
+                "| Priorité | Token | Question |",
+                "|----------|-------|---------|",
+            ]
+            for p in pending_upgrade:
+                icon = _prio_icon(p.get("priorite", ""))
+                q = _truncate(p.get("question", ""), 140)
+                lines.append(f"| {icon} {p.get('priorite','').upper()} | `{p.get('code','')}` | {q} |")
+            lines += [""]
+
+    # ── Section 5 : Notes migration ───────────────────────────────────────────
+    migration_notes = [
+        (code, e.get("migration_note", ""))
+        for section in (regles, codes)
+        for code, e in section
+        if e.get("migration_note") and not e["migration_note"].lower().startswith("non")
+    ]
+    if migration_notes:
+        lines += [
+            "## 5. Notes de migration Symfony",
+            "",
+            "| Token | Migration | Note |",
+            "|-------|-----------|------|",
+        ]
+        for code, note in migration_notes:
+            lines.append(f"| `{code}` | {_migration_badge(note)} | {_truncate(note, 130)} |")
+        lines += [""]
+
+    lines += ["---", "", "*Document généré par **Rosetta** — outil d'audit statique PHP*"]
+
+    md = "\n".join(lines)
+
+    out_path = getattr(args, "output", None)
+    if out_path:
+        out = Path(out_path).expanduser()
+        out.write_text(md, encoding="utf-8")
+        print(f"[✓] Dossier écrit dans {out}")
+        print(f"    {len(regles)} règles · {len(codes)} codes · {len(bugs)} bugs · {len(pending_items)} questions")
+    else:
+        print(md)
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # Commande : split
 # ---------------------------------------------------------------------------
 
@@ -1568,6 +1781,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--output", help="Fichier de sortie .md (défaut: stdout)")
 
+    # ── export-human ──────────────────────────────────────────────────────────
+    p = sub.add_parser("export-human", help="Dossier lisible humain : règles + bugs + questions (réunion, fusion)")
+    p.add_argument("--domaine", required=True,
+                   help="Domaine(s) à exporter, séparés par virgule (ex: RetablirCloturerController)")
+    p.add_argument("--output", help="Fichier de sortie .md (défaut: stdout)")
+
     return parser
 
 
@@ -1591,6 +1810,7 @@ COMMANDS = {
     "import":          cmd_import,
     "export-prompt":   cmd_export_prompt,
     "export-brief":    cmd_export_brief,
+    "export-human":    cmd_export_human,
 }
 
 
