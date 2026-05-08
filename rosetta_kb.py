@@ -1123,6 +1123,29 @@ def _truncate(text: str, max_len: int = 120) -> str:
     return (text[:cut] if cut > 0 else text[:max_len]) + "…"
 
 
+def _first_para(text: str, max_len: int = 420) -> str:
+    """Extrait l'introduction avant la première liste ou table Markdown.
+
+    Détecte les marqueurs de liste sur une nouvelle ligne (\\n- / \\n1. / \\n| )
+    ET inline après deux-points (': - ' / ': 1. ') pour les sémantiques
+    stockées comme une seule longue chaîne dans le YAML.
+    """
+    text = (text or "").strip()
+    import re as _re
+    # Marqueurs sur nouvelle ligne
+    m = _re.search(r"\n\s*(?:-|\d+\.|\|)\s", text)
+    # Marqueurs inline après ':' (listes écrites sur une seule ligne)
+    m2 = _re.search(r":\s+(?:-\s|\d+\.\s)", text)
+    candidates = [mc.start() for mc in [m, m2] if mc]
+    if candidates:
+        intro = text[: min(candidates)].rstrip(": ").strip()
+    else:
+        intro = text
+    if not intro:
+        intro = text
+    return _first_sentence(intro, max_len)
+
+
 def _first_sentence(text: str, max_len: int = 300) -> str:
     """Retourne la première phrase complète.
 
@@ -1204,15 +1227,22 @@ def cmd_export_human(args: argparse.Namespace, kb_path: Path) -> int:
     titre_domaine = ", ".join(domaines) if domaines else "tous domaines"
     date_str = __import__("datetime").date.today().isoformat()
 
+    sources_raw = getattr(args, "sources", None) or ""
+    sources = [s.strip() for s in sources_raw.split(",") if s.strip()] if sources_raw else []
+
     lines = [
         f"# {titre_domaine} — Dossier de fusion",
         f"> Généré par **Rosetta** · {date_str} · "
         f"{len(regles)} règles · {len(codes)} codes · "
         f"{len(bugs)} bugs · {len(pending_items)} questions ouvertes",
         "",
-        "---",
-        "",
     ]
+    if sources:
+        lines += [
+            "**Fichiers PHP analysés :**",
+            "",
+        ] + [f"- `{s}`" for s in sources] + [""]
+    lines += ["---", ""]
 
     # ── Section 1 : Règles métier ─────────────────────────────────────────────
     if regles:
@@ -1223,7 +1253,7 @@ def cmd_export_human(args: argparse.Namespace, kb_path: Path) -> int:
             "|-------|-------------|-----------|-----------|",
         ]
         for code, e in sorted(regles, key=lambda x: x[1].get("confiance", "z")):
-            sem = _first_sentence(e.get("semantique", e.get("label", "")), 280)
+            sem = _first_para(e.get("semantique", e.get("label", "")))
             mig = _migration_badge(e.get("migration_note", ""))
             lines.append(f"| `{code}` | {sem} | {_conf_badge(e.get('confiance',''))} | {mig} |")
         lines += [""]
@@ -1241,7 +1271,7 @@ def cmd_export_human(args: argparse.Namespace, kb_path: Path) -> int:
             ctx_list = e.get("contextes", [])
             ctx = ctx_list[0].get("semantique", ctx_list[0].get("champ", "")) if ctx_list else ""
             mig = _migration_badge(e.get("migration_note", ""))
-            lines.append(f"| `{code}` | {_truncate(label, 70)} | {_truncate(ctx, 60)} | {_conf_badge(e.get('confiance',''))} | {mig} |")
+            lines.append(f"| `{code}` | {_truncate(label, 95)} | {_truncate(ctx, 120)} | {_conf_badge(e.get('confiance',''))} | {mig} |")
         lines += [""]
 
     # ── Section 3 : Bugs ──────────────────────────────────────────────────────
@@ -1255,7 +1285,7 @@ def cmd_export_human(args: argparse.Namespace, kb_path: Path) -> int:
         for code, e in bugs:
             label = e.get("label", code).replace("[BUG] ", "")
             sev = _bug_severity(label, e.get("notes", ""))
-            lines.append(f"| `{code}` | {_first_sentence(label, 120)} | {sev} |")
+            lines.append(f"| `{code}` | {_first_sentence(label, 260)} | {sev} |")
         lines += [""]
 
     # ── Section 4 : Questions ouvertes ────────────────────────────────────────
@@ -1817,6 +1847,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("export-human", help="Dossier lisible humain : règles + bugs + questions (réunion, fusion)")
     p.add_argument("--domaine", required=True,
                    help="Domaine(s) à exporter, séparés par virgule (ex: RetablirCloturerController)")
+    p.add_argument("--sources",
+                   help="Fichiers PHP sources cités en haut du document, séparés par virgule")
     p.add_argument("--output", help="Fichier de sortie .md (défaut: stdout)")
 
     return parser
