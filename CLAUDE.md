@@ -688,6 +688,8 @@ Puis importer :
 ### 🟡 Important mais pas bloquant
 
 - [ ] KB lisible humain — exporter KB + règles métier + brief PO dans un format Markdown structuré lisible par un humain en réunion (pas uniquement consommable par un agent IA) — priorité : réunion de fusion projet
+  - [ ] Ajouter notes migration Symfony sur les 5 tokens HIGH RetablirCloturer (`TRONCABLE`, `Restored`, `Resolved`, `Closed`, `droit_retablir`) via `rosetta_kb.py capture --notes`
+  - [ ] Capturer `date_retab` en session PO pour le faire passer de "token non documenté" (4b) à "code validé" (section 2) dans le dossier de fusion
 - [ ] Migration rétroactive des pending existants — ajouter `pending_type` + `destination` aux ~115 entrées dans `_global.yaml` sans ces champs (commande explicite `rosetta_kb.py migrate-pending`)
 - [ ] Rate limiting mesuré — quantifier combien de fichiers PHP Rosetta peut traiter en une session sans corruption KB ni timeout LLM
 
