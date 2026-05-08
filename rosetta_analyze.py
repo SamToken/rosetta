@@ -500,10 +500,10 @@ def main() -> None:
     )
     parser.add_argument(
         "--kb-root",
-        default=None,
+        default=str(Path("~/projects/rosetta/kb").expanduser()),
         metavar="DIR",
         help="Répertoire de fiches KB (.md avec frontmatter kb_type) à injecter "
-             "comme contexte dans les prompts LLM (ex: ~/projects/myapp/.github/kb)",
+             "comme contexte dans les prompts LLM (défaut: ~/projects/rosetta/kb)",
     )
     parser.add_argument(
         "--kb-output-dir",

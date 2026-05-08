@@ -551,7 +551,7 @@ cd ~/projects/rosetta
   /chemin/vers/MonService.php \
   --output-dir ./output \
   --archive \
-  --kb-root ~/projects/astro/.github/kb/ \
+  --kb-root ~/projects/rosetta/kb/ \
   --call-graph-root ~/projects/astro/application/src/
 
 # Plusieurs fichiers (multi-fichiers)
@@ -559,7 +559,7 @@ cd ~/projects/rosetta
   /chemin/A.php /chemin/B.php \
   --output-dir ./output \
   --archive \
-  --kb-root ~/projects/astro/.github/kb/ \
+  --kb-root ~/projects/rosetta/kb/ \
   --call-graph-root ~/projects/astro/application/src/
 
 # Répertoire complet
@@ -567,7 +567,7 @@ cd ~/projects/rosetta
   ~/projects/astro/application/src/Service/ \
   --output-dir ./output \
   --archive \
-  --kb-root ~/projects/astro/.github/kb/ \
+  --kb-root ~/projects/rosetta/kb/ \
   --call-graph-root ~/projects/astro/application/src/
 ```
 
@@ -616,7 +616,7 @@ Les tokens non résolus apparaissent dans le résumé :
   --confiance high
 ```
 
-#### Route 2 — Fiche `.md` dans `.github/kb/{domaine}/` (token PHP ancré)
+#### Route 2 — Fiche `.md` dans `~/projects/rosetta/kb/{domaine}/` (token PHP ancré)
 
 Nommage : `regle_NOM.md` ou `code_NOM.md`
 
@@ -640,7 +640,7 @@ kb_migration: partiel   # non | partiel | requis
 
 Puis importer :
 ```bash
-.venv/bin/python3 rosetta_kb.py import ~/projects/astro/.github/kb/
+.venv/bin/python3 rosetta_kb.py import ~/projects/rosetta/kb/
 ```
 
 #### Route 3 — Fiche docs-kb/ (colonnes/vues Oracle, format Copilot)
