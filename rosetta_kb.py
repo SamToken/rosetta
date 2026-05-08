@@ -1123,6 +1123,37 @@ def _truncate(text: str, max_len: int = 120) -> str:
     return (text[:cut] if cut > 0 else text[:max_len]) + "…"
 
 
+def _first_sentence(text: str, max_len: int = 300) -> str:
+    """Retourne la première phrase complète (jusqu'au premier . ! ?), max max_len chars."""
+    text = (text or "").replace("\n", " ").strip()
+    m = re.search(r'[.!?](?:\s|$)', text[:max_len + 60])
+    if m and m.end() <= max_len:
+        return text[:m.end()].strip()
+    if len(text) <= max_len:
+        return text
+    cut = text.rfind(" ", 0, max_len)
+    return (text[:cut] if cut > 0 else text[:max_len]) + "…"
+
+
+_BUG_SHORTCODES = {
+    "critique": "🔴 Critique",
+    "important": "🟠 Important",
+    "moyen": "🟡 Moyen",
+    "mineur": "🟡 Moyen",
+}
+
+_MIGRATION_BADGE_WORDS = {"non", "partiel", "requis"}
+
+
+def _bug_severity(label: str, notes: str) -> str:
+    combined = (label + " " + (notes or "")).lower()
+    if "🔴" in combined or "critique" in combined:
+        return "🔴 Critique"
+    if "🟠" in combined or "important" in combined:
+        return "🟠 Important"
+    return "🟡 Moyen"
+
+
 def cmd_export_human(args: argparse.Namespace, kb_path: Path) -> int:
     """Génère un document Markdown lisible humain pour une réunion (fusion, PO, etc.)."""
     kb_data = _load_kb(kb_path)
@@ -1186,7 +1217,7 @@ def cmd_export_human(args: argparse.Namespace, kb_path: Path) -> int:
             "|-------|-------------|-----------|-----------|",
         ]
         for code, e in sorted(regles, key=lambda x: x[1].get("confiance", "z")):
-            sem = _truncate(e.get("semantique", e.get("label", "")), 120)
+            sem = _first_sentence(e.get("semantique", e.get("label", "")), 280)
             mig = _migration_badge(e.get("migration_note", ""))
             lines.append(f"| `{code}` | {sem} | {_conf_badge(e.get('confiance',''))} | {mig} |")
         lines += [""]
@@ -1202,9 +1233,9 @@ def cmd_export_human(args: argparse.Namespace, kb_path: Path) -> int:
         for code, e in sorted(codes, key=lambda x: x[1].get("confiance", "z")):
             label = e.get("label", "")
             ctx_list = e.get("contextes", [])
-            ctx = ctx_list[0].get("champ", "") if ctx_list else ""
+            ctx = ctx_list[0].get("semantique", ctx_list[0].get("champ", "")) if ctx_list else ""
             mig = _migration_badge(e.get("migration_note", ""))
-            lines.append(f"| `{code}` | {_truncate(label, 60)} | {_truncate(ctx, 50)} | {_conf_badge(e.get('confiance',''))} | {mig} |")
+            lines.append(f"| `{code}` | {_truncate(label, 70)} | {_truncate(ctx, 60)} | {_conf_badge(e.get('confiance',''))} | {mig} |")
         lines += [""]
 
     # ── Section 3 : Bugs ──────────────────────────────────────────────────────
@@ -1217,15 +1248,8 @@ def cmd_export_human(args: argparse.Namespace, kb_path: Path) -> int:
         ]
         for code, e in bugs:
             label = e.get("label", code).replace("[BUG] ", "")
-            notes = e.get("notes", "")
-            sev = ""
-            if "🔴" in notes or "Critique" in notes:
-                sev = "🔴 Critique"
-            elif "🟠" in notes or "Important" in notes:
-                sev = "🟠 Important"
-            else:
-                sev = "🟡 Moyen"
-            lines.append(f"| `{code}` | {_truncate(label, 100)} | {sev} |")
+            sev = _bug_severity(label, e.get("notes", ""))
+            lines.append(f"| `{code}` | {_first_sentence(label, 120)} | {sev} |")
         lines += [""]
 
     # ── Section 4 : Questions ouvertes ────────────────────────────────────────
@@ -1245,7 +1269,7 @@ def cmd_export_human(args: argparse.Namespace, kb_path: Path) -> int:
             for p in pending_decisions:
                 icon = _prio_icon(p.get("priorite", ""))
                 method = (p.get("fichiers") or [""])[0].split(":")[0] if p.get("fichiers") else p.get("concept", "")
-                q = _truncate(p.get("question", ""), 140)
+                q = (p.get("question", "") or "").replace("\n", " ").strip()
                 lines.append(f"| {icon} {p.get('priorite','').upper()} | `{method}` | {q} |")
             lines += [""]
 
@@ -1259,7 +1283,7 @@ def cmd_export_human(args: argparse.Namespace, kb_path: Path) -> int:
             for p in pending_new:
                 icon = _prio_icon(p.get("priorite", ""))
                 concept = p.get("concept", p.get("code", ""))
-                q = _truncate(p.get("question", ""), 140)
+                q = (p.get("question", "") or "").replace("\n", " ").strip()
                 lines.append(f"| {icon} {p.get('priorite','').upper()} | `{concept}` | {q} |")
             lines += [""]
 
@@ -1272,7 +1296,7 @@ def cmd_export_human(args: argparse.Namespace, kb_path: Path) -> int:
             ]
             for p in pending_upgrade:
                 icon = _prio_icon(p.get("priorite", ""))
-                q = _truncate(p.get("question", ""), 140)
+                q = (p.get("question", "") or "").replace("\n", " ").strip()
                 lines.append(f"| {icon} {p.get('priorite','').upper()} | `{p.get('code','')}` | {q} |")
             lines += [""]
 
@@ -1281,7 +1305,9 @@ def cmd_export_human(args: argparse.Namespace, kb_path: Path) -> int:
         (code, e.get("migration_note", ""))
         for section in (regles, codes)
         for code, e in section
-        if e.get("migration_note") and not e["migration_note"].lower().startswith("non")
+        if e.get("migration_note")
+        and e["migration_note"].strip().lower() not in _MIGRATION_BADGE_WORDS
+        and not e["migration_note"].lower().startswith("non")
     ]
     if migration_notes:
         lines += [
@@ -1291,7 +1317,7 @@ def cmd_export_human(args: argparse.Namespace, kb_path: Path) -> int:
             "|-------|-----------|------|",
         ]
         for code, note in migration_notes:
-            lines.append(f"| `{code}` | {_migration_badge(note)} | {_truncate(note, 130)} |")
+            lines.append(f"| `{code}` | {_migration_badge(note)} | {_first_sentence(note, 180)} |")
         lines += [""]
 
     lines += ["---", "", "*Document généré par **Rosetta** — outil d'audit statique PHP*"]
