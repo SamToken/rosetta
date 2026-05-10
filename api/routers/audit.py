@@ -246,7 +246,10 @@ async def start_audit(
     response_model=ROISummaryResponse,
     summary="Dashboard ROI — métriques cumulées de tous les audits",
 )
-async def get_roi() -> ROISummaryResponse:
+async def get_roi(
+    lines_per_hour: int | None = Query(None, ge=100, le=10000, description="Lignes/heure humain (override)"),
+    hourly_rate: float | None = Query(None, ge=10.0, le=500.0, description="Taux horaire €/h (override)"),
+) -> ROISummaryResponse:
     from telemetry.performance_logger import PerformanceLogger
 
     summary = await asyncio.to_thread(PerformanceLogger().summary)
@@ -255,9 +258,23 @@ async def get_roi() -> ROISummaryResponse:
             total_runs=0, total_lines_analyzed=0, total_human_hours_saved=0.0,
             financial_saving_eur=0.0, total_llm_cost_usd=0.0,
             total_machine_seconds=0.0, success_rate_pct=0.0,
-            avg_processing_seconds=0.0, lines_per_hour_constant=1000,
-            hourly_rate_eur=75.0,
+            avg_processing_seconds=0.0, lines_per_hour_constant=lines_per_hour or 1000,
+            hourly_rate_eur=hourly_rate or 75.0,
         )
+
+    # Override paramètres de calcul si fournis
+    if lines_per_hour is not None:
+        total_lines = summary["total_lines_analyzed"]
+        summary["total_human_hours_saved"] = round(total_lines / lines_per_hour, 1)
+        summary["lines_per_hour_constant"] = lines_per_hour
+    if hourly_rate is not None:
+        summary["hourly_rate_eur"] = hourly_rate
+    # Recalculer l'économie financière si l'un ou l'autre est overridé
+    if lines_per_hour is not None or hourly_rate is not None:
+        summary["financial_saving_eur"] = round(
+            summary["total_human_hours_saved"] * summary["hourly_rate_eur"], 0
+        )
+
     return ROISummaryResponse(**summary)
 
 
