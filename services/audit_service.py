@@ -211,6 +211,9 @@ class AuditPipeline:
             except Exception as exc:
                 self._p(f"⚠ Call graph ignoré : {exc}")
 
+        if opts.kb_root and opts.no_llm:
+            self._p("⚠  kb_root ignoré — sans effet en mode --no-llm")
+
         if opts.kb_root and opts.kb_root.is_dir() and not opts.no_llm:
             self._p(f"\n📚 KB Context — chargement depuis {opts.kb_root} …", )
             try:
