@@ -1,290 +1,30 @@
 #!/usr/bin/env python3
 """
-Rosetta Analyze — Audit fonctionnel de contrôleurs PHP legacy
-==============================================================
+Rosetta Analyze — CLI (thin client)
+====================================
+La logique métier est dans services/audit_service.py.
+Ce fichier : parsing des arguments + affichage console + orchestration de haut niveau.
+
 Usage :
-    # Fichier unique
-    python rosetta_analyze.py UserController.php
-    python rosetta_analyze.py UserController.php --no-llm
-    python rosetta_analyze.py UserController.php --output-dir ./output
-
-    # Répertoire complet (mode batch)
-    python rosetta_analyze.py ./controllers/
-    python rosetta_analyze.py ./controllers/ --output-dir ./audit --model claude-sonnet-4-6
-
-    # Avec archivage automatique
-    python rosetta_analyze.py ./controllers/ --archive
-    python rosetta_analyze.py ./controllers/ --archive --contexte "Avant MEP US-1234"
-
-Sorties (fichier unique) :
-    <Nom>_business_logic.json   IR enrichi avec flags et insights LLM
-    <Nom>_business_doc.md       Documentation lisible par un PO
-    <Nom>_flags.md              Zones à valider par un humain
-
-Sorties (mode batch) :
-    details/<Nom>_business_doc.md  Un rapport par contrôleur
-    details/<Nom>_flags.md
-    details/<Nom>_business_logic.json
-    global_audit.md                Synthèse globale lisible par un PO
-
-Archive (--archive) :
-    ~/rosetta-memory/audits/<date>_<contrôleurs>/
-    ~/rosetta-memory/index.md
+    python rosetta_analyze.py MonService.php
+    python rosetta_analyze.py MonService.php --no-llm
+    python rosetta_analyze.py A.php B.php --bug-check --archive
+    python rosetta_analyze.py ./controllers/ --output-dir ./audit
+    python rosetta_analyze.py --from-json output/Foo_business_logic.json
 """
 
 import argparse
-import json
-import os
-import shutil
 import sys
-from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
-# Assurer que le répertoire courant est dans le path
 sys.path.insert(0, str(Path(__file__).parent))
 
-# Charger .env si présent (sans dépendance externe)
-_env_file = Path(__file__).parent / ".env"
-if _env_file.exists():
-    for _line in _env_file.read_text().splitlines():
-        _line = _line.strip()
-        if _line and not _line.startswith("#") and "=" in _line:
-            _key, _, _val = _line.partition("=")
-            os.environ.setdefault(_key.strip(), _val.strip())
-
-from extractors.php_extractor import extract_php
-from analyzers.flag_engine import FlagEngine
-from generators.business_doc_generator import BusinessDocGenerator
-from ir.schema import IRSchema
+from services.audit_service import AuditOptions, AuditPipeline, do_archive, generate_archive_name
 
 
 # =============================================================================
-# Archive — fonctions utilitaires
+# Affichage console (SRP : uniquement le rendu)
 # =============================================================================
-
-def generate_archive_name(controller_names: list[str]) -> str:
-    date = datetime.now().strftime("%Y-%m-%d_%Hh%M")
-    controllers = "-".join(controller_names[:3])
-    if len(controller_names) > 3:
-        controllers += f"-et{len(controller_names) - 3}autres"
-    return f"{date}_{controllers}"
-
-
-def _health_emoji(score: float) -> str:
-    if score >= 70:
-        return "🟢"
-    if score >= 40:
-        return "🟡"
-    return "🔴"
-
-
-def _format_cost(usage, model: str) -> str:
-    if not usage:
-        return "$0.00"
-    try:
-        return f"${usage.total_cost(model):.2f}"
-    except Exception:
-        return "$0.00"
-
-
-def _update_index(memory_base: Path, meta: dict) -> None:
-    """Ajoute une ligne dans ~/rosetta-memory/index.md."""
-    index_path = memory_base / "index.md"
-
-    dt = datetime.fromisoformat(meta["date"])
-    date_str = dt.strftime("%Y-%m-%d %Hh%M")
-
-    controllers = meta["controleurs"]
-    controllers_str = ", ".join(controllers[:3])
-    if len(controllers) > 3:
-        controllers_str += f"... (+{len(controllers) - 3})"
-
-    stats = meta["stats"]
-    score = stats["score_sante_moyen"]
-    emoji = _health_emoji(score)
-    contexte = meta.get("contexte") or "—"
-
-    new_row = (
-        f"| {date_str} | {contexte} | {controllers_str} "
-        f"| {stats['gaps_total']} | {emoji} {score} | {stats['cout_llm']} |"
-    )
-
-    header = (
-        "# Rosetta Memory — Index des Audits\n\n"
-        "| Date | Contexte | Contrôleurs | Gaps | Score | Coût |\n"
-        "|------|----------|-------------|------|-------|------|\n"
-    )
-
-    if not index_path.exists():
-        index_path.write_text(header + new_row + "\n", encoding="utf-8")
-    else:
-        existing = index_path.read_text(encoding="utf-8")
-        index_path.write_text(existing.rstrip() + "\n" + new_row + "\n", encoding="utf-8")
-
-
-def _do_archive(
-    output_dir: Path,
-    archive_name: str,
-    meta: dict,
-    memory_base: Optional[Path] = None,
-) -> Path:
-    """Copie output_dir dans ~/rosetta-memory/audits/<archive_name>/ et met à jour index.md."""
-    if memory_base is None:
-        memory_base = Path.home() / "rosetta-memory"
-
-    archive_dir = memory_base / "audits" / archive_name
-    archive_dir.mkdir(parents=True, exist_ok=True)
-
-    # Copier tous les fichiers générés
-    for item in output_dir.iterdir():
-        dest = archive_dir / item.name
-        if item.is_dir():
-            if dest.exists():
-                shutil.rmtree(dest)
-            shutil.copytree(item, dest, symlinks=True)
-        else:
-            shutil.copy2(item, dest)
-
-    # Écrire meta.json
-    (archive_dir / "meta.json").write_text(
-        json.dumps(meta, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-
-    # Mettre à jour l'index
-    _update_index(memory_base, meta)
-
-    return archive_dir
-
-
-# =============================================================================
-# Analyse d'un fichier PHP
-# =============================================================================
-
-def _analyze_single(
-    php_path: Path,
-    output_dir: Path,
-    no_llm: bool,
-    model: str,
-    bug_check: bool = False,
-    call_graph=None,
-    kb_provider=None,
-    kb_lookup=None,
-    kb_output_dir: Optional[Path] = None,
-    kb_domain: Optional[str] = None,
-) -> tuple[IRSchema, Optional[object]]:
-    """Analyse un fichier PHP et écrit les 3 fichiers de sortie dans output_dir."""
-    stem = php_path.stem
-
-    # ------------------------------------------------------------------
-    # Étape 1 — Extraction PHP → IR (déterministe)
-    # ------------------------------------------------------------------
-    print(f"  [1/4] Extraction PHP → IR : {php_path.name}")
-    ir = extract_php(php_path)
-    print(f"        ✓ {len(ir.entry_points)} actions, {len(ir.operations)} opérations")
-
-    # ------------------------------------------------------------------
-    # Étape 2 — Détection des flags (déterministe)
-    # ------------------------------------------------------------------
-    print("  [2/4] Analyse des flags (déterministe)...")
-    engine = FlagEngine()
-    ir.flags = engine.analyze(ir)
-    counts: dict[str, int] = {}
-    for f in ir.flags:
-        counts[f.type] = counts.get(f.type, 0) + 1
-    detail = ", ".join(f"{n}×{t}" for t, n in sorted(counts.items()))
-    print(f"        ✓ {len(ir.flags)} flags ({detail})")
-
-    # ------------------------------------------------------------------
-    # Étape 3 — Enrichissement LLM (optionnel)
-    # ------------------------------------------------------------------
-    enricher = None
-    if no_llm:
-        print("  [3/4] LLM désactivé (--no-llm)")
-    elif not ir.flags:
-        print("  [3/4] Aucun flag à enrichir")
-    else:
-        print(f"  [3/4] Enrichissement LLM ({model})...")
-        try:
-            from analyzers.llm_enricher import LLMEnricher
-            enricher = LLMEnricher(model=model, kb_provider=kb_provider, kb_lookup=kb_lookup)
-            ir = enricher.enrich(ir)
-            print(f"        ✓ {len(ir.llm_insights)} insights générés")
-            if enricher._kb_lookup:
-                cov = enricher.coverage
-                total_ev = cov.flags_kb_resolved + cov.flags_llm_needed
-                if total_ev:
-                    print(
-                        f"  📊 Couverture KB : {cov.coverage_pct}% "
-                        f"({cov.flags_kb_resolved}/{total_ev} flags résolus sans LLM)"
-                    )
-                    if cov.top_candidates:
-                        top3 = ", ".join(f"{t}({n}×)" for t, n in cov.top_candidates[:3])
-                        print(f"     → À enrichir en KB : {top3}")
-        except ImportError as exc:
-            print(f"        ⚠ LLM indisponible ({exc}) — mode déterministe uniquement")
-        except Exception as exc:
-            print(f"        ⚠ Erreur LLM : {exc} — mode déterministe uniquement")
-
-    usage = enricher.usage if enricher else None
-    kb_coverage = enricher.coverage if enricher else None
-
-    # ------------------------------------------------------------------
-    # Étape 3b — Grille de bugs techniques (optionnel, --bug-check)
-    # ------------------------------------------------------------------
-    if bug_check and not no_llm:
-        print(f"  [3b/4] Grille bugs techniques ({model})...")
-        try:
-            from analyzers.bug_enricher import BugEnricher
-            bug_enricher = BugEnricher(model=model, kb_provider=kb_provider)
-            php_source = php_path.read_text(encoding="utf-8", errors="replace")
-            ir = bug_enricher.enrich(ir, php_source, call_graph=call_graph)
-            bug_cost = bug_enricher.usage.total_cost(model)
-            crit = sum(1 for b in ir.bug_findings if b.severity.value == "critical")
-            high = sum(1 for b in ir.bug_findings if b.severity.value == "high")
-            print(f"        ✓ {len(ir.bug_findings)} bug(s) — 🔴{crit} critical / 🟠{high} high | ~${bug_cost:.4f}")
-        except Exception as exc:
-            print(f"        ⚠ Grille bugs échouée : {exc}")
-    elif bug_check and no_llm:
-        print("  [3b/4] Grille bugs désactivée (--no-llm)")
-
-    # ------------------------------------------------------------------
-    # Étape 4 — Génération des documents
-    # ------------------------------------------------------------------
-    print("  [4/4] Génération des documents...")
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    json_out = output_dir / f"{stem}_business_logic.json"
-    json_out.write_text(ir.to_json(indent=2), encoding="utf-8")
-
-    gen = BusinessDocGenerator()
-
-    doc_out = output_dir / f"{stem}_business_doc.md"
-    doc_out.write_text(gen.generate(ir, usage=usage, model=model), encoding="utf-8")
-
-    flags_out = output_dir / f"{stem}_flags.md"
-    flags_out.write_text(gen.generate_flags_summary(ir), encoding="utf-8")
-
-    brief_out = output_dir / f"{stem}_brief_po.md"
-    brief_out.write_text(gen.generate_po_brief(ir, kb_coverage=kb_coverage), encoding="utf-8")
-
-    print(f"        → {brief_out.relative_to(output_dir.parent) if output_dir.parent != output_dir else brief_out}")
-
-    # ------------------------------------------------------------------
-    # Étape 4b — Génération des fiches KB (optionnel, --kb-output-dir)
-    # ------------------------------------------------------------------
-    if kb_output_dir and ir.llm_insights:
-        try:
-            from generators.kb_fiche_generator import KBFicheGenerator
-            kb_gen = KBFicheGenerator(kb_output_dir, domain=kb_domain)
-            created, updated, skipped = kb_gen.generate(ir, php_source_path=php_path)
-            print(f"  [KB] {created} fiche(s) créée(s), {updated} mise(s) à jour, {skipped} ignorée(s) (high)")
-        except Exception as exc:
-            print(f"  ⚠ Génération fiches KB échouée : {exc}")
-
-    return ir, usage
-
 
 _ALL_RULE_TYPES = [
     "missing_branch", "magic_value", "security_risk", "unmapped_dep",
@@ -293,25 +33,6 @@ _ALL_RULE_TYPES = [
     "module_execution_gap", "hardcoded_situation_code",
     "empty_catch", "strong_coupling", "chained_method_call",
 ]
-
-
-def _print_debug_rules(irs: list) -> None:
-    """Affiche le nombre de flags par règle pour chaque fichier analysé."""
-    print("\n=== Debug règles ===")
-    # Agréger sur tous les IR
-    totals: dict[str, int] = {t: 0 for t in _ALL_RULE_TYPES}
-    for ir in irs:
-        for flag in ir.flags:
-            key = str(flag.type)
-            if key in totals:
-                totals[key] += 1
-            else:
-                totals[key] = totals.get(key, 0) + 1
-    for rule, count in totals.items():
-        status = "✅" if count > 0 else "⬜"
-        note = " — aucun pattern détecté" if count == 0 else ""
-        print(f"  {status} {rule:<32}: {count} flag(s){note}")
-    print()
 
 
 def _print_usage_summary(usage, model: str) -> None:
@@ -325,114 +46,138 @@ def _print_usage_summary(usage, model: str) -> None:
         print(f"⚡ Tokens cache : {usage.cache_read_tokens:,} (économie : ~${cache_economy:.4f})")
 
 
-# =============================================================================
-# Régénération depuis IR JSON existant
-# =============================================================================
+def _print_debug_rules(irs: list) -> None:
+    print("\n=== Debug règles ===")
+    totals: dict[str, int] = {t: 0 for t in _ALL_RULE_TYPES}
+    for ir in irs:
+        for flag in ir.flags:
+            key = str(flag.type)
+            totals[key] = totals.get(key, 0) + 1
+    for rule, count in totals.items():
+        status = "✅" if count > 0 else "⬜"
+        note = " — aucun pattern détecté" if count == 0 else ""
+        print(f"  {status} {rule:<32}: {count} flag(s){note}")
+    print()
 
-def _regen_from_json(
-    json_path: Path,
-    output_dir: Path,
-    model: str,
-    retry_failed: bool = False,
-    kb_provider=None,
-    kb_lookup=None,
-) -> None:
-    """Charge un IR JSON et régénère les docs (+ re-enrich si --retry-failed)."""
-    if not json_path.exists():
-        print(f"Erreur : JSON introuvable : {json_path}", file=sys.stderr)
-        sys.exit(1)
 
-    print(f"\n📂 Chargement IR depuis {json_path.name} …")
-    ir = IRSchema.from_json(json_path.read_text(encoding="utf-8"))
+def _print_single_summary(result, model: str) -> None:
+    from telemetry.performance_logger import PerformanceLogger
+    ir = result.ir
+    print(f"📄 4 fichiers générés")
+    print(f"🤖 {len(ir.llm_insights)} flags enrichis / {result.usage.skipped_flags if result.usage else 0} skippés")
+    if ir.bug_findings:
+        crit = sum(1 for b in ir.bug_findings if b.severity.value == "critical")
+        high = sum(1 for b in ir.bug_findings if b.severity.value == "high")
+        print(f"🐛 {len(ir.bug_findings)} bug(s) techniques — 🔴{crit} critical / 🟠{high} high")
+    _print_usage_summary(result.usage, model)
+    from telemetry.performance_logger import AuditRun
+    PerformanceLogger().print_roi_line(
+        AuditRun(
+            timestamp="",
+            filename=result.php_path.name,
+            file_size_lines=result.file_size_lines,
+            processing_time_seconds=result.processing_time_seconds,
+            model_used="--no-llm" if result.usage is None else model,
+            status=result.status,
+        )
+    )
 
-    failed_ids = {
-        ins.flag_id for ins in ir.llm_insights
-        if "[Erreur parsing LLM]" in (ins.business_rule or "")
+
+def _print_batch_summary(batch, model: str) -> None:
+    ins = batch.insights
+    print()
+    print("✅ Audit terminé")
+    print(f"📁 {len(batch.php_paths)} contrôleur(s) analysé(s)")
+    print(f"📂 Rapports détaillés : {batch.gaps_path.parent}/")
+    print(f"📊 Audit global       : {batch.global_audit_path}")
+    print(f"🤖 {batch.total_insights} insights LLM générés au total")
+    print(f"🏥 Score de santé global : {ins.health_score}/100")
+    print(f"🔴 CRITICAL_CORRUPTION : {ins.critical_count} flag(s) — corriger avant MEP")
+    print(f"🟠 API_OVERLOAD        : {ins.overload_count} flag(s) — risque performance")
+    print(f"🟡 LOGIC_GAP           : {ins.logic_gap_count} flag(s) — arbitrage PO")
+
+    if ins.total_usage:
+        _print_usage_summary(ins.total_usage, model)
+    else:
+        print("💰 Coût LLM : $0.00 (--no-llm)")
+
+
+def _build_single_meta(result, args) -> dict:
+    ir = result.ir
+    gap_count = len([f for f in ir.flags if f.type == "missing_branch"])
+    dep_count = len([f for f in ir.flags if f.type == "unmapped_dep"])
+    risk_count = len([f for f in ir.flags if f.type == "security_risk"])
+    health = max(0.0, round(100.0 - risk_count * 3 - gap_count * 4 - dep_count * 2, 1))
+    cost_str = f"${result.llm_cost_usd:.4f}" if result.llm_cost_usd else "$0.00"
+    return {
+        "date": __import__("datetime").datetime.now().isoformat(timespec="seconds"),
+        "contexte": args.contexte,
+        "controleurs": [ir.metadata.controller_name],
+        "stats": {
+            "gaps_total": gap_count,
+            "services_tiers": dep_count,
+            "score_sante_moyen": health,
+            "cout_llm": cost_str,
+        },
+        "modele": "--no-llm" if args.no_llm else args.model,
+        "mode": "--no-llm" if args.no_llm else "llm",
+        "fichiers_analyses": [str(result.php_path)],
     }
-    total = len(ir.llm_insights)
-    print(f"   {total} insights chargés — {len(failed_ids)} en erreur de parsing")
 
-    usage = None
 
-    if retry_failed and failed_ids:
-        print(f"\n🔁 Re-enrichissement LLM — {len(failed_ids)} flag(s) en erreur ({model})…")
-        try:
-            from analyzers.llm_enricher import LLMEnricher
-            enricher = LLMEnricher(model=model, kb_provider=kb_provider, kb_lookup=kb_lookup)
+def _build_batch_meta(batch, args) -> dict:
+    ins = batch.insights
+    cost_str = f"${batch.total_cost_usd:.4f}" if batch.total_cost_usd else "$0.00"
+    return {
+        "date": __import__("datetime").datetime.now().isoformat(timespec="seconds"),
+        "contexte": args.contexte,
+        "controleurs": [r.ir.metadata.controller_name for r in batch.results],
+        "stats": {
+            "gaps_total": ins.gap_count,
+            "services_tiers": ins.dep_count,
+            "score_sante_moyen": ins.health_score,
+            "cout_llm": cost_str,
+        },
+        "modele": "--no-llm" if args.no_llm else args.model,
+        "mode": "--no-llm" if args.no_llm else "llm",
+        "fichiers_analyses": [str(p) for p in batch.php_paths],
+    }
 
-            # Index méthodes depuis l'IR
-            method_bodies: dict[str, str] = {}
-            for ep in ir.entry_points:
-                if ep.raw_code:
-                    body = ep.raw_code[:2500]
-                    if ep.original_name:
-                        method_bodies[ep.original_name] = body
-                    if ep.name and ep.name != ep.original_name:
-                        method_bodies[ep.name] = body
 
-            kb_context = ""
-            if kb_provider:
-                kb_context = kb_provider.context_for(ir.metadata.controller_name or "")
+# =============================================================================
+# Parsing des arguments
+# =============================================================================
 
-            # Remplacer les insights en erreur
-            insights_map = {ins.flag_id: ins for ins in ir.llm_insights}
-            flags_map    = {f.id: f for f in ir.flags}
-
-            for flag_id in failed_ids:
-                flag = flags_map.get(flag_id)
-                if not flag:
-                    continue
-                method_body = (
-                    method_bodies.get(flag.method_original_name or "")
-                    or method_bodies.get(flag.method_name or "")
-                )
-                try:
-                    new_insight = enricher._ask_llm(flag, method_body, kb_context)
-                    insights_map[flag_id] = new_insight
-                except Exception as e:
-                    print(f"  ⚠ Échec re-enrichissement {flag_id} : {e}")
-
-            ir.llm_insights = list(insights_map.values())
-            still_failed = sum(
-                1 for ins in ir.llm_insights
-                if "[Erreur parsing LLM]" in (ins.business_rule or "")
-            )
-            print(f"   ✓ {len(failed_ids) - still_failed} insights récupérés")
-            if still_failed:
-                print(f"   ⚠ {still_failed} toujours en erreur")
-            usage = enricher.usage
-
-        except ImportError as exc:
-            print(f"   ⚠ LLM indisponible : {exc}")
-
-    elif retry_failed and not failed_ids:
-        print("   ✓ Aucun insight en erreur — rien à re-enrichir")
-
-    # Régénération des documents
-    print("\n📄 Génération des documents…")
-    output_dir.mkdir(parents=True, exist_ok=True)
-    stem = json_path.stem.replace("_business_logic", "")
-
-    if retry_failed:
-        updated_json = output_dir / f"{stem}_business_logic.json"
-        updated_json.write_text(ir.to_json(indent=2), encoding="utf-8")
-
-    gen = BusinessDocGenerator()
-    doc_out = output_dir / f"{stem}_business_doc.md"
-    doc_out.write_text(gen.generate(ir, usage=usage, model=model), encoding="utf-8")
-
-    flags_out = output_dir / f"{stem}_flags.md"
-    flags_out.write_text(gen.generate_flags_summary(ir), encoding="utf-8")
-
-    brief_out = output_dir / f"{stem}_brief_po.md"
-    brief_out.write_text(gen.generate_po_brief(ir), encoding="utf-8")
-
-    print(f"   → {doc_out}")
-    print(f"   → {flags_out}")
-    print(f"   → {brief_out}")
-    if retry_failed and usage:
-        _print_usage_summary(usage, model)
-    print("\n✅ Régénération terminée")
+def _build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        description="Rosetta Analyze — Audit fonctionnel de contrôleurs PHP legacy"
+    )
+    p.add_argument("input", nargs="*", help="Fichier(s) PHP ou répertoire à analyser")
+    p.add_argument("--no-llm", action="store_true", help="Mode déterministe uniquement ($0)")
+    p.add_argument("--output-dir", default=".", metavar="DIR")
+    p.add_argument("--model", default="claude-sonnet-4-6", help="Modèle LLM Anthropic")
+    p.add_argument("--archive", action="store_true", help="Archiver dans ~/rosetta-memory/")
+    p.add_argument("--contexte", default="", metavar="TEXT", help="Label pour l'archive")
+    p.add_argument("--git-root", default=None, metavar="DIR")
+    p.add_argument("--bug-check", action="store_true", help="Grille bugs techniques (13 catégories)")
+    p.add_argument("--call-graph-root", default=None, metavar="DIR")
+    p.add_argument("--rebuild-callgraph", action="store_true")
+    p.add_argument(
+        "--kb-root",
+        default=str(Path("~/projects/rosetta/kb").expanduser()),
+        metavar="DIR",
+    )
+    p.add_argument("--kb-output-dir", default=None, metavar="DIR")
+    p.add_argument("--kb-domain", default=None, metavar="DOMAIN")
+    p.add_argument("--from-json", default=None, metavar="JSON")
+    p.add_argument("--retry-failed", action="store_true")
+    p.add_argument("--debug-rules", action="store_true")
+    p.add_argument(
+        "--roi",
+        action="store_true",
+        help="Afficher le dashboard ROI (métriques cumulées)",
+    )
+    return p
 
 
 # =============================================================================
@@ -440,357 +185,92 @@ def _regen_from_json(
 # =============================================================================
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Rosetta Analyze — Audit fonctionnel de contrôleurs PHP legacy"
-    )
-    parser.add_argument(
-        "input",
-        nargs="*",
-        help="Fichier(s) PHP ou répertoire à analyser (récursif si répertoire)",
-    )
-    parser.add_argument(
-        "--no-llm",
-        action="store_true",
-        help="Désactiver l'enrichissement LLM (mode déterministe uniquement)",
-    )
-    parser.add_argument(
-        "--output-dir",
-        default=".",
-        metavar="DIR",
-        help="Répertoire de sortie (défaut : répertoire courant)",
-    )
-    parser.add_argument(
-        "--model",
-        default="claude-sonnet-4-6",
-        help="Modèle LLM Anthropic à utiliser (défaut : claude-sonnet-4-6)",
-    )
-    parser.add_argument(
-        "--archive",
-        action="store_true",
-        help="Archiver les résultats dans ~/rosetta-memory/",
-    )
-    parser.add_argument(
-        "--contexte",
-        default="",
-        metavar="TEXT",
-        help="Contexte de l'audit pour l'archivage (ex: 'Avant MEP US-1234')",
-    )
-    parser.add_argument(
-        "--git-root",
-        default=None,
-        metavar="DIR",
-        help="Racine Git pour générer des liens cliquables dans gaps_complets.md (ex: ./application/src)",
-    )
-    parser.add_argument(
-        "--bug-check",
-        action="store_true",
-        help="Activer la grille de bugs techniques LLM (13 catégories, 1 appel/fichier)",
-    )
-    parser.add_argument(
-        "--call-graph-root",
-        default=None,
-        metavar="DIR",
-        help="Répertoire source PHP à indexer pour le bundling de call graph "
-             "(ex: ./application/src). Active le contexte cross-fichiers pour BugEnricher et LLMEnricher.",
-    )
-    parser.add_argument(
-        "--rebuild-callgraph",
-        action="store_true",
-        help="Force la reconstruction de l'index call graph même si le cache existe",
-    )
-    parser.add_argument(
-        "--kb-root",
-        default=str(Path("~/projects/rosetta/kb").expanduser()),
-        metavar="DIR",
-        help="Répertoire de fiches KB (.md avec frontmatter kb_type) à injecter "
-             "comme contexte dans les prompts LLM (défaut: ~/projects/rosetta/kb)",
-    )
-    parser.add_argument(
-        "--kb-output-dir",
-        default=None,
-        metavar="DIR",
-        help="Répertoire de sortie pour les fiches KB générées automatiquement "
-             "(ex: ~/projects/rosetta/kb). Crée 1 fiche par (méthode, type_flag).",
-    )
-    parser.add_argument(
-        "--kb-domain",
-        default=None,
-        metavar="DOMAIN",
-        help="Domaine métier pour les fiches KB générées (ex: facturation, sav). "
-             "Inféré depuis le nom du fichier si absent.",
-    )
-    parser.add_argument(
-        "--from-json",
-        default=None,
-        metavar="JSON",
-        help="Charger un IR JSON existant (ex: output/Foo_business_logic.json) "
-             "et régénérer les docs sans relancer l'extraction ni le LLM. "
-             "Combine avec --retry-failed pour ne relancer que les insights en erreur.",
-    )
-    parser.add_argument(
-        "--retry-failed",
-        action="store_true",
-        help="Avec --from-json : relancer le LLM uniquement sur les insights "
-             "[Erreur parsing LLM]. Coût réduit (N_échoués / N_total × coût initial).",
-    )
-    parser.add_argument(
-        "--debug-rules",
-        action="store_true",
-        help="Afficher le détail de déclenchement de chaque règle de détection",
-    )
+    args = _build_parser().parse_args()
 
-    args = parser.parse_args()
+    # ── Dashboard ROI seul ───────────────────────────────────────────────────
+    if args.roi:
+        from telemetry.performance_logger import PerformanceLogger
+        PerformanceLogger().print_summary()
+        return
+
     output_dir = Path(args.output_dir)
 
-    # ------------------------------------------------------------------
-    # Call Graph Index (optionnel, --call-graph-root)
-    # ------------------------------------------------------------------
-    call_graph = None
-    if args.call_graph_root:
-        cg_root = Path(args.call_graph_root)
-        if not cg_root.is_dir():
-            print(f"⚠ --call-graph-root introuvable : {cg_root}", file=sys.stderr)
-        else:
-            cache_path = cg_root / ".callgraph.json"
-            print(f"\n🔗 Call Graph Index — scan de {cg_root} …", end=" ", flush=True)
-            from analyzers.call_graph import CallGraphIndex
-            call_graph = CallGraphIndex.build(
-                cg_root,
-                cache_path=cache_path,
-                force_rebuild=args.rebuild_callgraph,
-            )
-            print(f"{len(call_graph)} méthodes indexées ✓")
-
-    # ------------------------------------------------------------------
-    # KB Context Provider (optionnel, --kb-root)
-    # ------------------------------------------------------------------
-    kb_provider = None
-    if args.kb_root and not args.no_llm:
-        kb_root = Path(args.kb_root).expanduser()
-        if not kb_root.is_dir():
-            print(f"⚠ --kb-root introuvable : {kb_root}", file=sys.stderr)
-        else:
-            print(f"\n📚 KB Context — chargement depuis {kb_root} …", end=" ", flush=True)
-            try:
-                from analyzers.kb_context import KBContextProvider
-                kb_provider = KBContextProvider(kb_root, verbose=False)
-                print(f"{len(kb_provider)} fiche(s) KB ✓")
-            except ImportError as exc:
-                print(f"⚠ python-frontmatter manquant ({exc}) — KB ignorée")
-
-    # ------------------------------------------------------------------
-    # KB YAML Lookup (optionnel — $ROSETTA_KB ou répertoire kb/)
-    # ------------------------------------------------------------------
-    kb_lookup = None
-    if not args.no_llm:
-        try:
-            from rosetta_kb import lookup_for_enricher as _kb_lookup_fn
-            kb_lookup = _kb_lookup_fn
-            print("  [KB] YAML lookup activé — tokens connus résolus sans LLM")
-        except Exception:
-            pass
-
-    # ------------------------------------------------------------------
-    # KB Output Dir (optionnel, --kb-output-dir)
-    # ------------------------------------------------------------------
-    kb_output_dir = None
-    if args.kb_output_dir:
-        kb_output_dir = Path(args.kb_output_dir).expanduser()
-        kb_output_dir.mkdir(parents=True, exist_ok=True)
-
-    # ------------------------------------------------------------------
-    # Mode --from-json : régénération depuis un IR JSON existant
-    # ------------------------------------------------------------------
-    if args.from_json:
-        _regen_from_json(
-            json_path=Path(args.from_json),
-            output_dir=output_dir,
+    try:
+        options = AuditOptions(
+            no_llm=args.no_llm,
             model=args.model,
-            retry_failed=args.retry_failed,
-            kb_provider=kb_provider,
-            kb_lookup=kb_lookup,
+            bug_check=args.bug_check,
+            call_graph_root=Path(args.call_graph_root).expanduser() if args.call_graph_root else None,
+            rebuild_callgraph=args.rebuild_callgraph,
+            kb_root=Path(args.kb_root).expanduser() if args.kb_root else None,
+            kb_output_dir=Path(args.kb_output_dir).expanduser() if args.kb_output_dir else None,
+            kb_domain=args.kb_domain,
+            git_root=Path(args.git_root) if args.git_root else None,
+        )
+    except EnvironmentError as exc:
+        print(exc, file=sys.stderr)
+        sys.exit(1)
+
+    pipeline = AuditPipeline(options)
+    pipeline.setup()
+
+    # ── Mode --from-json ─────────────────────────────────────────────────────
+    if args.from_json:
+        pipeline.regen_from_json(
+            Path(args.from_json), output_dir, retry_failed=args.retry_failed
         )
         return
 
     if not args.input:
-        parser.error("input requis (sauf avec --from-json)")
+        print("Erreur : input requis (sauf avec --from-json ou --roi)", file=sys.stderr)
+        sys.exit(1)
 
-    # Résoudre les chemins d'entrée
     input_paths = [Path(p) for p in args.input]
     for p in input_paths:
         if not p.exists():
             print(f"Erreur : chemin introuvable : {p}", file=sys.stderr)
             sys.exit(1)
 
-    # Un seul répertoire → mode batch par répertoire
-    if len(input_paths) == 1 and input_paths[0].is_dir():
-        input_path = input_paths[0]
-    # Un seul fichier → mode fichier unique
-    elif len(input_paths) == 1 and input_paths[0].is_file():
-        input_path = input_paths[0]
-    else:
-        input_path = None  # plusieurs fichiers explicites
-
-    # Auto-inférer kb_domain depuis le nom du fichier si absent
-    if not getattr(args, "kb_domain", None) and input_path is not None and input_path.is_file():
-        args.kb_domain = input_path.stem  # OrchestraService.php → OrchestraService
-
-    # ======================================================================
-    # Mode fichier unique (comportement original)
-    # ======================================================================
-    if input_path is not None and input_path.is_file():
-        output_dir.mkdir(parents=True, exist_ok=True)
-        print(f"\n📄 Analyse : {input_path.name}")
-        ir, usage = _analyze_single(
-            input_path, output_dir, args.no_llm, args.model,
-            args.bug_check, call_graph, kb_provider, kb_lookup,
-            kb_output_dir=kb_output_dir, kb_domain=getattr(args, "kb_domain", None),
-        )
-        print()
-        print("✅ Analyse terminée")
-        print(f"📄 3 fichiers générés dans {output_dir}/")
-        print(f"🤖 {len(ir.llm_insights)} flags enrichis / {usage.skipped_flags if usage else 0} skippés")
-        if ir.bug_findings:
-            crit = sum(1 for b in ir.bug_findings if b.severity.value == "critical")
-            high = sum(1 for b in ir.bug_findings if b.severity.value == "high")
-            print(f"🐛 {len(ir.bug_findings)} bug(s) techniques — 🔴{crit} critical / 🟠{high} high")
-        _print_usage_summary(usage, args.model)
-        if args.debug_rules:
-            _print_debug_rules([ir])
-
-        if args.archive:
-            controller_names = [ir.metadata.controller_name]
-            archive_name = generate_archive_name(controller_names)
-            gap_count = len([f for f in ir.flags if f.type == "missing_branch"])
-            dep_count = len([f for f in ir.flags if f.type == "unmapped_dep"])
-            risk_count = len([f for f in ir.flags if f.type == "security_risk"])
-            health = max(0.0, round(100.0 - risk_count * 3 - gap_count * 4 - dep_count * 2, 1))
-            meta = {
-                "date": datetime.now().isoformat(timespec="seconds"),
-                "contexte": args.contexte,
-                "controleurs": controller_names,
-                "stats": {
-                    "gaps_total": gap_count,
-                    "services_tiers": dep_count,
-                    "score_sante_moyen": health,
-                    "cout_llm": _format_cost(usage, args.model),
-                },
-                "modele": "--no-llm" if args.no_llm else args.model,
-                "mode": "--no-llm" if args.no_llm else "llm",
-                "fichiers_analyses": [str(input_path)],
-            }
-            archive_dir = _do_archive(output_dir, archive_name, meta)
-            print(f"📦 Archivé → {archive_dir}")
-
-        return
-
-    # ======================================================================
-    # Mode batch (répertoire ou liste de fichiers explicites)
-    # ======================================================================
-    if input_path is not None:
-        # répertoire → scan récursif
-        php_files = sorted(input_path.rglob("*.php"))
-        batch_label = str(input_path)
-    else:
-        # liste de fichiers explicites
-        php_files = input_paths
-        batch_label = ", ".join(p.name for p in input_paths)
-
+    php_files = pipeline.resolve_inputs(input_paths)
     if not php_files:
-        print(f"Erreur : aucun fichier .php trouvé dans {batch_label}", file=sys.stderr)
+        print(f"Erreur : aucun fichier .php trouvé dans les chemins spécifiés", file=sys.stderr)
         sys.exit(1)
 
-    details_dir = output_dir / "details"
-    details_dir.mkdir(parents=True, exist_ok=True)
+    # Auto-inférer kb_domain depuis le nom du fichier unique
+    if not options.kb_domain and len(php_files) == 1:
+        options.kb_domain = php_files[0].stem
 
-    print(f"\n🔍 Mode batch — {len(php_files)} fichier(s) PHP : {batch_label}")
-    print(f"📂 Rapports détaillés → {details_dir}/")
-    print(f"📊 Audit global      → {output_dir}/global_audit.md")
-    print()
-
-    all_irs: list[IRSchema] = []
-    all_usages: list[Optional[object]] = []
-    total_insights = 0
-
-    for i, php_path in enumerate(php_files, 1):
-        print(f"[{i}/{len(php_files)}] {php_path.name}")
-        ir, usage = _analyze_single(
-            php_path, details_dir, args.no_llm, args.model,
-            args.bug_check, call_graph, kb_provider, kb_lookup,
-            kb_output_dir=kb_output_dir, kb_domain=getattr(args, "kb_domain", None),
-        )
-        all_irs.append(ir)
-        all_usages.append(usage)
-        total_insights += len(ir.llm_insights)
+    # ── Fichier unique ───────────────────────────────────────────────────────
+    if len(php_files) == 1:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        print(f"\n📄 Analyse : {php_files[0].name}")
+        result = pipeline.run_single(php_files[0], output_dir)
         print()
+        print("✅ Analyse terminée")
+        _print_single_summary(result, args.model)
 
-    # ------------------------------------------------------------------
-    # Agrégation & rapport global
-    # ------------------------------------------------------------------
-    print("📊 Agrégation des résultats...")
-    from aggregators.business_aggregator import BusinessAggregator
-    from generators.global_audit_generator import GlobalAuditGenerator
+        if args.archive:
+            meta = _build_single_meta(result, args)
+            archive_name = generate_archive_name(meta["controleurs"])
+            archive_dir = do_archive(output_dir, archive_name, meta)
+            print(f"📦 Archivé → {archive_dir}")
 
-    aggregator = BusinessAggregator()
-    insights = aggregator.aggregate(all_irs, all_usages)
+        if args.debug_rules:
+            _print_debug_rules([result.ir])
+        return
 
-    global_gen = GlobalAuditGenerator()
-    global_audit = global_gen.generate(insights, model=args.model)
+    # ── Mode batch ───────────────────────────────────────────────────────────
+    batch = pipeline.run_batch(php_files, output_dir)
+    _print_batch_summary(batch, args.model)
 
-    global_out = output_dir / "global_audit.md"
-    global_out.write_text(global_audit, encoding="utf-8")
-    print(f"   ✓ {global_out}")
-
-    gaps_out = details_dir / "gaps_complets.md"
-    gaps_out.write_text(global_gen.generate_gaps_detail(insights, git_root=args.git_root), encoding="utf-8")
-    print(f"   ✓ {gaps_out}")
-
-    # ------------------------------------------------------------------
-    # Résumé console
-    # ------------------------------------------------------------------
-    print()
-    print("✅ Audit terminé")
-    print(f"📁 {len(php_files)} contrôleur(s) analysé(s)")
-    print(f"📂 Rapports détaillés : {details_dir}/")
-    print(f"📊 Audit global       : {global_out}")
-    print(f"🤖 {total_insights} insights LLM générés au total")
-    print(f"🏥 Score de santé global : {insights.health_score}/100")
-    print(f"🔴 CRITICAL_CORRUPTION : {insights.critical_count} flag(s) — corriger avant MEP")
-    print(f"🟠 API_OVERLOAD        : {insights.overload_count} flag(s) — risque performance")
-    print(f"🟡 LOGIC_GAP           : {insights.logic_gap_count} flag(s) — arbitrage PO")
-
-    if any(u for u in all_usages):
-        if insights.total_usage:
-            _print_usage_summary(insights.total_usage, args.model)
-    else:
-        print("💰 Coût LLM : $0.00 (--no-llm)")
-    if args.debug_rules:
-        _print_debug_rules(all_irs)
-
-    # ------------------------------------------------------------------
-    # Archivage (--archive)
-    # ------------------------------------------------------------------
     if args.archive:
-        controller_names = [ir.metadata.controller_name for ir in all_irs]
-        archive_name = generate_archive_name(controller_names)
-        cost = _format_cost(insights.total_usage, args.model)
-        meta = {
-            "date": datetime.now().isoformat(timespec="seconds"),
-            "contexte": args.contexte,
-            "controleurs": controller_names,
-            "stats": {
-                "gaps_total": insights.gap_count,
-                "services_tiers": insights.dep_count,
-                "score_sante_moyen": insights.health_score,
-                "cout_llm": cost,
-            },
-            "modele": "--no-llm" if args.no_llm else args.model,
-            "mode": "--no-llm" if args.no_llm else "llm",
-            "fichiers_analyses": [str(p) for p in php_files],
-
-        }
-        archive_dir = _do_archive(output_dir, archive_name, meta)
+        meta = _build_batch_meta(batch, args)
+        archive_name = generate_archive_name(meta["controleurs"])
+        archive_dir = do_archive(output_dir, archive_name, meta)
         print(f"📦 Archivé → {archive_dir}")
+
+    if args.debug_rules:
+        _print_debug_rules([r.ir for r in batch.results])
 
 
 if __name__ == "__main__":

@@ -32,7 +32,7 @@ from collections import defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from rosetta_kb import _load_pending, _save_pending, _resolve_kb, _load_kb, _detect_pending_type
+from services.kb_service import KBService
 
 # ---------------------------------------------------------------------------
 # Constantes
@@ -232,9 +232,9 @@ def main() -> int:
             print(f"         question: {c['question'][:80]}...")
         return 0
 
-    kb_path = _resolve_kb(args.kb_path)
-    pending = _load_pending(kb_path)
-    kb_data = _load_kb(kb_path)
+    kb_path = Path(args.kb_path).expanduser().resolve()
+    svc = KBService(kb_path)
+    pending = svc.load_pending()
 
     added = updated = skipped = 0
 
@@ -247,7 +247,7 @@ def main() -> int:
 
     for cluster in clusters:
         code = cluster["code"]
-        ptype, dest = _detect_pending_type(code, kb_data, flag_type=cluster["flag_type"])
+        ptype, dest = svc.detect_pending_type(code, flag_type=cluster["flag_type"])
         entry = {
             "code": code,
             "concept": cluster["concept"],
@@ -275,7 +275,7 @@ def main() -> int:
             pending[code] = entry
             added += 1
 
-    _save_pending(kb_path, pending)
+    svc.save_pending(pending)
 
     print(f"\n✅ Injection terminée :")
     print(f"   {added} ajoutée(s)     {updated} mise(s) à jour     {skipped} ignorée(s) (validée)")
