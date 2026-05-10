@@ -177,7 +177,108 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Afficher le dashboard ROI (métriques cumulées)",
     )
+    p.add_argument(
+        "--api",
+        default=None,
+        metavar="URL",
+        help="Mode Remote : déléguer l'analyse à l'API Rosetta (ex: http://localhost:8765)",
+    )
     return p
+
+
+# =============================================================================
+# Mode Remote — helpers
+# =============================================================================
+
+def _collect_php_files(input_paths: list[Path]) -> list[Path]:
+    """Résout une liste de chemins en fichiers .php (miroir de pipeline.resolve_inputs)."""
+    if len(input_paths) == 1 and input_paths[0].is_dir():
+        return sorted(input_paths[0].rglob("*.php"))
+    return [p for p in input_paths if p.is_file() and p.suffix.lower() == ".php"]
+
+
+def _print_remote_result(data: dict) -> None:
+    """Affiche le résumé d'un job terminé en mode Remote."""
+    if data.get("status") == "error":
+        print(f"\n❌ Erreur lors de l'analyse : {data.get('error', '?')}", file=sys.stderr)
+        return
+
+    result: dict = data.get("result") or {}
+    print()
+    print("✅ Analyse terminée (mode Remote)")
+    print(f"📁 {result.get('total_files', 0)} fichier(s) analysé(s)")
+    print(f"🤖 {result.get('total_insights', 0)} insight(s) LLM générés")
+    health = result.get("health_score")
+    if health is not None:
+        print(f"🏥 Score de santé : {health}/100")
+    print(f"💰 Coût LLM estimé : ${result.get('total_cost_usd', 0.0):.4f}")
+    print(f"⏱  Temps total    : {result.get('processing_time_seconds', 0.0):.1f}s")
+
+    for f in result.get("files", []):
+        icon = "✅" if f.get("status") in ("success", "no_llm") else "⚠️ "
+        print(
+            f"  {icon} {f.get('filename')} "
+            f"— {f.get('insights_total', 0)} insights, "
+            f"{f.get('flags_total', 0)} flags"
+        )
+
+
+def _propose_open_reports(output_dir: str) -> None:
+    """Propose d'ouvrir le répertoire de sortie dans le gestionnaire de fichiers."""
+    print(f"\n📂 Rapports disponibles → {output_dir}")
+    try:
+        answer = input("   Ouvrir le répertoire ? [o/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return
+    if answer in ("o", "oui", "y", "yes"):
+        import shutil
+        import subprocess
+        opener = shutil.which("xdg-open") or shutil.which("open")
+        if opener:
+            subprocess.Popen([opener, output_dir])  # noqa: S603
+        else:
+            print(f"   (Ouvrir manuellement : {output_dir})")
+
+
+def _main_remote(args) -> None:
+    """Exécution en mode Remote — délègue à RosettaClient, pas de pipeline local."""
+    if not args.input:
+        print("Erreur : input requis en mode --api (fichier PHP ou répertoire)", file=sys.stderr)
+        sys.exit(1)
+
+    input_paths = [Path(p) for p in args.input]
+    for p in input_paths:
+        if not p.exists():
+            print(f"Erreur : chemin introuvable : {p}", file=sys.stderr)
+            sys.exit(1)
+
+    php_files = _collect_php_files(input_paths)
+    if not php_files:
+        print("Erreur : aucun fichier .php trouvé dans les chemins spécifiés", file=sys.stderr)
+        sys.exit(1)
+
+    # Import local — httpx requis uniquement ici, jamais en mode local
+    from api_client import RosettaClient  # noqa: PLC0415
+
+    client = RosettaClient(args.api)
+    data = client.run(
+        php_files,
+        no_llm=args.no_llm,
+        model=args.model,
+        bug_check=args.bug_check,
+        kb_root=Path(args.kb_root).expanduser() if args.kb_root else None,
+        call_graph_root=(
+            Path(args.call_graph_root).expanduser() if args.call_graph_root else None
+        ),
+        contexte=args.contexte,
+    )
+
+    _print_remote_result(data)
+
+    if data.get("status") == "success":
+        output_dir = (data.get("result") or {}).get("output_dir")
+        if output_dir:
+            _propose_open_reports(output_dir)
 
 
 # =============================================================================
@@ -191,6 +292,11 @@ def main() -> None:
     if args.roi:
         from telemetry.performance_logger import PerformanceLogger
         PerformanceLogger().print_summary()
+        return
+
+    # ── Mode Remote (--api) — aucune dépendance locale requise ─────────────────
+    if args.api:
+        _main_remote(args)
         return
 
     output_dir = Path(args.output_dir)
