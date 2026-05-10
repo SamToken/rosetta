@@ -47,6 +47,7 @@ class AuditJobResult(BaseModel):
     processing_time_seconds: float
     health_score: Optional[int] = Field(None, description="Score santé global 0-100")
     output_dir: str = Field(description="Répertoire de sortie des fichiers générés")
+    php_paths: list[str] = Field(default_factory=list, description="Chemins PHP analysés (pour relancer)")
     files: list[AuditFileSummary] = []
 
 

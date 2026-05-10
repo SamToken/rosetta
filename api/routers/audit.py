@@ -147,6 +147,7 @@ async def _execute_audit_job(
             processing_time_seconds=batch.processing_time_seconds,
             health_score=getattr(batch.insights, "health_score", None),
             output_dir=str(output_dir),
+            php_paths=[str(p) for p in batch.php_paths],
             files=files_summary,
         )
         _db_update_status(
