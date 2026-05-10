@@ -104,7 +104,9 @@ class RosettaClient:
             print(
                 f"Erreur : impossible de joindre l'API Rosetta à {self.base_url}\n"
                 "  Vérifier que le serveur est démarré :\n"
-                "    uvicorn api.main:app --port 8765",
+                "    cd ~/projects/rosetta\n"
+                "    ROSETTA_KB=~/rosetta-data/knowledge_base.yaml \\\n"
+                "      .venv/bin/uvicorn api.main:app --reload --port 8765 --host 127.0.0.1",
                 file=sys.stderr,
             )
             sys.exit(1)
