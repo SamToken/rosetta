@@ -124,18 +124,21 @@ async def _execute_audit_job(
         await asyncio.to_thread(pipeline.setup)
         batch = await asyncio.to_thread(pipeline.run_batch, php_files, output_dir)
 
-        files_summary = [
-            AuditFileSummary(
+        files_summary = []
+        for r in batch.results:
+            flag_counts: dict[str, int] = {}
+            for f in r.ir.flags:
+                flag_counts[f.type] = flag_counts.get(f.type, 0) + 1
+            files_summary.append(AuditFileSummary(
                 filename=r.php_path.name,
                 file_size_lines=r.file_size_lines,
                 processing_time_seconds=r.processing_time_seconds,
                 flags_total=len(r.ir.flags),
+                flag_types=flag_counts,
                 insights_total=len(r.ir.llm_insights),
                 llm_cost_usd=r.llm_cost_usd,
                 status=r.status,
-            )
-            for r in batch.results
-        ]
+            ))
 
         result_obj = AuditJobResult(
             total_files=len(batch.php_paths),

@@ -32,6 +32,7 @@ class AuditFileSummary(BaseModel):
     file_size_lines: int
     processing_time_seconds: float
     flags_total: int
+    flag_types: dict[str, int] = Field(default_factory=dict, description="Nombre de flags par type (ex: {'missing_branch': 7})")
     insights_total: int
     llm_cost_usd: float
     status: str = Field(description="'success' | 'no_llm' | 'error'")
