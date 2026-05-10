@@ -247,3 +247,29 @@ class ROIDayResponse(BaseModel):
     lines_analyzed: int
     hours_saved: float
     cost_usd: float
+
+
+class DepNode(BaseModel):
+    """Nœud du graphe de dépendances (= un fichier PHP analysé)."""
+
+    id: str = Field(description="Identifiant unique (controller_name)")
+    label: str = Field(description="Nom court affiché")
+    file_type: str = Field(description="controller | service | unknown")
+    flags: int = Field(description="Nombre de flags détectés")
+    confidence: float = Field(description="Score de confiance 0-1")
+    file_path: str = Field(description="Chemin source PHP")
+
+
+class DepEdge(BaseModel):
+    """Arête dirigée source → target."""
+
+    source: str
+    target: str
+    dep_type: str = Field(description="use | service | instantiation")
+
+
+class DependencyGraph(BaseModel):
+    """Graphe de dépendances complet pour un job."""
+
+    nodes: list[DepNode]
+    edges: list[DepEdge]

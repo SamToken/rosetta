@@ -30,6 +30,9 @@ from api.schemas import (
     AuditFileSummary,
     AuditJobResult,
     AuditStartRequest,
+    DepEdge,
+    DepNode,
+    DependencyGraph,
     JobCreatedResponse,
     JobStatusResponse,
     OutputFile,
@@ -405,6 +408,77 @@ async def get_job_file(job_id: str, path: str = Query(..., description="Chemin r
         raise HTTPException(status_code=404, detail=f"Fichier '{path}' introuvable.")
 
     return target.read_text(encoding="utf-8")
+
+
+def _build_dep_graph(output_dir: Path) -> DependencyGraph:
+    """Construit le graphe de dépendances depuis les *_business_logic.json du job."""
+    details_dir = output_dir / "details"
+    json_files = list(details_dir.glob("*_business_logic.json")) if details_dir.exists() else []
+    # Fallback: chercher à la racine du job si pas de sous-dossier details
+    if not json_files:
+        json_files = list(output_dir.glob("*_business_logic.json"))
+
+    nodes: dict[str, DepNode] = {}
+    raw_deps: dict[str, list[dict]] = {}  # node_id → raw dep list
+
+    for fp in json_files:
+        try:
+            data = json.loads(fp.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        meta = data.get("metadata", {})
+        name = meta.get("controller_name") or fp.stem.replace("_business_logic", "")
+        node_id = name
+        nodes[node_id] = DepNode(
+            id=node_id,
+            label=name,
+            file_type=meta.get("file_type", "unknown"),
+            flags=len(data.get("flags", [])),
+            confidence=float(meta.get("confidence_score", 0.0)),
+            file_path=meta.get("source_file", ""),
+        )
+        raw_deps[node_id] = data.get("dependencies", [])
+
+    # Index: short class name → node_id (pour le matching FQCN → nœud connu)
+    short_index: dict[str, str] = {}
+    for node_id in nodes:
+        short_index[node_id.lower()] = node_id
+        # ex: "AutomatisationDslamIsoleService" → aussi indexé sans "Service"/"Controller"
+        for suffix in ("Service", "Controller", "Repository", "Tools", "Helper"):
+            stripped = node_id.replace(suffix, "")
+            if stripped:
+                short_index[stripped.lower()] = node_id
+
+    edges: list[DepEdge] = []
+    seen_edges: set[tuple] = set()
+
+    for src_id, deps in raw_deps.items():
+        for dep in deps:
+            dep_name = dep.get("name", "")
+            dep_type = dep.get("type", "use")
+            # Extraire le nom court depuis un FQCN (App\Service\FooService → FooService)
+            short = dep_name.split("\\")[-1].split("::")[-1]
+            # Chercher dans l'index
+            target_id = short_index.get(short.lower()) or short_index.get(dep_name.lower())
+            if target_id and target_id != src_id:
+                key = (src_id, target_id)
+                if key not in seen_edges:
+                    seen_edges.add(key)
+                    edges.append(DepEdge(source=src_id, target=target_id, dep_type=dep_type))
+
+    return DependencyGraph(nodes=list(nodes.values()), edges=edges)
+
+
+@router.get(
+    "/{job_id}/dependencies",
+    response_model=DependencyGraph,
+    summary="Graphe de dépendances inter-fichiers d'un job",
+)
+async def get_job_dependencies(job_id: str) -> DependencyGraph:
+    output_dir = _get_job_output_dir(job_id)
+    if output_dir is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' introuvable ou sans résultats.")
+    return await asyncio.to_thread(_build_dep_graph, output_dir)
 
 
 @router.get(
