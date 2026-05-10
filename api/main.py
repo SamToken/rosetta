@@ -73,8 +73,11 @@ Les jobs d'audit long-running utilisent `BackgroundTasks`.
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup — vérification non bloquante de la config
+    # Startup
     import os
+    from api.database import create_tables
+    create_tables()
+
     kb_path = os.environ.get("ROSETTA_KB", "~/rosetta-data/kb")
     resolved = Path(kb_path).expanduser()
     if not resolved.exists():
@@ -84,7 +87,7 @@ async def lifespan(app: FastAPI):
             file=sys.stderr,
         )
     yield
-    # Shutdown — rien à nettoyer (jobs en mémoire, connexions stateless)
+    # Shutdown — rien à nettoyer (SQLite se ferme proprement à la fin du process)
 
 
 # =============================================================================

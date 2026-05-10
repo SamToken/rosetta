@@ -8,10 +8,12 @@ Pattern :
 
 Les appels bloquants (AuditPipeline) sont délégués à asyncio.to_thread
 pour ne pas bloquer l'event loop.
+Persistance : SQLite via SQLAlchemy (api/database.py + api/models.py).
 """
 from __future__ import annotations
 
 import asyncio
+import json
 import traceback
 import uuid
 from datetime import datetime, timezone
@@ -20,6 +22,8 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 
+from api.database import get_session
+from api.models import Job, JobLog
 from api.schemas import (
     AuditFileSummary,
     AuditJobResult,
@@ -33,12 +37,10 @@ from services.audit_service import AuditOptions, AuditPipeline
 
 router = APIRouter(prefix="/audit", tags=["Audit"])
 
-# =============================================================================
-# Job store en mémoire
-# =============================================================================
 
-_JOB_STORE: dict[str, dict[str, Any]] = {}
-
+# =============================================================================
+# Helpers DB
+# =============================================================================
 
 def _job_output_dir(job_id: str) -> Path:
     import os
@@ -46,8 +48,60 @@ def _job_output_dir(job_id: str) -> Path:
     return base / job_id
 
 
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _db_create_job(job_id: str) -> None:
+    with get_session() as session:
+        session.add(Job(id=job_id, status="queued", created_at=_now_iso()))
+        session.commit()
+
+
+def _db_update_status(job_id: str, status: str, **kwargs) -> None:
+    """Met à jour statut + champs optionnels (started_at, finished_at, error, result_json)."""
+    with get_session() as session:
+        job = session.get(Job, job_id)
+        if job is None:
+            return
+        job.status = status
+        for k, v in kwargs.items():
+            setattr(job, k, v)
+        session.commit()
+
+
+def _db_append_log(job_id: str, message: str) -> None:
+    """Insère une ligne de log (idx = nombre de logs existants)."""
+    with get_session() as session:
+        count = session.query(JobLog).filter_by(job_id=job_id).count()
+        session.add(JobLog(job_id=job_id, idx=count, message=message))
+        session.commit()
+
+
+def _job_to_response(job: Job, include_logs: bool = True) -> JobStatusResponse:
+    result = None
+    if job.result_json:
+        try:
+            result = AuditJobResult(**json.loads(job.result_json))
+        except Exception:
+            pass
+
+    logs = [log.message for log in job.logs] if include_logs else []
+
+    return JobStatusResponse(
+        job_id=job.id,
+        status=job.status,  # type: ignore[arg-type]
+        created_at=job.created_at,
+        started_at=job.started_at,
+        finished_at=job.finished_at,
+        logs=logs,
+        error=job.error,
+        result=result,
+    )
+
+
 # =============================================================================
-# Tâche de fond (async → asyncio.to_thread pour le pipeline synchrone)
+# Tâche de fond
 # =============================================================================
 
 async def _execute_audit_job(
@@ -56,20 +110,18 @@ async def _execute_audit_job(
     output_dir: Path,
     options: AuditOptions,
 ) -> None:
-    """Lance AuditPipeline dans un thread pool et met à jour le job store."""
-    logs: list[str] = _JOB_STORE[job_id]["logs"]
+    """Lance AuditPipeline dans un thread pool et persiste les résultats en DB."""
 
-    _JOB_STORE[job_id]["status"] = "running"
-    _JOB_STORE[job_id]["started_at"] = datetime.now(timezone.utc).isoformat()
+    def _log(msg: str) -> None:
+        _db_append_log(job_id, msg)
 
-    pipeline = AuditPipeline(options, progress=logs.append)
+    _db_update_status(job_id, "running", started_at=_now_iso())
+
+    pipeline = AuditPipeline(options, progress=_log)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        # setup() indexe le call graph et charge le KB context — bloquant
         await asyncio.to_thread(pipeline.setup)
-
-        # run_batch() est le coeur du pipeline — bloquant (LLM, génération docs)
         batch = await asyncio.to_thread(pipeline.run_batch, php_files, output_dir)
 
         files_summary = [
@@ -85,7 +137,7 @@ async def _execute_audit_job(
             for r in batch.results
         ]
 
-        _JOB_STORE[job_id]["result"] = AuditJobResult(
+        result_obj = AuditJobResult(
             total_files=len(batch.php_paths),
             total_insights=batch.total_insights,
             total_cost_usd=batch.total_cost_usd,
@@ -94,16 +146,22 @@ async def _execute_audit_job(
             output_dir=str(output_dir),
             files=files_summary,
         )
-        _JOB_STORE[job_id]["status"] = "success"
+        _db_update_status(
+            job_id,
+            "success",
+            result_json=result_obj.model_dump_json(),
+            finished_at=_now_iso(),
+        )
 
     except Exception as exc:
-        _JOB_STORE[job_id]["status"] = "error"
-        _JOB_STORE[job_id]["error"] = str(exc)
-        logs.append(f"[ERREUR] {exc}")
-        logs.append(traceback.format_exc())
-
-    finally:
-        _JOB_STORE[job_id]["finished_at"] = datetime.now(timezone.utc).isoformat()
+        _db_update_status(
+            job_id,
+            "error",
+            error=str(exc),
+            finished_at=_now_iso(),
+        )
+        _log(f"[ERREUR] {exc}")
+        _log(traceback.format_exc())
 
 
 # =============================================================================
@@ -145,7 +203,7 @@ async def start_audit(
     if not php_files:
         raise HTTPException(status_code=422, detail="Aucun fichier .php trouvé dans les chemins fournis.")
 
-    # ── Construction des options (valide les secrets si LLM) ──────────────
+    # ── Construction des options ───────────────────────────────────────────
     try:
         options = AuditOptions(
             no_llm=request.no_llm,
@@ -155,25 +213,15 @@ async def start_audit(
             call_graph_root=(
                 Path(request.call_graph_root).expanduser() if request.call_graph_root else None
             ),
-            # Cap au nombre réel de fichiers pour éviter des workers inutiles
             max_workers=min(request.max_workers, len(php_files)),
         )
     except EnvironmentError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
-    # ── Création du job ────────────────────────────────────────────────────
+    # ── Création du job en DB ──────────────────────────────────────────────
     job_id = str(uuid.uuid4())
     output_dir = _job_output_dir(job_id)
-
-    _JOB_STORE[job_id] = {
-        "status": "queued",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "started_at": None,
-        "finished_at": None,
-        "logs": [],
-        "error": None,
-        "result": None,
-    }
+    _db_create_job(job_id)
 
     background_tasks.add_task(
         _execute_audit_job, job_id, php_files, output_dir, options
@@ -214,7 +262,6 @@ async def get_roi() -> ROISummaryResponse:
 async def get_roi_history(
     days: int = Query(7, ge=1, le=90, description="Nombre de jours à retourner"),
 ) -> list[ROIDayResponse]:
-    import json
     import os
     from collections import defaultdict
     from datetime import date, timedelta
@@ -265,19 +312,9 @@ async def get_roi_history(
     summary="Lister tous les jobs (sans les logs)",
 )
 async def list_jobs() -> list[JobStatusResponse]:
-    return [
-        JobStatusResponse(
-            job_id=jid,
-            status=job["status"],
-            created_at=job["created_at"],
-            started_at=job.get("started_at"),
-            finished_at=job.get("finished_at"),
-            logs=[],            # omis pour alléger la réponse de liste
-            error=job.get("error"),
-            result=job.get("result"),
-        )
-        for jid, job in _JOB_STORE.items()
-    ]
+    with get_session() as session:
+        jobs = session.query(Job).order_by(Job.created_at.desc()).all()
+        return [_job_to_response(j, include_logs=False) for j in jobs]
 
 
 @router.get(
@@ -286,16 +323,10 @@ async def list_jobs() -> list[JobStatusResponse]:
     summary="Statut et résultat d'un job d'audit",
 )
 async def get_job_status(job_id: str) -> JobStatusResponse:
-    job = _JOB_STORE.get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' introuvable.")
-    return JobStatusResponse(
-        job_id=job_id,
-        status=job["status"],
-        created_at=job["created_at"],
-        started_at=job.get("started_at"),
-        finished_at=job.get("finished_at"),
-        logs=job.get("logs", []),
-        error=job.get("error"),
-        result=job.get("result"),
-    )
+    with get_session() as session:
+        job = session.get(Job, job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail=f"Job '{job_id}' introuvable.")
+        # Charger les logs dans la même session avant de fermer
+        _ = job.logs
+        return _job_to_response(job, include_logs=True)
