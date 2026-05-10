@@ -1,7 +1,7 @@
 # Rosetta — Audit PHP + Knowledge Base (v3)
 
-Outil privé d'analyse statique et de cartographie sémantique d'un legacy PHP 7.3 (ASO/Zend).
-Couche CLI, API FastAPI et dashboard ROI — architecture SOLID, 0 donnée corporate pushée.
+Outil privé d'analyse statique et de cartographie sémantique d'un legacy PHP 7.3.
+Couche CLI, API FastAPI et dashboard ROI — architecture SOLID, 0 donnée métier pushée.
 
 ---
 
@@ -64,8 +64,8 @@ cd ~/projects/rosetta && .venv/bin/python3 rosetta_analyze.py \
   /chemin/vers/MonService.php \
   --output-dir ./output \
   --archive \
-  --kb-root /home/nixos/projects/astro/.github/kb/ \
-  --call-graph-root /home/nixos/projects/astro/application/src/ \
+  --kb-root /chemin/vers/kb/ \
+  --call-graph-root /chemin/vers/src/ \
   --contexte "US-1234"
 
 # Mode déterministe gratuit
@@ -86,8 +86,8 @@ ROSETTA_KB=~/rosetta-data/knowledge_base.yaml \
 # 2. Lancer l'analyse via le client Remote
 .venv/bin/python3 rosetta_analyze.py MonService.php \
   --api http://localhost:8765 \
-  --kb-root /home/nixos/projects/astro/.github/kb/ \
-  --call-graph-root /home/nixos/projects/astro/application/src/ \
+  --kb-root /chemin/vers/kb/ \
+  --call-graph-root /chemin/vers/src/ \
   --contexte "US-1234"
 ```
 
@@ -169,11 +169,11 @@ Affiche : temps humain économisé · lignes analysées · économie financière
 
 | Règle | Détail |
 |-------|--------|
-| **0 donnée corporate pushée** | `knowledge_base.yaml`, `~/rosetta-data/` → jamais dans le repo |
+| **0 donnée métier pushée** | `knowledge_base.yaml`, `~/rosetta-data/` → jamais dans le repo |
 | **Secrets via `.env`** | `ANTHROPIC_API_KEY` uniquement dans `.env` (ignoré par git) |
 | **Confiance `high` = humain** | Scripts restent à `medium` max — seul le PO valide |
 | **NixOS** | Toujours `.venv/bin/python3` et `.venv/bin/uvicorn` |
 
 ---
 
-*Rosetta v3 — Samah Toutouh · Sofrecom · 2026*
+*Rosetta v3 — Samah Toutouh · 2026*
