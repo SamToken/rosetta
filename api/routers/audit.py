@@ -24,12 +24,15 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 
 from api.database import get_session
 from api.models import Job, JobLog
+from fastapi.responses import PlainTextResponse
+
 from api.schemas import (
     AuditFileSummary,
     AuditJobResult,
     AuditStartRequest,
     JobCreatedResponse,
     JobStatusResponse,
+    OutputFile,
     ROIDayResponse,
     ROISummaryResponse,
 )
@@ -308,6 +311,83 @@ async def get_roi_history(
             )
         )
     return result
+
+
+def _output_files(output_dir: Path) -> list[OutputFile]:
+    """Liste les fichiers .md générés dans output_dir, triés par pertinence."""
+    if not output_dir.exists():
+        return []
+
+    def label(rel: Path) -> str:
+        name = rel.name
+        stem = name.replace("_business_doc.md", "").replace("_flags.md", "") \
+                   .replace("_brief_po.md", "")
+        if name == "global_audit.md":
+            return "Audit global"
+        if name == "gaps_complets.md":
+            return "Gaps complets"
+        if "_brief_po.md" in name:
+            return f"Brief PO — {stem}" if rel.parent.name == "details" else "Brief PO"
+        if "_flags.md" in name:
+            return f"Flags — {stem}" if rel.parent.name == "details" else "Flags"
+        if "_business_doc.md" in name:
+            return f"Doc métier — {stem}" if rel.parent.name == "details" else "Doc métier"
+        return name
+
+    ORDER = ["global_audit.md", "gaps_complets.md", "_brief_po", "_flags", "_business_doc"]
+
+    def sort_key(rel: Path) -> int:
+        for i, pat in enumerate(ORDER):
+            if pat in rel.name:
+                return i
+        return len(ORDER)
+
+    files = sorted(output_dir.rglob("*.md"), key=lambda p: sort_key(p.relative_to(output_dir)))
+    return [OutputFile(label=label(p.relative_to(output_dir)), path=str(p.relative_to(output_dir))) for p in files]
+
+
+def _get_job_output_dir(job_id: str) -> Path | None:
+    """Retourne l'output_dir d'un job depuis son result_json, ou None."""
+    with get_session() as session:
+        job = session.get(Job, job_id)
+        if job is None or not job.result_json:
+            return None
+        try:
+            result = AuditJobResult(**json.loads(job.result_json))
+            return Path(result.output_dir)
+        except Exception:
+            return None
+
+
+@router.get(
+    "/{job_id}/files",
+    response_model=list[OutputFile],
+    summary="Lister les fichiers générés par un job",
+)
+async def list_job_files(job_id: str) -> list[OutputFile]:
+    output_dir = _get_job_output_dir(job_id)
+    if output_dir is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' introuvable ou sans résultats.")
+    return _output_files(output_dir)
+
+
+@router.get(
+    "/{job_id}/file",
+    response_class=PlainTextResponse,
+    summary="Contenu d'un fichier généré par un job",
+)
+async def get_job_file(job_id: str, path: str = Query(..., description="Chemin relatif depuis output_dir")) -> str:
+    output_dir = _get_job_output_dir(job_id)
+    if output_dir is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' introuvable ou sans résultats.")
+
+    target = (output_dir / path).resolve()
+    if not str(target).startswith(str(output_dir.resolve())):
+        raise HTTPException(status_code=403, detail="Accès refusé.")
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail=f"Fichier '{path}' introuvable.")
+
+    return target.read_text(encoding="utf-8")
 
 
 @router.get(

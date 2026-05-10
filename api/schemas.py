@@ -51,6 +51,13 @@ class AuditJobResult(BaseModel):
     files: list[AuditFileSummary] = []
 
 
+class OutputFile(BaseModel):
+    """Fichier généré par un job (chemin relatif + libellé lisible)."""
+
+    label: str
+    path: str
+
+
 class JobCreatedResponse(BaseModel):
     """Réponse immédiate après soumission d'un job (HTTP 202)."""
 
