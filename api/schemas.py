@@ -139,6 +139,20 @@ class SearchResultResponse(BaseModel):
     confiance: str
 
 
+class KBEntryResponse(BaseModel):
+    """Entrée KB — toutes sections confondues."""
+
+    code: str
+    label: str
+    domaine: str
+    confiance: str  # high | medium | inferred
+    section: str    # codes | regles | sql_artifacts.colonnes | …
+    notes: str
+    source: str
+    pending_questions: int = Field(0, description="Nb de questions 'À valider PO' dans les notes")
+    lie_a: list[str] = []
+
+
 class CaptureRequest(BaseModel):
     """Paramètres pour capturer un code/constante métier."""
 

@@ -24,11 +24,14 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query, Response
 
 from api.deps import KBServiceDep
+import re
+
 from api.schemas import (
     AddPendingRequest,
     AddPendingResponse,
     CaptureRequest,
     CaptureResponse,
+    KBEntryResponse,
     KBStatsResponse,
     LookupResponse,
     PendingItemResponse,
@@ -69,6 +72,45 @@ async def get_stats(svc: KBServiceDep) -> KBStatsResponse:
         pending_total=s.pending_total,
         pending_high=s.pending_high,
     )
+
+
+@router.get(
+    "/entries",
+    response_model=list[KBEntryResponse],
+    summary="Liste toutes les entrées KB (toutes sections)",
+)
+async def list_entries(svc: KBServiceDep) -> list[KBEntryResponse]:
+    data = await asyncio.to_thread(svc.load)
+    sections = [
+        ("codes",                  data.get("codes", {}) or {}),
+        ("regles",                 data.get("regles", {}) or {}),
+        ("sql_artifacts.colonnes", (data.get("sql_artifacts") or {}).get("colonnes", {}) or {}),
+        ("sql_artifacts.vues",     (data.get("sql_artifacts") or {}).get("vues", {}) or {}),
+        ("sql_artifacts.requetes", (data.get("sql_artifacts") or {}).get("requetes", {}) or {}),
+    ]
+    entries: list[KBEntryResponse] = []
+    for section, bucket in sections:
+        for code, entry in bucket.items():
+            if not isinstance(entry, dict):
+                continue
+            notes = str(entry.get("notes") or "")
+            pending_q = len(re.findall(r"[Àà]\s*valider\s*PO\s*:", notes, re.IGNORECASE))
+            lie_a = entry.get("lié_à") or entry.get("lie_a") or []
+            entries.append(KBEntryResponse(
+                code=code,
+                label=str(entry.get("label") or "—"),
+                domaine=str(entry.get("domaine") or "—"),
+                confiance=str(entry.get("confiance") or "inferred"),
+                section=section,
+                notes=notes,
+                source=str(entry.get("source") or ""),
+                pending_questions=pending_q,
+                lie_a=lie_a if isinstance(lie_a, list) else [lie_a],
+            ))
+    # Tri : high en tête, puis alphabétique par code
+    order = {"high": 0, "medium": 1, "inferred": 2}
+    entries.sort(key=lambda e: (order.get(e.confiance, 3), e.code.lower()))
+    return entries
 
 
 @router.get(
