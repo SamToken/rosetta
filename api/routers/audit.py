@@ -443,11 +443,33 @@ def _build_dep_graph(output_dir: Path) -> DependencyGraph:
     short_index: dict[str, str] = {}
     for node_id in nodes:
         short_index[node_id.lower()] = node_id
-        # ex: "AutomatisationDslamIsoleService" → aussi indexé sans "Service"/"Controller"
-        for suffix in ("Service", "Controller", "Repository", "Tools", "Helper"):
+        # Sans suffix : "RetablirCloturerIhmService" → "RetablirCloturerIhm"
+        for suffix in ("Service", "Controller", "Repository", "Tools", "Helper", "Ajax"):
             stripped = node_id.replace(suffix, "")
             if stripped:
                 short_index[stripped.lower()] = node_id
+
+    def _resolve(dep_name: str) -> str | None:
+        """Tente de trouver un nœud connu pour un nom de dépendance."""
+        # 1. FQCN → nom court  (App\Tools\OceaneAssistant → OceaneAssistant)
+        short = dep_name.split("\\")[-1].split("::")[-1]
+        if t := short_index.get(short.lower()) or short_index.get(dep_name.lower()):
+            return t
+        # 2. Zend service key camelCase → strip get/set/is prefix
+        #    "getOceane" → "Oceane", "retablirCloturer" → "RetablirCloturer"
+        import re
+        without_prefix = re.sub(r'^(get|set|is|has)[A-Z]', lambda m: m.group(0)[-1], dep_name)
+        # capitalize first letter
+        without_prefix = without_prefix[0].upper() + without_prefix[1:] if without_prefix else dep_name
+        if t := short_index.get(without_prefix.lower()):
+            return t
+        # 3. Substring match : "getOceane" → cherche un nœud qui contient "oceane"
+        key_lower = dep_name.lower().lstrip("get").lstrip("set")
+        if len(key_lower) >= 4:
+            for idx_key, node_id in short_index.items():
+                if key_lower in idx_key:
+                    return node_id
+        return None
 
     edges: list[DepEdge] = []
     seen_edges: set[tuple] = set()
@@ -456,10 +478,7 @@ def _build_dep_graph(output_dir: Path) -> DependencyGraph:
         for dep in deps:
             dep_name = dep.get("name", "")
             dep_type = dep.get("type", "use")
-            # Extraire le nom court depuis un FQCN (App\Service\FooService → FooService)
-            short = dep_name.split("\\")[-1].split("::")[-1]
-            # Chercher dans l'index
-            target_id = short_index.get(short.lower()) or short_index.get(dep_name.lower())
+            target_id = _resolve(dep_name)
             if target_id and target_id != src_id:
                 key = (src_id, target_id)
                 if key not in seen_edges:
