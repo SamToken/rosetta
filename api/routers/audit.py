@@ -511,6 +511,25 @@ async def list_jobs() -> list[JobStatusResponse]:
         return [_job_to_response(j, include_logs=False) for j in jobs]
 
 
+@router.delete(
+    "/{job_id}",
+    status_code=204,
+    summary="Supprimer un job (DB + fichiers générés)",
+)
+async def delete_job(job_id: str) -> None:
+    with get_session() as session:
+        job = session.get(Job, job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail=f"Job '{job_id}' introuvable.")
+        # Supprimer les fichiers générés si présents
+        output_dir = _job_output_dir(job_id)
+        session.delete(job)
+        session.commit()
+    if output_dir.exists():
+        import shutil
+        await asyncio.to_thread(shutil.rmtree, output_dir, ignore_errors=True)
+
+
 @router.get(
     "/{job_id}",
     response_model=JobStatusResponse,
