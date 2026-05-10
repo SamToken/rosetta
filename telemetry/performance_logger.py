@@ -11,6 +11,7 @@ Constante métier :
 """
 import json
 import os
+import threading
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -49,6 +50,8 @@ class PerformanceLogger:
         logger.print_summary()
     """
 
+    _write_lock = threading.Lock()  # protège les écritures concurrentes en mode batch parallèle
+
     def __init__(self, log_path: Optional[Path] = None) -> None:
         from config import settings
         self.log_path = log_path or settings.telemetry_path
@@ -56,12 +59,13 @@ class PerformanceLogger:
     # ── Écriture ─────────────────────────────────────────────────────────────
 
     def record(self, run: AuditRun) -> None:
-        """Ajoute un enregistrement au fichier JSONL de façon atomique."""
+        """Ajoute un enregistrement au fichier JSONL (thread-safe)."""
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         entry = json.dumps(asdict(run), ensure_ascii=False)
-        with open(self.log_path, "a", encoding="utf-8") as fh:
-            fh.write(entry + "\n")
-            fh.flush()
+        with PerformanceLogger._write_lock:
+            with open(self.log_path, "a", encoding="utf-8") as fh:
+                fh.write(entry + "\n")
+                fh.flush()
 
     # ── Lecture ──────────────────────────────────────────────────────────────
 

@@ -155,6 +155,8 @@ async def start_audit(
             call_graph_root=(
                 Path(request.call_graph_root).expanduser() if request.call_graph_root else None
             ),
+            # Cap au nombre réel de fichiers pour éviter des workers inutiles
+            max_workers=min(request.max_workers, len(php_files)),
         )
     except EnvironmentError as exc:
         raise HTTPException(status_code=503, detail=str(exc))

@@ -8,6 +8,7 @@ Architecture SOLID :
   DIP — dépend des Protocols (ExtractorProtocol, EnricherProtocol), pas des concrétions.
   OCP — ajouter un langage cible = nouvelle implémentation d'ExtractorProtocol.
 """
+import concurrent.futures
 import json
 import shutil
 import sys
@@ -48,6 +49,7 @@ class AuditOptions:
     kb_output_dir: Optional[Path] = None
     kb_domain: Optional[str] = None
     git_root: Optional[Path] = None
+    max_workers: int = 1  # >1 active le ThreadPoolExecutor en mode batch API
 
     def __post_init__(self) -> None:
         if not self.no_llm:
@@ -230,9 +232,13 @@ class AuditPipeline:
 
     def resolve_inputs(self, input_paths: list[Path]) -> list[Path]:
         """Résout une liste de chemins (fichiers ou répertoires) en liste de .php."""
-        if len(input_paths) == 1 and input_paths[0].is_dir():
-            return sorted(input_paths[0].rglob("*.php"))
-        return [p for p in input_paths if p.is_file()]
+        files: list[Path] = []
+        for p in input_paths:
+            if p.is_dir():
+                files.extend(sorted(p.rglob("*.php")))
+            elif p.is_file() and p.suffix.lower() == ".php":
+                files.append(p)
+        return files
 
     # ── Analyse fichier unique ────────────────────────────────────────────────
 
@@ -273,25 +279,50 @@ class AuditPipeline:
 
         return result
 
+    # ── Worker léger pour exécution parallèle ────────────────────────────────
+
+    @classmethod
+    def _from_parent(
+        cls,
+        parent: "AuditPipeline",
+        progress: Callable[[str], None],
+    ) -> "AuditPipeline":
+        """Clone léger partageant les ressources lourdes (read-only) du parent."""
+        worker: AuditPipeline = cls.__new__(cls)
+        worker.options = parent.options
+        worker._p = progress
+        worker._call_graph = parent._call_graph    # read-only après setup()
+        worker._kb_provider = parent._kb_provider  # read-only après setup()
+        worker._kb_lookup = parent._kb_lookup      # read-only après setup()
+        worker._telemetry = parent._telemetry      # partagé, protégé par Lock
+        return worker
+
     # ── Analyse batch ─────────────────────────────────────────────────────────
 
     def run_batch(self, php_files: list[Path], output_dir: Path) -> BatchResult:
-        """Analyse un lot de fichiers PHP et retourne les résultats agrégés."""
+        """Analyse un lot de fichiers PHP, en parallèle si max_workers > 1."""
         details_dir = output_dir / "details"
         details_dir.mkdir(parents=True, exist_ok=True)
 
-        self._p(f"\n🔍 Mode batch — {len(php_files)} fichier(s) PHP")
+        n = len(php_files)
+        workers = min(self.options.max_workers, n)
+        self._p(f"\n🔍 Mode batch — {n} fichier(s) PHP")
         self._p(f"📂 Rapports détaillés → {details_dir}/")
-        self._p(f"📊 Audit global      → {output_dir}/global_audit.md\n")
+        self._p(f"📊 Audit global      → {output_dir}/global_audit.md")
+        if workers > 1:
+            self._p(f"⚡ Parallélisme — {workers} workers")
+        self._p("")
 
         t0 = time.perf_counter()
         results: list[SingleFileResult] = []
 
-        for i, php_path in enumerate(php_files, 1):
-            self._p(f"[{i}/{len(php_files)}] {php_path.name}")
-            result = self.run_single(php_path, details_dir)
-            results.append(result)
-            self._p("")
+        if workers > 1:
+            results = self._run_batch_parallel(php_files, details_dir, workers)
+        else:
+            for i, php_path in enumerate(php_files, 1):
+                self._p(f"[{i}/{n}] {php_path.name}")
+                results.append(self.run_single(php_path, details_dir))
+                self._p("")
 
         # Agrégation
         self._p("📊 Agrégation des résultats...")
@@ -326,6 +357,52 @@ class AuditPipeline:
             gaps_path=gaps_out,
             processing_time_seconds=round(time.perf_counter() - t0, 2),
         )
+
+    # ── Exécution parallèle ───────────────────────────────────────────────────
+
+    def _run_batch_parallel(
+        self,
+        php_files: list[Path],
+        details_dir: Path,
+        workers: int,
+    ) -> list[SingleFileResult]:
+        """Lance run_single() en parallèle via ThreadPoolExecutor.
+
+        Chaque fichier s'exécute dans un worker cloné du parent (ressources
+        read-only partagées). Les logs sont bufférisés par fichier et émis
+        en bloc à la complétion pour garder une sortie lisible.
+        Les échecs individuels sont loggés sans interrompre les autres fichiers.
+        """
+        n = len(php_files)
+        ordered: list[Optional[SingleFileResult]] = [None] * n
+        completed = 0
+
+        def _run_one(args: tuple[int, Path]) -> tuple[int, SingleFileResult, list[str]]:
+            idx, php_path = args
+            buf: list[str] = []
+            worker = AuditPipeline._from_parent(self, buf.append)
+            result = worker.run_single(php_path, details_dir)
+            return idx, result, buf
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+            future_to_meta = {
+                executor.submit(_run_one, (i, p)): (i, p)
+                for i, p in enumerate(php_files)
+            }
+            for fut in concurrent.futures.as_completed(future_to_meta):
+                i, php_path = future_to_meta[fut]
+                completed += 1
+                try:
+                    idx, result, buf = fut.result()
+                    ordered[idx] = result
+                    self._p(f"[{completed}/{n}] {php_path.name} ✓")
+                    for line in buf:
+                        self._p(f"  {line}")
+                    self._p("")
+                except Exception as exc:
+                    self._p(f"[{completed}/{n}] ⚠ {php_path.name} — erreur : {exc}")
+
+        return [r for r in ordered if r is not None]
 
     # ── Régénération depuis JSON ──────────────────────────────────────────────
 

@@ -191,10 +191,14 @@ def _build_parser() -> argparse.ArgumentParser:
 # =============================================================================
 
 def _collect_php_files(input_paths: list[Path]) -> list[Path]:
-    """Résout une liste de chemins en fichiers .php (miroir de pipeline.resolve_inputs)."""
-    if len(input_paths) == 1 and input_paths[0].is_dir():
-        return sorted(input_paths[0].rglob("*.php"))
-    return [p for p in input_paths if p.is_file() and p.suffix.lower() == ".php"]
+    """Résout une liste de chemins (fichiers ou répertoires) en fichiers .php."""
+    files: list[Path] = []
+    for p in input_paths:
+        if p.is_dir():
+            files.extend(sorted(p.rglob("*.php")))
+        elif p.is_file() and p.suffix.lower() == ".php":
+            files.append(p)
+    return files
 
 
 def _print_remote_result(data: dict) -> None:

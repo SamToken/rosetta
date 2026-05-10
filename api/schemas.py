@@ -22,6 +22,7 @@ class AuditStartRequest(BaseModel):
     kb_root: Optional[str] = Field(None, description="Répertoire de fiches KB (.md) à injecter dans le contexte LLM")
     call_graph_root: Optional[str] = Field(None, description="Répertoire source pour l'indexation du call graph")
     contexte: str = Field("", description="Label contextuel pour l'archivage (ex: 'US-1234')")
+    max_workers: int = Field(4, ge=1, le=16, description="Fichiers analysés en parallèle (batch). 1 = séquentiel.")
 
 
 class AuditFileSummary(BaseModel):
