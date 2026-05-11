@@ -143,6 +143,25 @@ class KBContextProvider:
         d = domain.lower()
         return [e for e in self._entries if e.domaine.lower() == d]
 
+    def bug_entries_for(self, filename: str) -> list[KBEntry]:
+        """Retourne les entrées kb_type=bug pertinentes pour `filename` (score > 0)."""
+        stem = Path(filename).stem.lower()
+        return [
+            e for _, e in sorted(
+                [
+                    (s, e)
+                    for e in self._entries
+                    if e.kb_type == "bug"
+                    for s in [
+                        (3 if stem and stem in e.fichier.lower() else 0)
+                        + (2 if stem and stem in e.nom.lower() else 0)
+                    ]
+                    if s > 0
+                ],
+                key=lambda x: -x[0],
+            )
+        ]
+
     def _score_and_sort(
         self, stem: str, domain: Optional[str]
     ) -> list[KBEntry]:

@@ -373,7 +373,7 @@ class BusinessDocGenerator:
 
         return "\n".join(lines)
 
-    def generate_flags_summary(self, ir: IRSchema) -> str:
+    def generate_flags_summary(self, ir: IRSchema, kb_bugs: Optional[list] = None) -> str:
         """Liste focalisée de tous les flags en attente de validation humaine."""
         lines: list[str] = []
 
@@ -382,8 +382,10 @@ class BusinessDocGenerator:
 
         lines.append(f"# {controller}Controller — Zones à valider")
         bug_count = len(ir.bug_findings)
+        kb_bug_count = len(kb_bugs) if kb_bugs else 0
         bug_suffix = f" | {bug_count} bug(s) techniques" if bug_count else ""
-        lines.append(f"Généré le : {now} | {len(ir.flags)} flags | {len(ir.llm_insights)} insights LLM{bug_suffix}")
+        kb_bug_suffix = f" | {kb_bug_count} bug(s) KB" if kb_bug_count else ""
+        lines.append(f"Généré le : {now} | {len(ir.flags)} flags | {len(ir.llm_insights)} insights LLM{bug_suffix}{kb_bug_suffix}")
         lines.append("")
 
         insights_by_flag = {ins.flag_id: ins for ins in ir.llm_insights}
@@ -432,6 +434,19 @@ class BusinessDocGenerator:
         # Section bugs techniques (si --bug-check a été lancé)
         if ir.bug_findings:
             lines.append(format_bug_findings_md(ir.bug_findings))
+
+        # Section bugs documentés en KB (toujours présente si kb_bugs fourni)
+        if kb_bugs:
+            lines.append("## 🐛 Bugs documentés (KB Rosetta)")
+            for e in kb_bugs:
+                sev_icon = "🔴" if "critique" in (e.label or "").lower() or "critical" in (e.label or "").lower() else "🟠"
+                lines.append(f"- **[{e.nom}]** {sev_icon} — {e.label}")
+                if e.semantique:
+                    first_line = e.semantique.strip().splitlines()[0][:200]
+                    lines.append(f"  {first_line}")
+                if e.fichier:
+                    lines.append(f"  *(fichier : `{e.fichier}`)*")
+            lines.append("")
 
         return "\n".join(lines)
 

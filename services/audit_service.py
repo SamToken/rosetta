@@ -500,8 +500,12 @@ class AuditPipeline:
         doc_out = output_dir / f"{stem}_business_doc.md"
         doc_out.write_text(gen.generate(ir, usage=usage, model=self.options.model), encoding="utf-8")
 
+        kb_bugs = (
+            self._kb_provider.bug_entries_for(ir.metadata.controller_name or "")
+            if self._kb_provider else []
+        )
         flags_out = output_dir / f"{stem}_flags.md"
-        flags_out.write_text(gen.generate_flags_summary(ir), encoding="utf-8")
+        flags_out.write_text(gen.generate_flags_summary(ir, kb_bugs=kb_bugs), encoding="utf-8")
 
         brief_out = output_dir / f"{stem}_brief_po.md"
         brief_out.write_text(gen.generate_po_brief(ir), encoding="utf-8")
@@ -607,9 +611,13 @@ class AuditPipeline:
             "brief": output_dir / f"{stem}_brief_po.md",
         }
 
+        kb_bugs = (
+            self._kb_provider.bug_entries_for(ir.metadata.controller_name or "")
+            if self._kb_provider else []
+        )
         output_files["json"].write_text(ir.to_json(indent=2), encoding="utf-8")
         output_files["doc"].write_text(gen.generate(ir, usage=usage, model=opts.model), encoding="utf-8")
-        output_files["flags"].write_text(gen.generate_flags_summary(ir), encoding="utf-8")
+        output_files["flags"].write_text(gen.generate_flags_summary(ir, kb_bugs=kb_bugs), encoding="utf-8")
         output_files["brief"].write_text(gen.generate_po_brief(ir, kb_coverage=kb_coverage), encoding="utf-8")
 
         brief_rel = (
