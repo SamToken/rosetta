@@ -663,6 +663,10 @@ Puis importer :
 
 ### ✅ Déjà livrées
 
+- [x] Cockpit — streaming logs en temps réel : heartbeat 30s + signal immédiat par worker (`_run_batch_parallel` in `audit_service.py`)
+- [x] Cockpit — durée estimée recalibrée : 0.10 min/flag (base 120 flags ≈ 12 min réel), remplace le forfait 1 min/fichier
+- [x] Cockpit — tokens "À enrichir en KB" cliquables dans `LiveMetricsPanel` → pré-remplit `CaptureForm` via `?code=TOKEN`
+- [x] Cockpit — `break-all` sur les lignes terminal (UUIDs + chemins longs ne se coupent plus mid-token)
 - [x] `kb_import.py` — parser frontmatter + sections, router vers KB, résumé d'import
 - [x] `tests/test_kb_import.py` — 24 tests unitaires (fixtures .md dans `tests/fixtures/docs-kb/`)
 - [x] Scripts anti-drift dans Astro `.github/rosetta/` (kb_drift_check.py, kb_update_anchors.py)
@@ -688,6 +692,7 @@ Puis importer :
 
 ### 🟡 Important mais pas bloquant
 
+- [ ] **Cockpit — Capture KB en lot** : après un scan terminé, bouton "Capturer en lot (N tokens)" dans l'en-tête du job → modal avec une ligne par token non documenté (code readonly, label, domaine, notes pré-remplies) → `Promise.allSettled` sur N `POST /kb/capture` → indicateurs succès/erreur par ligne. Priorité élevée — ROI direct sur le coût des prochains scans.
 - [ ] KB lisible humain — exporter KB + règles métier + brief PO dans un format Markdown structuré lisible par un humain en réunion (pas uniquement consommable par un agent IA) — priorité : réunion de fusion projet
   - [ ] Ajouter notes migration Symfony sur les 5 tokens HIGH RetablirCloturer (`TRONCABLE`, `Restored`, `Resolved`, `Closed`, `droit_retablir`) via `rosetta_kb.py capture --notes`
   - [ ] Capturer `date_retab` en session PO pour le faire passer de "token non documenté" (4b) à "code validé" (section 2) dans le dossier de fusion
@@ -700,3 +705,5 @@ Puis importer :
 
 - [ ] Endpoint API — exposer Rosetta hors CLI (HTTP REST ou socket) pour intégration VS Code / Copilot
 - [ ] Brief PO cross-domaine — regrouper les pending par domaine métier (pas par fichier PHP) : tout ce qui touche OCEANE ensemble, tout ce qui touche les modules ensemble, etc. — priorité après le KB humain (réunion fusion cloturer ticket)
+- [ ] **Cockpit — Supprimer / archiver une entrée KB** : bouton poubelle dans la table KB → `DELETE /kb/{code}` → confirmation → invalidation query. Actuellement on édite le YAML à la main.
+- [ ] **Cockpit — Panel détail entrée KB** : clic sur une ligne de la table → panneau latéral (ou modal) affichant toutes les notes, lié_à, fichiers sources, historique confiance. La table truncate les notes aujourd'hui.

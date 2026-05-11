@@ -12,6 +12,7 @@ import concurrent.futures
 import json
 import shutil
 import sys
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -383,8 +384,28 @@ class AuditPipeline:
         def _run_one(args: tuple[int, Path]) -> tuple[int, SingleFileResult, list[str]]:
             idx, php_path = args
             buf: list[str] = []
-            worker = AuditPipeline._from_parent(self, buf.append)
-            result = worker.run_single(php_path, details_dir)
+
+            # Signal immédiat visible dans l'UI avant le premier log buffé
+            self._p(f"[{idx + 1}/{n}] {php_path.name} — analyse en cours…")
+
+            # Heartbeat toutes les 30s pour que l'UI ne paraisse pas gelée
+            t_start = time.perf_counter()
+            _stop = threading.Event()
+
+            def _beat() -> None:
+                while not _stop.wait(30):
+                    elapsed = int(time.perf_counter() - t_start)
+                    self._p(f"   ⏳ [{idx + 1}/{n}] {php_path.name} — en cours ({elapsed}s)…")
+
+            _hb = threading.Thread(target=_beat, daemon=True)
+            _hb.start()
+            try:
+                worker = AuditPipeline._from_parent(self, buf.append)
+                result = worker.run_single(php_path, details_dir)
+            finally:
+                _stop.set()
+                _hb.join(timeout=1)
+
             return idx, result, buf
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:

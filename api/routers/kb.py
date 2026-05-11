@@ -75,6 +75,30 @@ async def get_stats(svc: KBServiceDep) -> KBStatsResponse:
 
 
 @router.get(
+    "/domains",
+    response_model=list[str],
+    summary="Liste les domaines distincts du KB (ordre alphabétique)",
+)
+async def list_domains(svc: KBServiceDep) -> list[str]:
+    data = await asyncio.to_thread(svc.load)
+    sections = [
+        data.get("codes", {}) or {},
+        data.get("regles", {}) or {},
+        ((data.get("sql_artifacts") or {}).get("colonnes") or {}),
+        ((data.get("sql_artifacts") or {}).get("vues") or {}),
+        ((data.get("sql_artifacts") or {}).get("requetes") or {}),
+    ]
+    domains: set[str] = set()
+    for bucket in sections:
+        for entry in bucket.values():
+            if isinstance(entry, dict):
+                d = entry.get("domaine", "")
+                if d and d != "—":
+                    domains.add(d)
+    return sorted(domains)
+
+
+@router.get(
     "/entries",
     response_model=list[KBEntryResponse],
     summary="Liste toutes les entrées KB (toutes sections)",

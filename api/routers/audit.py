@@ -21,10 +21,11 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi.responses import PlainTextResponse, Response
 
 from api.database import get_session
+from api.deps import KBServiceDep
 from api.models import Job, JobLog
-from fastapi.responses import PlainTextResponse
 
 from api.schemas import (
     AuditFileSummary,
@@ -498,6 +499,38 @@ async def get_job_dependencies(job_id: str) -> DependencyGraph:
     if output_dir is None:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' introuvable ou sans résultats.")
     return await asyncio.to_thread(_build_dep_graph, output_dir)
+
+
+@router.get(
+    "/{job_id}/export/human",
+    response_class=Response,
+    summary="Dossier de fusion KB — entrées pertinentes pour ce job",
+    description=(
+        "Exporte les entrées KB (codes, règles, colonnes, vues, requêtes) "
+        "dont le domaine correspond aux fichiers PHP analysés par ce job. "
+        "Retourne un fichier Markdown téléchargeable."
+    ),
+)
+async def export_job_kb_human(job_id: str, svc: KBServiceDep) -> Response:
+    with get_session() as session:
+        job = session.get(Job, job_id)
+        if job is None or not job.result_json:
+            raise HTTPException(status_code=404, detail=f"Job '{job_id}' introuvable ou sans résultats.")
+        try:
+            result = AuditJobResult(**json.loads(job.result_json))
+        except Exception:
+            raise HTTPException(status_code=500, detail="Résultat job illisible.")
+
+    stems = list({Path(p).stem for p in result.php_paths if p})
+    # domaines=[] → tout le KB inclus ; stems passés en sources pour l'en-tête du doc
+    md = await asyncio.to_thread(svc.export_human, [], stems)
+
+    filename = f"fusion_kb_{'_'.join(stems[:3])}.md" if stems else f"fusion_kb_{job_id[:8]}.md"
+    return Response(
+        content=md.encode("utf-8"),
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get(
