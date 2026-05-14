@@ -139,6 +139,12 @@ async def get_stats(svc: KBServiceDep) -> KBStatsResponse:
     response_model=list[str],
     summary="Liste les domaines distincts du KB (ordre alphabétique)",
 )
+_BASE_DOMAINS = {
+    "commun", "ticketing", "sla", "diagnostic", "interco",
+    "aircom", "airele", "orchestra", "scenario", "enrichissement-alarmes",
+    "oceane", "referentiel", "supervision",
+}
+
 async def list_domains(svc: KBServiceDep) -> list[str]:
     data = await asyncio.to_thread(svc.load)
     sections = [
@@ -148,7 +154,7 @@ async def list_domains(svc: KBServiceDep) -> list[str]:
         ((data.get("sql_artifacts") or {}).get("vues") or {}),
         ((data.get("sql_artifacts") or {}).get("requetes") or {}),
     ]
-    domains: set[str] = set()
+    domains: set[str] = set(_BASE_DOMAINS)
     for bucket in sections:
         for entry in bucket.values():
             if isinstance(entry, dict):
