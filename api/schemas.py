@@ -191,6 +191,12 @@ class CaptureResponse(BaseModel):
     message: str
 
 
+class DeleteKBEntryResponse(BaseModel):
+    success: bool
+    code: str
+    message: str
+
+
 class AddPendingRequest(BaseModel):
     """Paramètres pour ajouter une question dans la file PO."""
 

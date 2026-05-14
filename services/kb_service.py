@@ -928,6 +928,47 @@ class KBService:
             action=action, domain=domain,
         )
 
+    # ── API publique : Suppression ────────────────────────────────────────────
+
+    def delete(self, code: str, section: str) -> bool:
+        """Supprime une entrée KB. Retourne True si trouvée et supprimée."""
+        _SECTION_KEYS: dict[str, tuple[str, ...]] = {
+            "codes":                   ("codes",),
+            "regles":                  ("regles",),
+            "sql_artifacts.colonnes":  ("sql_artifacts", "colonnes"),
+            "sql_artifacts.vues":      ("sql_artifacts", "vues"),
+            "sql_artifacts.requetes":  ("sql_artifacts", "requetes"),
+        }
+        keys = _SECTION_KEYS.get(section)
+        if not keys:
+            return False
+
+        if self.kb_path.is_dir():
+            for yaml_file in sorted(self.kb_path.glob("*.yaml")):
+                data = self._read_file(yaml_file)
+                bucket = data
+                for k in keys[:-1]:
+                    bucket = bucket.get(k, {})
+                target = bucket.get(keys[-1], {})
+                if code in target:
+                    del target[code]
+                    from datetime import date as _date
+                    data.setdefault("meta", {})["last_updated"] = str(_date.today())
+                    self._write_file(yaml_file, data)
+                    return True
+            return False
+        else:
+            data = self.load()
+            bucket = data
+            for k in keys[:-1]:
+                bucket = bucket.get(k, {})
+            target = bucket.get(keys[-1], {})
+            if code not in target:
+                return False
+            del target[code]
+            self._write_file(self.kb_path, data)
+            return True
+
     # ── API publique : Stats et recherche ─────────────────────────────────────
 
     def stats(self) -> KBStats:

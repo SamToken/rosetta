@@ -34,6 +34,7 @@ from api.schemas import (
     AddPendingResponse,
     CaptureRequest,
     CaptureResponse,
+    DeleteKBEntryResponse,
     KBEntryResponse,
     KBStatsResponse,
     LookupResponse,
@@ -403,6 +404,23 @@ async def add_pending(body: AddPendingRequest, svc: KBServiceDep) -> AddPendingR
         priorite=result.priorite,
         destination=result.destination,
     )
+
+
+@router.delete(
+    "/{code}",
+    response_model=DeleteKBEntryResponse,
+    summary="Supprimer une entrée KB",
+    responses={404: {"description": "Entrée introuvable"}},
+)
+async def delete_kb_entry(
+    code: str,
+    section: str = Query(..., description="Section KB : codes | regles | sql_artifacts.colonnes | …"),
+    svc: KBServiceDep = None,
+) -> DeleteKBEntryResponse:
+    deleted = await asyncio.to_thread(svc.delete, code, section)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Entrée '{code}' introuvable dans '{section}'")
+    return DeleteKBEntryResponse(success=True, code=code, message=f"'{code}' supprimé de {section}")
 
 
 @router.post(
