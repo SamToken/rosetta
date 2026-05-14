@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import traceback
 import uuid
 from datetime import datetime, timezone
@@ -221,11 +222,18 @@ async def start_audit(
 
     # ── Construction des options ───────────────────────────────────────────
     try:
+        _default_kb_root = Path(
+            os.environ.get("ROSETTA_KB_ROOT", "~/projects/rosetta/kb")
+        ).expanduser()
+        kb_root = (
+            Path(request.kb_root).expanduser() if request.kb_root
+            else (_default_kb_root if _default_kb_root.is_dir() else None)
+        )
         options = AuditOptions(
             no_llm=request.no_llm,
             model=request.model,
-            bug_check=request.bug_check,
-            kb_root=Path(request.kb_root).expanduser() if request.kb_root else None,
+            bug_check=request.bug_check if request.bug_check is not None else True,
+            kb_root=kb_root,
             call_graph_root=(
                 Path(request.call_graph_root).expanduser() if request.call_graph_root else None
             ),
