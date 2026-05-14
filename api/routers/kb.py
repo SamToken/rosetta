@@ -146,12 +146,6 @@ _BASE_DOMAINS = {
     response_model=list[str],
     summary="Liste les domaines distincts du KB (ordre alphabétique)",
 )
-_BASE_DOMAINS = {
-    "commun", "ticketing", "sla", "diagnostic", "interco",
-    "aircom", "airele", "orchestra", "scenario", "enrichissement-alarmes",
-    "oceane", "referentiel", "supervision",
-}
-
 async def list_domains(svc: KBServiceDep) -> list[str]:
     data = await asyncio.to_thread(svc.load)
     sections = [
