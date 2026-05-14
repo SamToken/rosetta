@@ -93,18 +93,19 @@ class KBStatsResponse(BaseModel):
     maintainer: str
     # Sections
     codes: int
-    regles: int
+    regles: int = Field(0, description="Rétrocompat — entrées non migrées")
+    regles_metier: int = Field(0, description="Règles métier validées PO")
+    bugs_connus: int = Field(0, description="Bugs identifiés avant migration")
+    observations: int = Field(0, description="Observations techniques")
     schema_entries: int = Field(description="Entrées schéma Oracle")
     colonnes: int
     vues: int
     requetes: int
-    relations: int = Field(0, description="Relations sémantiques extraites des IRs")
+    relations: int = Field(0)
     total: int
-    # Confiance
     high: int
     medium: int
     inferred: int
-    # Pending
     pending_total: int
     pending_high: int
 

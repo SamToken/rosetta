@@ -45,8 +45,9 @@ _FLAG_SHORT: dict[str, str] = {
 }
 
 _FLAG_KB_TYPE: dict[str, str] = {
-    "security_risk":            "bug",
-    "empty_catch":              "bug",
+    "security_risk":            "bug_connu",
+    "empty_catch":              "bug_connu",
+    "business_logic_unclear":   "regle_metier",
     "magic_value":              "code",
     "hardcoded_situation_code": "code",
 }
@@ -138,7 +139,13 @@ class KBFicheGenerator:
             if not insights:
                 continue
 
-            kb_type = _FLAG_KB_TYPE.get(flag_type, "regle")
+            kb_type = _FLAG_KB_TYPE.get(flag_type, None)
+            if kb_type is None:
+                # Default: classify based on flag type
+                if flag_type in ("missing_branch", "external_state_dependency", "dynamic_session_key"):
+                    kb_type = "regle_metier"
+                else:
+                    kb_type = "observation"
             kb_nom = _make_nom(method, flag_type)
             fiche_path = out_dir / f"{kb_type}_{kb_nom}.md"
 
@@ -306,7 +313,7 @@ def _render_bug_fiche(
     anchor_logic = _first_line(bugs[0].fragment) if bugs else ""
 
     fm = _frontmatter(
-        kb_type="bug", kb_nom=kb_nom,
+        kb_type="bug_connu", kb_nom=kb_nom,
         kb_fichier=source_file, kb_lignes="",
         kb_domaine=domain, kb_confiance="medium",
         anchor_method=method, anchor_logic=anchor_logic,

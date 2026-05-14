@@ -31,13 +31,16 @@ _PENDING_DECISION_CODE_RE = re.compile(
     re.IGNORECASE,
 )
 _IMPORT_TYPE_ROUTES: dict[str, tuple[str, ...]] = {
-    "code":     ("codes",),
-    "regle":    ("regles",),
-    "bug":      ("regles",),
-    "colonne":  ("sql_artifacts", "colonnes"),
-    "vue":      ("sql_artifacts", "vues"),
-    "requete":  ("sql_artifacts", "requetes"),
-    "relation": ("relations",),
+    "code":          ("codes",),
+    "regle":         ("regles_metier",),   # rétrocompat alias
+    "regle_metier":  ("regles_metier",),
+    "bug":           ("bugs_connus",),     # rétrocompat alias
+    "bug_connu":     ("bugs_connus",),
+    "observation":   ("observations",),
+    "colonne":       ("sql_artifacts", "colonnes"),
+    "vue":           ("sql_artifacts", "vues"),
+    "requete":       ("sql_artifacts", "requetes"),
+    "relation":      ("relations",),
 }
 
 # ---------------------------------------------------------------------------
@@ -135,6 +138,9 @@ class KBStats:
     # Sections
     codes: int = 0
     regles: int = 0
+    regles_metier: int = 0
+    bugs_connus: int = 0
+    observations: int = 0
     schema: int = 0
     colonnes: int = 0
     vues: int = 0
@@ -203,7 +209,8 @@ def _empty_kb() -> dict:
             "projet": "monprojet", "version": "2.1.0",
             "last_updated": str(date.today()), "maintainer": "Samah",
         },
-        "codes": {}, "regles": {}, "schema": {},
+        "codes": {}, "regles": {}, "regles_metier": {}, "bugs_connus": {}, "observations": {},
+        "schema": {},
         "sql_artifacts": {"colonnes": {}, "vues": {}, "requetes": {}},
         "relations": {},
         "pending_validation": {},
@@ -212,7 +219,12 @@ def _empty_kb() -> dict:
 
 def _empty_domain() -> dict:
     return {
-        "codes": {}, "regles": {}, "schema": {},
+        "codes": {},
+        "regles": {},          # rétrocompat — vide après migration
+        "regles_metier": {},
+        "bugs_connus": {},
+        "observations": {},
+        "schema": {},
         "sql_artifacts": {"colonnes": {}, "vues": {}, "requetes": {}},
         "relations": {},
     }
@@ -352,13 +364,13 @@ def _import_build_entry(kb_type: str, meta: dict, sections: dict) -> dict:
         if refs:
             entry["contextes"] = [{"champ": r} for r in refs]
 
-    elif kb_type in ("regle", "bug"):
+    elif kb_type in ("regle", "regle_metier", "bug", "bug_connu", "observation"):
         conds = _import_parse_list(sections.get("Conditions", []))
         if conds:
             entry["conditions"] = conds
         if meta.get("kb_domaine"):
             entry["domaine"] = meta["kb_domaine"]
-        if kb_type == "bug":
+        if kb_type in ("bug", "bug_connu"):
             if "label" in entry and not entry["label"].startswith("[BUG]"):
                 entry["label"] = "[BUG] " + entry["label"]
             sev_lines = sections.get("Sévérité", [])
@@ -368,6 +380,12 @@ def _import_build_entry(kb_type: str, meta: dict, sections: dict) -> dict:
             refs = _import_parse_list(sections.get("Trouvé dans", []))
             if refs:
                 entry["contextes"] = [{"champ": r} for r in refs]
+        if kb_type == "bug_connu":
+            entry.setdefault("corrige", False)
+            entry.setdefault("corrige_dans", "")
+        if kb_type == "regle_metier":
+            entry.setdefault("validee_par", "")
+            entry.setdefault("validee_le", "")
 
     elif kb_type == "colonne":
         if meta.get("kb_table"):
@@ -467,8 +485,8 @@ class KBService:
                 merged["meta"].update(d.get("meta", {}))
                 merged["pending_validation"].update(d.get("pending_validation", {}))
             else:
-                for section in ("codes", "regles", "schema"):
-                    merged[section].update(d.get(section, {}))
+                for section in ("codes", "regles", "regles_metier", "bugs_connus", "observations", "schema"):
+                    merged.setdefault(section, {}).update(d.get(section, {}))
                 sa = d.get("sql_artifacts", {})
                 for sub in ("colonnes", "vues", "requetes"):
                     merged["sql_artifacts"][sub].update(sa.get(sub, {}))
@@ -480,7 +498,7 @@ class KBService:
         if self.kb_path.is_dir():
             d = self._read_file(_domain_file(self.kb_path, domain))
             base = _empty_domain()
-            for section in ("codes", "regles", "schema"):
+            for section in ("codes", "regles", "regles_metier", "bugs_connus", "observations", "schema"):
                 base[section].update(d.get(section, {}))
             sa = d.get("sql_artifacts", {})
             for sub in ("colonnes", "vues", "requetes"):
@@ -509,6 +527,9 @@ class KBService:
         checks = [
             ("codes",                  data.get("codes", {})),
             ("regles",                 data.get("regles", {})),
+            ("regles_metier",          data.get("regles_metier", {})),
+            ("bugs_connus",            data.get("bugs_connus", {})),
+            ("observations",           data.get("observations", {})),
             ("schema",                 data.get("schema", {})),
             ("sql_artifacts.colonnes", data.get("sql_artifacts", {}).get("colonnes", {})),
             ("sql_artifacts.vues",     data.get("sql_artifacts", {}).get("vues", {})),
@@ -605,6 +626,9 @@ class KBService:
         tokens: set[str] = set()
         tokens.update(data.get("codes", {}).keys())
         tokens.update(data.get("regles", {}).keys())
+        tokens.update(data.get("regles_metier", {}).keys())
+        tokens.update(data.get("bugs_connus", {}).keys())
+        tokens.update(data.get("observations", {}).keys())
         sa = data.get("sql_artifacts", {})
         tokens.update(sa.get("colonnes", {}).keys())
         tokens.update(sa.get("vues", {}).keys())
@@ -911,8 +935,12 @@ class KBService:
             section = data["sql_artifacts"]["vues"]
         elif kb_type == "requete":
             section = data["sql_artifacts"]["requetes"]
-        elif kb_type == "regle":
-            section = data["regles"]
+        elif kb_type in ("regle", "regle_metier"):
+            section = data.setdefault("regles_metier", {})
+        elif kb_type == "bug_connu":
+            section = data.setdefault("bugs_connus", {})
+        elif kb_type == "observation":
+            section = data.setdefault("observations", {})
         else:
             section = data["codes"]
 
@@ -935,6 +963,9 @@ class KBService:
         _SECTION_KEYS: dict[str, tuple[str, ...]] = {
             "codes":                   ("codes",),
             "regles":                  ("regles",),
+            "regles_metier":           ("regles_metier",),
+            "bugs_connus":             ("bugs_connus",),
+            "observations":            ("observations",),
             "sql_artifacts.colonnes":  ("sql_artifacts", "colonnes"),
             "sql_artifacts.vues":      ("sql_artifacts", "vues"),
             "sql_artifacts.requetes":  ("sql_artifacts", "requetes"),
@@ -976,6 +1007,9 @@ class KBService:
         _SECTION_KEYS: dict[str, tuple[str, ...]] = {
             "codes":                   ("codes",),
             "regles":                  ("regles",),
+            "regles_metier":           ("regles_metier",),
+            "bugs_connus":             ("bugs_connus",),
+            "observations":            ("observations",),
             "sql_artifacts.colonnes":  ("sql_artifacts", "colonnes"),
             "sql_artifacts.vues":      ("sql_artifacts", "vues"),
             "sql_artifacts.requetes":  ("sql_artifacts", "requetes"),
@@ -1016,16 +1050,22 @@ class KBService:
         data = self.load()
         meta = data.get("meta", {})
 
-        codes    = data.get("codes", {}) or {}
-        regles   = data.get("regles", {}) or {}
-        schema   = data.get("schema", {}) or {}
-        colonnes = data.get("sql_artifacts", {}).get("colonnes", {}) or {}
-        vues     = data.get("sql_artifacts", {}).get("vues", {}) or {}
-        requetes = data.get("sql_artifacts", {}).get("requetes", {}) or {}
-        pending  = data.get("pending_validation", {}) or {}
+        codes         = data.get("codes", {}) or {}
+        regles        = data.get("regles", {}) or {}
+        regles_metier = data.get("regles_metier", {}) or {}
+        bugs_connus   = data.get("bugs_connus",   {}) or {}
+        observations  = data.get("observations",  {}) or {}
+        schema        = data.get("schema", {}) or {}
+        colonnes      = data.get("sql_artifacts", {}).get("colonnes", {}) or {}
+        vues          = data.get("sql_artifacts", {}).get("vues", {}) or {}
+        requetes      = data.get("sql_artifacts", {}).get("requetes", {}) or {}
+        pending       = data.get("pending_validation", {}) or {}
 
         all_entries = (
-            list(codes.values()) + list(regles.values()) + list(schema.values())
+            list(codes.values()) + list(regles.values())
+            + list(regles_metier.values()) + list(bugs_connus.values())
+            + list(observations.values())
+            + list(schema.values())
             + list(colonnes.values()) + list(vues.values()) + list(requetes.values())
         )
         conf_counts: dict[str, int] = {"high": 0, "medium": 0, "inferred": 0}
@@ -1044,7 +1084,7 @@ class KBService:
                     n = len(d.get("pending_validation", {}))
                     files.append(FileEntry(name="_global.yaml", count=n, is_global=True))
                 else:
-                    n = sum(len(d.get(s, {})) for s in ("codes", "regles", "schema"))
+                    n = sum(len(d.get(s, {})) for s in ("codes", "regles", "regles_metier", "bugs_connus", "observations", "schema"))
                     n += sum(len(d.get("sql_artifacts", {}).get(s, {}))
                              for s in ("colonnes", "vues", "requetes"))
                     files.append(FileEntry(name=f.name, count=n))
@@ -1054,7 +1094,11 @@ class KBService:
             version=meta.get("version", "?"),
             last_updated=meta.get("last_updated", "?"),
             maintainer=meta.get("maintainer", "?"),
-            codes=len(codes), regles=len(regles), schema=len(schema),
+            codes=len(codes), regles=len(regles),
+            regles_metier=len(regles_metier),
+            bugs_connus=len(bugs_connus),
+            observations=len(observations),
+            schema=len(schema),
             colonnes=len(colonnes), vues=len(vues), requetes=len(requetes),
             total=len(all_entries),
             high=conf_counts.get("high", 0),
@@ -1074,6 +1118,9 @@ class KBService:
         sections = [
             ("codes",                  data.get("codes", {})),
             ("regles",                 data.get("regles", {})),
+            ("regles_metier",          data.get("regles_metier", {})),
+            ("bugs_connus",            data.get("bugs_connus", {})),
+            ("observations",           data.get("observations", {})),
             ("schema",                 data.get("schema", {})),
             ("sql_artifacts.colonnes", data.get("sql_artifacts", {}).get("colonnes", {})),
             ("sql_artifacts.vues",     data.get("sql_artifacts", {}).get("vues", {})),
@@ -1132,6 +1179,9 @@ class KBService:
 
         _section_md("Codes métier",       data.get("codes"))
         _section_md("Règles",             data.get("regles"))
+        _section_md("Règles métier",      data.get("regles_metier"))
+        _section_md("Bugs connus",        data.get("bugs_connus"))
+        _section_md("Observations",       data.get("observations"))
         _section_md("Schéma",             data.get("schema"))
         _section_md("Colonnes Oracle",    data.get("sql_artifacts", {}).get("colonnes"))
         _section_md("Vues Oracle",        data.get("sql_artifacts", {}).get("vues"))
@@ -1187,7 +1237,7 @@ class KBService:
 
         regles = {k: v for k, v in (data.get("regles") or {}).items() if _keep(v)}
         if regles:
-            _add("## Règles métier")
+            _add("## Règles (legacy)")
             for nom, e in regles.items():
                 sem = _first_sentence(e.get("semantique") or "")
                 conds = _conds_inline(e.get("conditions"))
@@ -1196,6 +1246,39 @@ class KBService:
                     parts.append(sem)
                 if conds:
                     parts.append(f"Conditions: {conds}")
+                _add("  " + ". ".join(parts).rstrip(".") + ".")
+
+        regles_metier = {k: v for k, v in (data.get("regles_metier") or {}).items() if _keep(v)}
+        if regles_metier:
+            _add("## Règles métier")
+            for nom, e in regles_metier.items():
+                sem = _first_sentence(e.get("semantique") or "")
+                conds = _conds_inline(e.get("conditions"))
+                parts = [f"{nom} [{e.get('confiance','?')}] — {e.get('label','')}"]
+                if sem:
+                    parts.append(sem)
+                if conds:
+                    parts.append(f"Conditions: {conds}")
+                _add("  " + ". ".join(parts).rstrip(".") + ".")
+
+        bugs_connus = {k: v for k, v in (data.get("bugs_connus") or {}).items() if _keep(v)}
+        if bugs_connus:
+            _add("## Bugs connus")
+            for nom, e in bugs_connus.items():
+                sem = _first_sentence(e.get("semantique") or "")
+                parts = [f"{nom} [{e.get('confiance','?')}] — {e.get('label','')}"]
+                if sem:
+                    parts.append(sem)
+                _add("  " + ". ".join(parts).rstrip(".") + ".")
+
+        observations = {k: v for k, v in (data.get("observations") or {}).items() if _keep(v)}
+        if observations:
+            _add("## Observations")
+            for nom, e in observations.items():
+                sem = _first_sentence(e.get("semantique") or "")
+                parts = [f"{nom} [{e.get('confiance','?')}] — {e.get('label','')}"]
+                if sem:
+                    parts.append(sem)
                 _add("  " + ". ".join(parts).rstrip(".") + ".")
 
         cols = {k: v for k, v in (data.get("sql_artifacts", {}).get("colonnes") or {}).items() if _keep(v)}
@@ -1241,7 +1324,7 @@ class KBService:
         if not lines:
             return ""
 
-        total = sum(len(d) for d in [codes, regles, cols, vues, reqs])
+        total = sum(len(d) for d in [codes, regles, regles_metier, bugs_connus, observations, cols, vues, reqs])
         dom_label = f"domaine: {domaine} | " if domaine else ""
         header = f"════ CONTEXTE KB ({dom_label}confiance ≥ {confiance_min} | {total} entrée(s)) ════"
         footer = "════ FIN CONTEXTE KB ════"
@@ -1341,12 +1424,21 @@ class KBService:
             return entry.get("domaine", "") in domaines
 
         regles, bugs, codes = [], [], []
+        # bugs from new section
+        for code, entry in (kb_data.get("bugs_connus") or {}).items():
+            if _in_scope(entry):
+                bugs.append((code, entry))
+        # backward compat: old regles with [BUG] label
         for code, entry in (kb_data.get("regles") or {}).items():
             if not _in_scope(entry):
                 continue
             if entry.get("label", code).startswith("[BUG]"):
                 bugs.append((code, entry))
             else:
+                regles.append((code, entry))
+        # new regles_metier
+        for code, entry in (kb_data.get("regles_metier") or {}).items():
+            if _in_scope(entry):
                 regles.append((code, entry))
 
         for code, entry in (kb_data.get("codes") or {}).items():
@@ -1515,7 +1607,7 @@ class KBService:
         def _bucket(domain: str) -> dict:
             return domain_buckets.setdefault(domain, _empty_domain())
 
-        for section in ("codes", "regles", "schema"):
+        for section in ("codes", "regles", "regles_metier", "bugs_connus", "observations", "schema"):
             for key, entry in (data.get(section) or {}).items():
                 domain = entry.get("domaine", "commun") if isinstance(entry, dict) else "commun"
                 _bucket(domain)[section][key] = entry
@@ -1529,7 +1621,7 @@ class KBService:
         domains_result: list[tuple[str, int]] = []
         total_entries = 0
         for domain, domain_data in sorted(domain_buckets.items()):
-            n = sum(len(domain_data.get(s, {})) for s in ("codes", "regles", "schema"))
+            n = sum(len(domain_data.get(s, {})) for s in ("codes", "regles", "regles_metier", "bugs_connus", "observations", "schema"))
             n += sum(len(domain_data.get("sql_artifacts", {}).get(s, {}))
                      for s in ("colonnes", "vues", "requetes"))
             self._write_file(_domain_file(self.kb_path, domain), domain_data)
