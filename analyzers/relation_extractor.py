@@ -71,6 +71,21 @@ _PAT_B_PAIR = re.compile(
     r"['\"](?P<key>[\w_]+)['\"]\s*=>\s*(?P<val>['\"]?[\w_]+['\"]?)",
 )
 
+# ---------------------------------------------------------------------------
+# Pattern C — switch/case transitions et dispatch
+# ---------------------------------------------------------------------------
+
+_PAT_C_SWITCH_HDR = re.compile(
+    r"switch\s*\(\s*\$(?P<var>\w+(?:\s*\[['\"][\w\s]+['\"]\])?)\s*\)\s*\{"
+)
+_PAT_C_CASE_HDR = re.compile(r"case\s+['\"](?P<value>[^'\"]{1,80})['\"](\s*:)")
+_PAT_C_DEFAULT_HDR = re.compile(r"\bdefault\s*:")
+_PAT_C_STR_ASSIGN = re.compile(r"\$(?P<var>\w+)\s*=\s*['\"](?P<val>[^'\"]{1,80})['\"]")
+_PAT_C_SVC_PROP = re.compile(r"\$(?P<var>\w+)\s*=\s*\$this\s*->\s*(?P<svc>\w+[Ss]ervice)\b")
+_PAT_C_APP_GET = re.compile(
+    r"\$this\s*->\s*app\s*->\s*get\s*\(['\"](?P<svc>[\w]+)['\"]\)\s*->\s*(?P<meth>\w+)\s*\("
+)
+
 
 class RelationExtractor:
     """Extrait les relations sémantiques depuis un IRSchema.
@@ -104,6 +119,7 @@ class RelationExtractor:
             relations.extend(self._extract_literals(ep.raw_code, method, source_file, base_line))
             relations.extend(self._extract_pattern_a(ep.raw_code, method, source_file, base_line))
             relations.extend(self._extract_pattern_b(ep.raw_code, method, source_file, base_line))
+            relations.extend(self._extract_pattern_c(ep.raw_code, method, source_file, base_line))
 
         self._link_see_also(relations, ir.flags)
         return relations
@@ -252,6 +268,147 @@ class RelationExtractor:
                     ),
                     pattern="pattern_b",
                 ))
+        return rels
+
+    # -------------------------------------------------------------------------
+    # Pattern C — switch/case transitions et dispatch
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def _find_switch_blocks(code: str) -> list[tuple[str, str, int]]:
+        """Return (switch_var_label, body, abs_start) for each switch block, using brace matching."""
+        results = []
+        for m in _PAT_C_SWITCH_HDR.finditer(code):
+            raw_var = m.group("var").strip()
+            # Simplify: remove array subscript for the label
+            var_label = re.sub(r"\s*\[['\"][\w\s]+['\"]\]", "", raw_var)
+            open_pos = m.end() - 1  # position of the opening '{'
+            depth = 0
+            body_start = open_pos + 1
+            for i, ch in enumerate(code[open_pos:]):
+                if ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        body = code[body_start:open_pos + i]
+                        results.append((var_label, body, m.start()))
+                        break
+        return results
+
+    @staticmethod
+    def _split_cases(body: str) -> list[tuple[str | None, str]]:
+        """Split switch body into (case_value_or_None_for_default, case_body) pairs."""
+        # Find positions of all case headers and default
+        markers: list[tuple[int, int, str | None]] = []
+        for m in _PAT_C_CASE_HDR.finditer(body):
+            markers.append((m.start(), m.end(), m.group("value")))
+        for m in _PAT_C_DEFAULT_HDR.finditer(body):
+            # Only add if not already covered by a case
+            markers.append((m.start(), m.end(), None))
+        markers.sort(key=lambda x: x[0])
+
+        cases = []
+        for i, (start, end, value) in enumerate(markers):
+            next_start = markers[i + 1][0] if i + 1 < len(markers) else len(body)
+            case_body = body[end:next_start]
+            cases.append((value, case_body))
+        return cases
+
+    def _extract_pattern_c(
+        self, code: str, method: str, source_file: str, base_line: int
+    ) -> list[Relation]:
+        rels: list[Relation] = []
+        seen: set[tuple] = set()
+
+        for switch_var, body, switch_start in self._find_switch_blocks(code):
+            abs_line = base_line + code[:switch_start].count("\n")
+
+            # KB filter: at least one string literal in the switch body must be in KB
+            all_strings = re.findall(r"""['\"]([a-zA-Z_À-ɏ][\w\sÀ-ɏ'-]{0,79})['\"]""", body)
+            if not any(self._kb_exists(s) for s in all_strings):
+                continue
+
+            cases = self._split_cases(body)
+
+            for case_value, case_body in cases:
+                if case_value is None:
+                    continue  # skip default
+
+                # 1. State transitions: $var = 'NEXT_STATE'
+                for m in _PAT_C_STR_ASSIGN.finditer(case_body):
+                    target_val = m.group("val")
+                    # Exclude short config strings and non-state-looking values
+                    key = ("transitions_to", case_value, target_val)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    rels.append(Relation(
+                        id=self._next_id(),
+                        kind="transitions_to",
+                        from_entity=EntityRef(type="situation", value=case_value),
+                        to_entity=EntityRef(type="situation", value=target_val),
+                        direction="one_way",
+                        confiance="high",
+                        trouvé_dans=[CodeRef(fichier=source_file, methode=method, ligne=abs_line)],
+                        semantique=(
+                            f"Le case `{case_value}` transite vers `{target_val}` "
+                            f"via switch sur `${switch_var}` dans `{method}`."
+                        ),
+                        pattern="pattern_c",
+                        conditions=[f"switch sur ${switch_var}"],
+                    ))
+
+                # 2. Service property assignment: $service = $this->xyzService
+                for m in _PAT_C_SVC_PROP.finditer(case_body):
+                    svc = m.group("svc")
+                    key = ("requires_svc", case_value, svc)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    rels.append(Relation(
+                        id=self._next_id(),
+                        kind="requires",
+                        from_entity=EntityRef(type="code", value=case_value),
+                        to_entity=EntityRef(type="module", value=svc),
+                        direction="one_way",
+                        confiance="high",
+                        trouvé_dans=[CodeRef(fichier=source_file, methode=method, ligne=abs_line)],
+                        semantique=(
+                            f"Le case `{case_value}` route vers `{svc}` "
+                            f"via switch sur `${switch_var}` dans `{method}`."
+                        ),
+                        pattern="pattern_c",
+                        conditions=[f"switch sur ${switch_var}"],
+                    ))
+
+                # 3. App get dispatch: $this->app->get('Service')->method(
+                seen_svcs_this_case: set[str] = set()
+                for m in _PAT_C_APP_GET.finditer(case_body):
+                    svc = m.group("svc")
+                    meth = m.group("meth")
+                    target = f"{svc}::{meth}"
+                    key = ("implies_svc", case_value, target)
+                    if key in seen or svc in seen_svcs_this_case:
+                        continue
+                    seen.add(key)
+                    seen_svcs_this_case.add(svc)
+                    rels.append(Relation(
+                        id=self._next_id(),
+                        kind="implies",
+                        from_entity=EntityRef(type="code", value=case_value),
+                        to_entity=EntityRef(type="service_call", value=target),
+                        direction="one_way",
+                        confiance="high",
+                        trouvé_dans=[CodeRef(fichier=source_file, methode=method, ligne=abs_line)],
+                        semantique=(
+                            f"Le module `{case_value}` déclenche `{target}` "
+                            f"via dispatch `${switch_var}` dans `{method}`."
+                        ),
+                        pattern="pattern_c",
+                        conditions=[f"switch sur ${switch_var}"],
+                    ))
+
         return rels
 
     # -------------------------------------------------------------------------

@@ -183,6 +183,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Générer dashboard.html agrégé dans --output-dir après l'analyse",
     )
     p.add_argument(
+        "--map",
+        action="store_true",
+        help="Générer une cartographie Mermaid des enchaînements dans --output-dir",
+    )
+    p.add_argument(
         "--api",
         default=None,
         metavar="URL",
@@ -392,6 +397,18 @@ def main() -> None:
 
     if args.dashboard:
         _generate_dashboard(output_dir)
+
+    if args.map:
+        _generate_enchainement_map(output_dir)
+
+
+def _generate_enchainement_map(output_dir: Path) -> None:
+    from generators.enchainement_map_generator import _load_relations, generate_md
+    relations = _load_relations(output_dir)
+    md = generate_md(relations, title="Cartographie des enchaînements")
+    map_path = output_dir / "enchainement_map.md"
+    map_path.write_text(md, encoding="utf-8")
+    print(f"      🗺  Carte enchaînements → {map_path}")
 
 
 def _generate_dashboard(output_dir: Path) -> None:
