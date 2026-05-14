@@ -199,6 +199,19 @@ class DeleteKBEntryResponse(BaseModel):
     message: str
 
 
+class ReclassifyRequest(BaseModel):
+    from_section: str
+    to_section: str
+
+
+class ReclassifyResponse(BaseModel):
+    success: bool
+    code: str
+    from_section: str
+    to_section: str
+    message: str
+
+
 class UpdateConfianceRequest(BaseModel):
     confiance: Literal["high", "medium", "inferred"]
 

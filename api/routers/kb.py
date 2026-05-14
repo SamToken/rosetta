@@ -39,6 +39,8 @@ from api.schemas import (
     KBStatsResponse,
     LookupResponse,
     PendingItemResponse,
+    ReclassifyRequest,
+    ReclassifyResponse,
     SearchResultResponse,
     UpdateConfianceRequest,
     UpdateConfianceResponse,
@@ -190,6 +192,9 @@ async def list_entries(svc: KBServiceDep) -> list[KBEntryResponse]:
     sections = [
         ("codes",                  data.get("codes", {}) or {}),
         ("regles",                 data.get("regles", {}) or {}),
+        ("regles_metier",          data.get("regles_metier", {}) or {}),
+        ("bugs_connus",            data.get("bugs_connus", {}) or {}),
+        ("observations",           data.get("observations", {}) or {}),
         ("sql_artifacts.colonnes", (data.get("sql_artifacts") or {}).get("colonnes", {}) or {}),
         ("sql_artifacts.vues",     (data.get("sql_artifacts") or {}).get("vues", {}) or {}),
         ("sql_artifacts.requetes", (data.get("sql_artifacts") or {}).get("requetes", {}) or {}),
@@ -347,6 +352,15 @@ async def export_human(
     return Response(content=md, media_type="text/markdown; charset=utf-8")
 
 
+@router.get(
+    "/index",
+    response_model=dict[str, str],
+    summary="Index léger {code: section} de toutes les entrées KB",
+)
+async def get_kb_index(svc: KBServiceDep) -> dict[str, str]:
+    return await asyncio.to_thread(svc.get_index)
+
+
 # =============================================================================
 # Écriture
 # =============================================================================
@@ -457,6 +471,32 @@ async def validate_relation(body: ValidateRelationRequest) -> ValidateRelationRe
     return ValidateRelationResponse(
         success=True, updated=updated,
         message=f"{updated} occurrence(s) mises à jour → {body.confiance}",
+    )
+
+
+@router.patch(
+    "/{code}/reclassify",
+    response_model=ReclassifyResponse,
+    summary="Déplacer une entrée d'une section KB vers une autre",
+    responses={404: {"description": "Entrée introuvable"}, 400: {"description": "Sections invalides"}},
+)
+async def reclassify_entry(
+    code: str,
+    body: ReclassifyRequest,
+    svc: KBServiceDep = None,
+) -> ReclassifyResponse:
+    if body.from_section == body.to_section:
+        raise HTTPException(status_code=400, detail="from_section et to_section identiques")
+    moved = await asyncio.to_thread(svc.reclassify, code, body.from_section, body.to_section)
+    if not moved:
+        raise HTTPException(
+            status_code=404,
+            detail=f"'{code}' introuvable dans '{body.from_section}' ou section non reclassifiable",
+        )
+    return ReclassifyResponse(
+        success=True, code=code,
+        from_section=body.from_section, to_section=body.to_section,
+        message=f"'{code}' déplacé : {body.from_section} → {body.to_section}",
     )
 
 

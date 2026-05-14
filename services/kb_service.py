@@ -1045,6 +1045,61 @@ class KBService:
             self._write_file(self.kb_path, data)
             return True
 
+    # ── API publique : Reclassification ─────────────────────────────────────
+
+    def reclassify(self, code: str, from_section: str, to_section: str) -> bool:
+        """Déplace une entrée d'une section vers une autre. Retourne True si trouvée."""
+        _SECTION_KEYS: dict[str, tuple[str, ...]] = {
+            "codes":        ("codes",),
+            "regles_metier": ("regles_metier",),
+            "bugs_connus":  ("bugs_connus",),
+            "observations": ("observations",),
+        }
+        src_keys = _SECTION_KEYS.get(from_section)
+        dst_keys = _SECTION_KEYS.get(to_section)
+        if not src_keys or not dst_keys or from_section == to_section:
+            return False
+
+        if self.kb_path.is_dir():
+            for yaml_file in sorted(self.kb_path.glob("*.yaml")):
+                data = self._read_file(yaml_file)
+                src_target = data.get(src_keys[-1], {})
+                if code in src_target:
+                    entry = src_target.pop(code)
+                    data.setdefault(dst_keys[-1], {})[code] = entry
+                    from datetime import date as _date
+                    data.setdefault("meta", {})["last_updated"] = str(_date.today())
+                    self._write_file(yaml_file, data)
+                    return True
+            return False
+        else:
+            data = self.load()
+            src_target = data.get(src_keys[-1], {})
+            if code not in src_target:
+                return False
+            entry = src_target.pop(code)
+            data.setdefault(dst_keys[-1], {})[code] = entry
+            self._write_file(self.kb_path, data)
+            return True
+
+    def get_index(self) -> dict[str, str]:
+        """Retourne un index léger {code: section} pour toutes les sections KB."""
+        data = self.load()
+        index: dict[str, str] = {}
+        sections = [
+            ("codes",                  data.get("codes", {}) or {}),
+            ("regles_metier",          data.get("regles_metier", {}) or {}),
+            ("bugs_connus",            data.get("bugs_connus",   {}) or {}),
+            ("observations",           data.get("observations",  {}) or {}),
+            ("sql_artifacts.colonnes", (data.get("sql_artifacts") or {}).get("colonnes", {}) or {}),
+            ("sql_artifacts.vues",     (data.get("sql_artifacts") or {}).get("vues", {}) or {}),
+            ("sql_artifacts.requetes", (data.get("sql_artifacts") or {}).get("requetes", {}) or {}),
+        ]
+        for section, bucket in sections:
+            for c in bucket:
+                index[c] = section
+        return index
+
     # ── API publique : Stats et recherche ─────────────────────────────────────
 
     def stats(self) -> KBStats:
