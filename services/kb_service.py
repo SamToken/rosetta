@@ -31,12 +31,13 @@ _PENDING_DECISION_CODE_RE = re.compile(
     re.IGNORECASE,
 )
 _IMPORT_TYPE_ROUTES: dict[str, tuple[str, ...]] = {
-    "code":    ("codes",),
-    "regle":   ("regles",),
-    "bug":     ("regles",),
-    "colonne": ("sql_artifacts", "colonnes"),
-    "vue":     ("sql_artifacts", "vues"),
-    "requete": ("sql_artifacts", "requetes"),
+    "code":     ("codes",),
+    "regle":    ("regles",),
+    "bug":      ("regles",),
+    "colonne":  ("sql_artifacts", "colonnes"),
+    "vue":      ("sql_artifacts", "vues"),
+    "requete":  ("sql_artifacts", "requetes"),
+    "relation": ("relations",),
 }
 
 # ---------------------------------------------------------------------------
@@ -204,6 +205,7 @@ def _empty_kb() -> dict:
         },
         "codes": {}, "regles": {}, "schema": {},
         "sql_artifacts": {"colonnes": {}, "vues": {}, "requetes": {}},
+        "relations": {},
         "pending_validation": {},
     }
 
@@ -212,6 +214,7 @@ def _empty_domain() -> dict:
     return {
         "codes": {}, "regles": {}, "schema": {},
         "sql_artifacts": {"colonnes": {}, "vues": {}, "requetes": {}},
+        "relations": {},
     }
 
 
@@ -400,6 +403,22 @@ def _import_build_entry(kb_type: str, meta: dict, sections: dict) -> dict:
         if concepts:
             entry["concepts_métier"] = concepts
 
+    elif kb_type == "relation":
+        entry["kind"] = meta.get("kind", "implies")
+        if meta.get("from"):
+            entry["from_entity"] = dict(meta["from"])
+        if meta.get("to"):
+            entry["to_entity"] = dict(meta["to"])
+        entry["direction"] = meta.get("direction", "one_way")
+        if meta.get("kb_domaine"):
+            entry["domaine"] = meta["kb_domaine"]
+        conds = _import_parse_list(sections.get("Conditions", []))
+        if conds:
+            entry["conditions"] = conds
+        refs = _import_parse_list(sections.get("Trouvé dans", []))
+        if refs:
+            entry["trouvé_dans"] = [{"fichier": r} for r in refs]
+
     if meta.get("kb_migration"):
         entry["migration_note"] = meta["kb_migration"]
     note_lines = sections.get("Notes", [])
@@ -453,6 +472,7 @@ class KBService:
                 sa = d.get("sql_artifacts", {})
                 for sub in ("colonnes", "vues", "requetes"):
                     merged["sql_artifacts"][sub].update(sa.get(sub, {}))
+                merged["relations"].update(d.get("relations", {}))
         return merged
 
     def _load_for_write(self, domain: str) -> dict:
@@ -465,6 +485,7 @@ class KBService:
             sa = d.get("sql_artifacts", {})
             for sub in ("colonnes", "vues", "requetes"):
                 base["sql_artifacts"][sub].update(sa.get(sub, {}))
+            base["relations"].update(d.get("relations", {}))
             return base
         return self.load()
 
@@ -573,6 +594,22 @@ class KBService:
     def lookup_for_enricher(self, token: str) -> dict[str, Any]:
         """API pour llm_enricher.py — format dict compatible."""
         return self.lookup(token).to_enricher_dict()
+
+    def list_known_tokens(self) -> frozenset[str]:
+        """Retourne tous les tokens connus (codes, colonnes, vues, requêtes, règles).
+
+        Construire une fois au démarrage du pipeline et passer ``__contains__``
+        à RelationExtractor pour un filtre faux-positifs O(1) sans I/O en boucle.
+        """
+        data = self.load()
+        tokens: set[str] = set()
+        tokens.update(data.get("codes", {}).keys())
+        tokens.update(data.get("regles", {}).keys())
+        sa = data.get("sql_artifacts", {})
+        tokens.update(sa.get("colonnes", {}).keys())
+        tokens.update(sa.get("vues", {}).keys())
+        tokens.update(sa.get("requetes", {}).keys())
+        return frozenset(tokens)
 
     # ── API publique : Capture ────────────────────────────────────────────────
 

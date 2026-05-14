@@ -14,7 +14,8 @@ import json
 import re
 from dataclasses import dataclass, field
 from typing import Callable, Optional, TYPE_CHECKING
-from ir.schema import IRSchema, Flag, LLMInsight
+from ir.schema import IRSchema, Flag, LLMInsight, KBToken
+from analyzers.constants import STOP_TOKENS
 
 if TYPE_CHECKING:
     from analyzers.kb_context import KBContextProvider
@@ -165,6 +166,8 @@ class KBCoverageReport:
     flags_llm_needed: int = 0
     flags_skipped: int = 0
     missing_tokens: dict = field(default_factory=dict)
+    tokens_extracted_by_kind: dict = field(default_factory=dict)
+    tokens_hit_by_kind: dict = field(default_factory=dict)
 
     @property
     def coverage_pct(self) -> float:
@@ -292,8 +295,8 @@ class LLMEnricher:
             self.coverage.flags_llm_needed += 1
             if self._kb_lookup:
                 for tok in self._extract_kb_tokens(flag):
-                    self.coverage.missing_tokens[tok] = (
-                        self.coverage.missing_tokens.get(tok, 0) + 1
+                    self.coverage.missing_tokens[tok.value] = (
+                        self.coverage.missing_tokens.get(tok.value, 0) + 1
                     )
 
             method_body = (
@@ -310,60 +313,152 @@ class LLMEnricher:
             print(f"  ↷ {self.usage.skipped_flags} flag(s) skipped (fragment trop minimal)")
         if self._kb_hits:
             print(f"  📚 {self._kb_hits} flag(s) résolus depuis le KB (0 token LLM)")
+
+        if self.coverage.tokens_extracted_by_kind:
+            total_ex = sum(self.coverage.tokens_extracted_by_kind.values())
+            kind_parts = ", ".join(
+                f"{v} {k}"
+                for k, v in self.coverage.tokens_extracted_by_kind.items()
+                if v > 0
+            )
+            print(f"  ✓ KB tokens extraits : {total_ex} ({kind_parts})")
+
+        if self.coverage.tokens_hit_by_kind:
+            total_hits = sum(self.coverage.tokens_hit_by_kind.values())
+            kind_parts = ", ".join(
+                f"{v} {k}"
+                for k, v in self.coverage.tokens_hit_by_kind.items()
+                if v > 0
+            )
+            print(f"  ✓ KB hits : {total_hits} ({kind_parts})")
+
         return ir
 
-    # Tokens trop génériques pour être lookupés (PHP builtins, opérateurs)
-    _KB_STOPWORDS = {
-        "true", "false", "null", "ok", "ko", "yes", "no", "oui", "non",
-        "string", "array", "boolean", "integer", "float", "object",
-        "get", "set", "is", "has", "id", "key", "val", "value",
-        "message", "error", "status", "etat", "code", "type", "mode",
-        "response", "result", "data", "item", "list", "index",
-    }
+    # Mots SQL détectant la présence de SQL dans un fragment
+    _SQL_DETECT = re.compile(
+        r'\b(SELECT|INSERT|UPDATE|DELETE|FROM|JOIN)\b', re.IGNORECASE
+    )
+    # Tables : après FROM, JOIN, INTO, UPDATE, DELETE FROM
+    _SQL_TABLES = re.compile(
+        r'(?:FROM|JOIN|INTO|UPDATE|DELETE\s+FROM)\s+["\']?(\w+)["\']?',
+        re.IGNORECASE,
+    )
+    # Colonnes : mots en MAJUSCULES hors stop-list dans un contexte SQL
+    _SQL_COLUMNS = re.compile(r'\b([A-Z][A-Z0-9_]{2,})\b')
+    # Appels de service/repository/helper
+    _SERVICE_CALL = re.compile(
+        r'\$(?:this->)?(\w+(?:Service|Manager|Repository|Helper|Mapper))\s*->\s*(\w+)',
+        re.IGNORECASE,
+    )
+    # Chemins de vue Zend
+    _VIEW_PATH = re.compile(
+        r'(?:render|renderScript)\s*\(\s*[\'"]([^\'"]+)[\'"]\s*\)'
+    )
+    # Magic values numériques dans une comparaison
+    _MAGIC_NUM_L = re.compile(r'\$\w+\s*(?:===?|!==?|>=?|<=?)\s*(\d+)')
+    _MAGIC_NUM_R = re.compile(r'(\d+)\s*(?:===?|!==?)\s*\$\w+')
 
-    def _extract_kb_tokens(self, flag: Flag) -> list[str]:
-        """Extrait les identifiants lookupables dans le KB depuis le fragment."""
+    # Ordre de recherche dans _try_kb_insight (du plus au moins fiable)
+    _KIND_ORDER = ["literal", "constant", "column", "table",
+                   "service_method", "view_path", "magic_value"]
+
+    def _extract_kb_tokens(self, flag: Flag) -> list[KBToken]:
+        """Extrait les tokens lookupables dans le KB depuis flag.fragment.
+
+        Retourne une liste dédupliquée par (value, kind), dans l'ordre d'apparition.
+        """
         raw = flag.fragment
-        candidates: list[str] = []
+        candidates: list[KBToken] = []
 
-        # 1. Tout littéral entre guillemets (lowercase_snake, mixte, tirets)
-        for m in re.finditer(r"""['"]([A-Za-z][A-Za-z0-9_\-]{1,50})['"]""", raw):
+        # 1. Littéraux MAJ entre guillemets
+        for m in re.finditer(r"""['"]([A-Z][A-Z0-9_]+)['"]""", raw):
             val = m.group(1)
-            if val.lower() not in self._KB_STOPWORDS:
-                candidates.append(val)
+            if val not in STOP_TOKENS:
+                candidates.append(KBToken(value=val, kind="literal"))
 
-        # 2. Constantes PHP SCREAMING_SNAKE_CASE non quotées
+        # 2. Constantes SCREAMING_SNAKE_CASE non quotées
         for m in re.finditer(r'\b([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)\b', raw):
-            candidates.append(m.group(1))
+            val = m.group(1)
+            if val not in STOP_TOKENS:
+                candidates.append(KBToken(value=val, kind="constant"))
 
-        # 3. Codes numériques entre guillemets
-        for m in re.finditer(r"""['"](\d{2,6})['"]""", raw):
-            candidates.append(m.group(1))
+        # 3. Colonnes et tables SQL
+        if self._SQL_DETECT.search(raw):
+            for m in self._SQL_TABLES.finditer(raw):
+                val = m.group(1).upper()
+                if val not in STOP_TOKENS:
+                    candidates.append(KBToken(value=val, kind="table"))
+            for m in self._SQL_COLUMNS.finditer(raw):
+                val = m.group(1)
+                if val not in STOP_TOKENS and len(val) >= 3:
+                    candidates.append(KBToken(value=val, kind="column"))
 
-        seen: set[str] = set()
-        return [t for t in candidates if not (t in seen or seen.add(t))]
+        # 4. Appels de service
+        for m in self._SERVICE_CALL.finditer(raw):
+            candidates.append(
+                KBToken(value=f"{m.group(1)}.{m.group(2)}", kind="service_method")
+            )
+
+        # 5. Chemins de vue Zend
+        for m in self._VIEW_PATH.finditer(raw):
+            candidates.append(KBToken(value=m.group(1), kind="view_path"))
+
+        # 6. Magic values numériques (hors 0 et 1)
+        for pat in (self._MAGIC_NUM_L, self._MAGIC_NUM_R):
+            for m in pat.finditer(raw):
+                val = m.group(1)
+                if val not in ("0", "1"):
+                    candidates.append(KBToken(value=val, kind="magic_value"))
+
+        # Déduplication par (value, kind)
+        seen: set[tuple[str, str]] = set()
+        result: list[KBToken] = []
+        for t in candidates:
+            key = (t.value, t.kind)
+            if key not in seen:
+                seen.add(key)
+                result.append(t)
+
+        # Compteurs par kind (pour observabilité)
+        for t in result:
+            self.coverage.tokens_extracted_by_kind[t.kind] = (
+                self.coverage.tokens_extracted_by_kind.get(t.kind, 0) + 1
+            )
+
+        return result
 
     def _try_kb_insight(self, flag: Flag) -> Optional[LLMInsight]:
         """Résout un flag depuis le KB YAML sans appel LLM. Retourne None si non trouvé."""
         if not self._kb_lookup:
             return None
-        for token in self._extract_kb_tokens(flag):
+
+        tokens = self._extract_kb_tokens(flag)
+        # Recherche dans l'ordre de fiabilité décroissante
+        kind_priority = {k: i for i, k in enumerate(self._KIND_ORDER)}
+        tokens_sorted = sorted(tokens, key=lambda t: kind_priority.get(t.kind, 99))
+
+        for token in tokens_sorted:
             self.coverage.tokens_tried += 1
-            result = self._kb_lookup(token)
+            result = self._kb_lookup(token.value)
             if not result.get("found"):
                 continue
             confiance = result.get("confiance", "inferred")
             if confiance == "high":
                 self.coverage.tokens_found_high += 1
+                self.coverage.tokens_hit_by_kind[token.kind] = (
+                    self.coverage.tokens_hit_by_kind.get(token.kind, 0) + 1
+                )
             elif confiance == "medium":
                 self.coverage.tokens_found_medium += 1
+                self.coverage.tokens_hit_by_kind[token.kind] = (
+                    self.coverage.tokens_hit_by_kind.get(token.kind, 0) + 1
+                )
             if confiance == "inferred":
                 continue  # pas fiable — laisser le LLM gérer
-            label = result.get("label") or token
+            label = result.get("label") or token.value
             semantique = (result.get("semantique") or "").strip()
             if confiance == "high":
                 if semantique:
-                    # Tronquer à la première phrase complète
                     end = max(semantique.find('.'), semantique.find('!'), semantique.find('?'))
                     if 0 < end < 250:
                         semantique = semantique[:end + 1]

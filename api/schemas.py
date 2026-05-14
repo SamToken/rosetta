@@ -77,6 +77,7 @@ class JobStatusResponse(BaseModel):
     logs: list[str] = Field(default_factory=list, description="Messages de progression")
     error: Optional[str] = None
     result: Optional[AuditJobResult] = None
+    has_dashboard: bool = Field(False, description="True si dashboard.html est disponible pour ce job")
 
 
 # =============================================================================
@@ -97,6 +98,7 @@ class KBStatsResponse(BaseModel):
     colonnes: int
     vues: int
     requetes: int
+    relations: int = Field(0, description="Relations sémantiques extraites des IRs")
     total: int
     # Confiance
     high: int
@@ -140,17 +142,26 @@ class SearchResultResponse(BaseModel):
 
 
 class KBEntryResponse(BaseModel):
-    """Entrée KB — toutes sections confondues."""
+    """Entrée KB — toutes sections confondues.
+
+    Les champs relation_* sont renseignés uniquement pour section='relations'.
+    """
 
     code: str
     label: str
     domaine: str
     confiance: str  # high | medium | inferred
-    section: str    # codes | regles | sql_artifacts.colonnes | …
+    section: str    # codes | regles | sql_artifacts.colonnes | relations | …
     notes: str
     source: str
     pending_questions: int = Field(0, description="Nb de questions 'À valider PO' dans les notes")
     lie_a: list[str] = []
+    # Champs spécifiques aux relations sémantiques (None pour les autres sections)
+    relation_kind: Optional[str] = None
+    relation_from: Optional[str] = None
+    relation_to: Optional[str] = None
+    relation_direction: Optional[str] = None
+    trouve_dans: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class CaptureRequest(BaseModel):
@@ -218,6 +229,68 @@ class ValidatePendingResponse(BaseModel):
     action: str = Field(description="created | updated")
     domain: str
     error: Optional[str] = None
+
+
+# =============================================================================
+# Flags + recettes migration
+# =============================================================================
+
+class RecipeOut(BaseModel):
+    """Recette de migration Zend → Symfony associée à un flag."""
+
+    id: str
+    title: str
+    effort: str
+    zend_pattern: str
+    symfony_equivalent: str
+    diff_before: str
+    diff_after: str
+    migration_notes: str
+
+
+class FlagOut(BaseModel):
+    """Flag d'analyse avec recette migration optionnelle."""
+
+    id: str
+    type: str
+    fragment: str = ""
+    location: str = ""
+    source_line: Optional[int] = None
+    method_name: Optional[str] = None
+    question: str = ""
+    impact_category: str = ""
+    recipe: Optional[RecipeOut] = None
+
+
+# =============================================================================
+# Impact cross-fichier
+# =============================================================================
+
+class ImpactOccurrence(BaseModel):
+    """Une occurrence d'un token dans un fichier source."""
+
+    fichier: str
+    methode: str = ""
+    ligne: Optional[int] = None
+    source: str = Field("relation", description="relation | flag | operation")
+
+
+class ImpactTokenOut(BaseModel):
+    """Données d'impact d'un token KB à travers tous les fichiers analysés."""
+
+    total_occurrences: int
+    distinct_files: int
+    kb_known: bool
+    sources: list[str] = Field(default_factory=list)
+    occurrences: list[ImpactOccurrence] = Field(default_factory=list)
+
+
+class ImpactIndexOut(BaseModel):
+    """Index d'impact cross-fichier — tous les tokens."""
+
+    ir_count: int
+    token_count: int
+    tokens: dict[str, ImpactTokenOut]
 
 
 # =============================================================================

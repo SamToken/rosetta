@@ -34,9 +34,11 @@ from api.schemas import (
     DepEdge,
     DepNode,
     DependencyGraph,
+    FlagOut,
     JobCreatedResponse,
     JobStatusResponse,
     OutputFile,
+    RecipeOut,
     ROIDayResponse,
     ROISummaryResponse,
 )
@@ -94,6 +96,8 @@ def _job_to_response(job: Job, include_logs: bool = True) -> JobStatusResponse:
             pass
 
     logs = [log.message for log in job.logs] if include_logs else []
+    # Dashboard auto-généré à la demande — disponible dès qu'il y a des résultats
+    has_dashboard = result is not None
 
     return JobStatusResponse(
         job_id=job.id,
@@ -104,6 +108,7 @@ def _job_to_response(job: Job, include_logs: bool = True) -> JobStatusResponse:
         logs=logs,
         error=job.error,
         result=result,
+        has_dashboard=has_dashboard,
     )
 
 
@@ -576,3 +581,108 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
         # Charger les logs dans la même session avant de fermer
         _ = job.logs
         return _job_to_response(job, include_logs=True)
+
+
+def _generate_dashboard_html(output_dir: Path) -> bytes:
+    """Génère ou relit le dashboard.html pour un job. Thread-safe (appelé via to_thread)."""
+    dash_path = output_dir / "dashboard.html"
+    if dash_path.exists():
+        return dash_path.read_bytes()
+
+    from generators.dashboard_generator import DashboardGenerator
+    gen = DashboardGenerator()
+    html = gen.generate(
+        ir_dir=output_dir,
+        impact_index=output_dir / "_impact_index.json",
+    )
+    dash_path.write_text(html, encoding="utf-8")
+    return html.encode("utf-8")
+
+
+@router.get(
+    "/{job_id}/dashboard",
+    summary="Dashboard HTML standalone du job (auto-généré depuis les IRs)",
+    responses={
+        200: {"content": {"text/html": {}}},
+        404: {"description": "Job introuvable ou sans résultats"},
+    },
+)
+async def get_job_dashboard(job_id: str) -> Response:
+    """Retourne le dashboard HTML — le génère à la volée si absent."""
+    output_dir = _get_job_output_dir(job_id)
+    if output_dir is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' introuvable ou sans résultats.")
+    content = await asyncio.to_thread(_generate_dashboard_html, output_dir)
+    return Response(content=content, media_type="text/html; charset=utf-8")
+
+
+def _load_flags_with_recipes(output_dir: Path) -> list[FlagOut]:
+    """Charge les flags de tous les IRs du job et y associe les recettes migration."""
+    from generators.migration_recipes import RecipeBook
+    from ir.schema import Flag
+
+    recipes = RecipeBook()
+    result: list[FlagOut] = []
+
+    details_dir = output_dir / "details"
+    json_files = (
+        list(details_dir.glob("*_business_logic.json"))
+        if details_dir.exists()
+        else list(output_dir.glob("*_business_logic.json"))
+    )
+
+    for json_path in sorted(json_files):
+        try:
+            data = json.loads(json_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        for raw in data.get("flags", []):
+            flag = Flag(
+                id=raw.get("id", ""),
+                type=raw.get("type", "magic_value"),
+                fragment=raw.get("fragment", ""),
+                location=raw.get("location", ""),
+                question=raw.get("question", ""),
+                source_line=raw.get("source_line"),
+                method_name=raw.get("method_name"),
+                impact_category=raw.get("impact_category", "LOGIC_GAP"),
+            )
+            recipe_obj = recipes.find(flag)
+            recipe_out = None
+            if recipe_obj:
+                recipe_out = RecipeOut(
+                    id=recipe_obj.id,
+                    title=recipe_obj.title,
+                    effort=recipe_obj.effort,
+                    zend_pattern=recipe_obj.zend_pattern,
+                    symfony_equivalent=recipe_obj.symfony_equivalent,
+                    diff_before=recipe_obj.diff_before,
+                    diff_after=recipe_obj.diff_after,
+                    migration_notes=recipe_obj.migration_notes,
+                )
+            result.append(FlagOut(
+                id=flag.id,
+                type=flag.type,
+                fragment=flag.fragment,
+                location=flag.location,
+                source_line=flag.source_line,
+                method_name=flag.method_name,
+                question=raw.get("question", ""),
+                impact_category=raw.get("impact_category", ""),
+                recipe=recipe_out,
+            ))
+
+    return result
+
+
+@router.get(
+    "/{job_id}/flags",
+    response_model=list[FlagOut],
+    summary="Flags du job avec recettes de migration Zend → Symfony",
+)
+async def get_job_flags(job_id: str) -> list[FlagOut]:
+    """Retourne les flags de tous les fichiers du job, enrichis des recettes migration."""
+    output_dir = _get_job_output_dir(job_id)
+    if output_dir is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' introuvable ou sans résultats.")
+    return await asyncio.to_thread(_load_flags_with_recipes, output_dir)

@@ -19,7 +19,7 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
-from ir.schema import IRSchema, Flag, LLMInsight, BugFinding
+from ir.schema import IRSchema, Flag, LLMInsight, BugFinding, Relation
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +187,49 @@ class KBFicheGenerator:
 
         return created, updated, skipped
 
+    def generate_relations(
+        self,
+        ir: IRSchema,
+        php_source_path: Optional[Path] = None,
+    ) -> tuple[int, int, int]:
+        """Génère les fiches KB pour les relations extraites. Retourne (créées, mises_à_jour, ignorées)."""
+        if not ir.relations:
+            return 0, 0, 0
+
+        domain = self.domain or _infer_domain(ir.metadata.controller_name)
+        out_dir = self.kb_output_dir / domain
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        file_hash = _file_hash(php_source_path) if php_source_path else "sha256:inconnu"
+        git_commit, git_date = _git_info(php_source_path)
+
+        created = updated = skipped = 0
+        seen: set[tuple] = set()
+
+        for rel in ir.relations:
+            dedup_key = (rel.kind, rel.from_entity.value, rel.to_entity.value)
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
+
+            nom = _make_relation_nom(rel)
+            fiche_path = out_dir / f"relation_{nom}.md"
+
+            if fiche_path.exists() and _is_high_confidence(fiche_path):
+                skipped += 1
+                continue
+
+            content = _render_relation_fiche(
+                rel=rel, domain=domain,
+                file_hash=file_hash, git_commit=git_commit, git_date=git_date,
+            )
+            existed = fiche_path.exists()
+            fiche_path.write_text(content, encoding="utf-8")
+            updated += existed
+            created += not existed
+
+        return created, updated, skipped
+
 
 # ---------------------------------------------------------------------------
 # Rendu Markdown
@@ -328,6 +371,14 @@ def _make_nom(method: str, flag_type: str) -> str:
     return f"{method_part}_{type_part}"
 
 
+def _make_relation_nom(rel: Relation) -> str:
+    """Ex: TP2 implies C_TYP_FLX → TP2_IMPLIES_C_TYP_FLX"""
+    from_part = re.sub(r'[^A-Za-z0-9]', '_', rel.from_entity.value)[:20].strip('_').upper()
+    to_raw = rel.to_entity.value.split('=')[0].split('→')[0].strip()
+    to_part = re.sub(r'[^A-Za-z0-9]', '_', to_raw)[:20].strip('_').upper()
+    return f"{from_part}_{rel.kind.upper()}_{to_part}"
+
+
 def _infer_domain(controller_name: str) -> str:
     """MonServiceController → mon-service"""
     name = re.sub(r'(Controller|Service|Repository|Helper)$', '', controller_name, flags=re.IGNORECASE)
@@ -357,6 +408,64 @@ def _trouvé_dans(flags: list[Flag], source_file: str) -> str:
             lines.append(entry)
             seen.add(entry)
     return "\n".join(lines[:6]) or f"- `{source_file}`"
+
+
+def _render_relation_fiche(
+    rel: Relation,
+    domain: str,
+    file_hash: str,
+    git_commit: str,
+    git_date: str,
+) -> str:
+    today = str(date.today())
+    from_val_safe = rel.from_entity.value.replace('"', "'")
+    to_val_safe = rel.to_entity.value.replace('"', "'")
+
+    fm_lines = [
+        "---",
+        "kb_type: relation",
+        f"kind: {rel.kind}",
+        f"kb_nom: {rel.id}",
+        f"kb_domaine: {domain}",
+        f"kb_confiance: {rel.confiance}",
+        f"kb_source: \"Rosetta RelationExtractor — généré {today}\"",
+        "from:",
+        f"  type: {rel.from_entity.type}",
+        f"  value: \"{from_val_safe}\"",
+        "to:",
+        f"  type: {rel.to_entity.type}",
+        f"  value: \"{to_val_safe}\"",
+        f"direction: {rel.direction}",
+        f"kb_source_file_hash: {file_hash}",
+        f"kb_source_commit: \"{git_commit}\"",
+        f"kb_source_commit_date: \"{git_date}\"",
+        f"kb_pattern: {rel.pattern}",
+        "---",
+    ]
+    fm = "\n".join(fm_lines)
+
+    sections = [fm]
+    sections.append(
+        f"## Label\nRelation `{rel.kind}` : `{rel.from_entity.value}` → `{rel.to_entity.value}`"
+    )
+    sections.append(f"## Sémantique\n{rel.semantique}")
+
+    if rel.conditions:
+        cond_lines = "\n".join(f"- {c}" for c in rel.conditions)
+        sections.append(f"## Conditions\n{cond_lines}")
+
+    if rel.trouvé_dans:
+        ref_lines = []
+        for r in rel.trouvé_dans:
+            line_str = f" ligne {r.ligne}" if r.ligne else ""
+            ref_lines.append(f"- `{r.fichier}` — `{r.methode}()`{line_str}")
+        sections.append(f"## Trouvé dans\n" + "\n".join(ref_lines))
+
+    sections.append(
+        "## Notes\n_(généré automatiquement — confiance: medium — à valider PO)_"
+    )
+
+    return "\n\n".join(sections) + "\n"
 
 
 def _file_hash(path: Optional[Path]) -> str:

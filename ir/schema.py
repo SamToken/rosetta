@@ -8,7 +8,7 @@ L'IR capture l'INTENTION du code, pas sa syntaxe.
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 
@@ -201,6 +201,66 @@ class Flag(BaseModel):
     method_original_name: Optional[str] = None  # nom PHP original (ex: editAction)
     context_lines: Optional[str] = None     # ±3 lignes autour pour copier dans Copilot
     impact_category: ImpactCategory = ImpactCategory.LOGIC_GAP
+    see_also: list[str] = Field(default_factory=list)  # IDs de Relation couvrant ce fragment
+
+
+# =============================================================================
+# Token KB typé (extrait par LLMEnricher pour lookup ciblé)
+# =============================================================================
+
+KBTokenKind = Literal[
+    "literal",        # 'TP2', "ST_OUV" — tout littéral entre guillemets (MAJ ou camelCase)
+    "constant",       # C_TYP_FLX — SCREAMING_SNAKE_CASE non quoté
+    "column",         # colonne extraite d'un SELECT/WHERE/SET SQL
+    "table",          # table extraite d'un FROM/JOIN/INTO/UPDATE SQL
+    "service_method", # enchainementService.getEtat — appel de service
+    "view_path",      # enchainement/index.phtml — chemin de vue Zend
+    "magic_value",    # 2, 3 — valeur numérique comparée à une variable
+]
+
+
+class KBToken(BaseModel):
+    """Token extrait d'un flag.fragment, typé pour un lookup KB ciblé."""
+    value: str
+    kind: KBTokenKind
+    source_op_id: Optional[str] = None
+
+
+# =============================================================================
+# Relations sémantiques (extraites par RelationExtractor)
+# =============================================================================
+
+class EntityRef(BaseModel):
+    """Référence à une entité métier dans une relation."""
+    type: str   # "code" | "column_value" | "situation" | "module" | "event"
+    value: str  # ex: "TP2", "C_TYP_FLX = 2", "H1"
+
+
+class CodeRef(BaseModel):
+    """Référence à un emplacement dans le code source."""
+    fichier: str
+    methode: str = ""
+    ligne: Optional[int] = None
+
+
+class Relation(BaseModel):
+    """Relation sémantique entre deux entités métier, extraite statiquement.
+
+    Les relations complètent les fiches KB atomiques : elles capturent les
+    liens implicites (implication, synonymie, transition) que le LLM rate
+    quand il ne reçoit qu'une fiche isolée.
+    """
+    id: str
+    kind: str           # "implies" | "transitions_to" | "requires" | "synonym_of"
+    from_entity: EntityRef
+    to_entity: EntityRef
+    direction: str = "one_way"      # "one_way" | "bidirectional"
+    domaine: str = ""
+    confiance: str = "medium"       # "high" | "medium" | "inferred"
+    conditions: list[str] = Field(default_factory=list)
+    trouvé_dans: list[CodeRef] = Field(default_factory=list)
+    semantique: str = ""
+    pattern: str = ""  # "pattern_a" | "pattern_b" — trace de l'origine
 
 
 class LLMInsight(BaseModel):
@@ -251,6 +311,9 @@ class IRSchema(BaseModel):
     # Bugs techniques détectés par grille structurée (1 appel LLM/fichier, --bug-check)
     bug_findings: list[BugFinding] = Field(default_factory=list)
 
+    # Relations sémantiques extraites statiquement par RelationExtractor
+    relations: list[Relation] = Field(default_factory=list)
+
     # ==========================================================================
     # Méthodes utilitaires
     # ==========================================================================
@@ -282,6 +345,7 @@ class IRSchema(BaseModel):
             "unparsed": len(self.unparsed_sections),
             "flags": len(self.flags),
             "llm_insights": len(self.llm_insights),
+            "relations": len(self.relations),
             "confidence": self.metadata.confidence_score,
             "estimated_tokens": self.token_estimate()
         }

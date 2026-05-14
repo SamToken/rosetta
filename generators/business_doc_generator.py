@@ -14,6 +14,10 @@ from typing import Optional
 from ir.schema import IRSchema, Flag, LLMInsight, BugSeverity
 from analyzers.llm_enricher import TokenUsage, PRICING
 from analyzers.bug_enricher import format_bug_findings_md
+from generators.code_citations import cite_md
+from generators.migration_recipes import RecipeBook
+
+_recipes = RecipeBook()
 
 FLAG_LABELS: dict[str, str] = {
     "missing_branch":        "⚠️  Branche manquante",
@@ -420,7 +424,8 @@ class BusinessDocGenerator:
                 insight = insights_by_flag.get(flag.id)
                 status = "✅ enrichi" if insight else "⬜ non enrichi"
                 validated = " ✔ validé" if (insight and insight.validated) else ""
-                lines.append(f"- [ ] **[{flag.location}]** {status}{validated}")
+                citation = cite_md(ir, flag)
+                lines.append(f"- [ ] **{citation}** {status}{validated}")
                 lines.append(f"  - Fragment : `{flag.fragment[:100]}`")
                 lines.append(f"  - Question : {flag.question}")
                 if insight:
@@ -429,6 +434,9 @@ class BusinessDocGenerator:
                     )
                     if insight.missing_context:
                         lines.append(f"  - ❓ Contexte manquant : {insight.missing_context}")
+                recipe_block = _recipes.render(flag)
+                if recipe_block:
+                    lines.append(recipe_block)
             lines.append("")
 
         # Section bugs techniques (si --bug-check a été lancé)

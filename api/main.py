@@ -26,7 +26,7 @@ from fastapi.staticfiles import StaticFiles
 # Bootstrap — permet les imports relatifs depuis la racine Rosetta
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from api.routers import audit, kb
+from api.routers import audit, impact, kb
 
 # =============================================================================
 # Description OpenAPI
@@ -125,6 +125,7 @@ def create_app() -> FastAPI:
 
     app.include_router(audit.router)
     app.include_router(kb.router)
+    app.include_router(impact.router)
 
     # Dashboard UI — servi sur /dashboard (aiofiles requis)
     ui_dir = Path(__file__).parent.parent / "ui"

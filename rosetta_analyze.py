@@ -178,6 +178,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Afficher le dashboard ROI (métriques cumulées)",
     )
     p.add_argument(
+        "--dashboard",
+        action="store_true",
+        help="Générer dashboard.html agrégé dans --output-dir après l'analyse",
+    )
+    p.add_argument(
         "--api",
         default=None,
         metavar="URL",
@@ -367,6 +372,9 @@ def main() -> None:
 
         if args.debug_rules:
             _print_debug_rules([result.ir])
+
+        if args.dashboard:
+            _generate_dashboard(output_dir)
         return
 
     # ── Mode batch ───────────────────────────────────────────────────────────
@@ -381,6 +389,21 @@ def main() -> None:
 
     if args.debug_rules:
         _print_debug_rules([r.ir for r in batch.results])
+
+    if args.dashboard:
+        _generate_dashboard(output_dir)
+
+
+def _generate_dashboard(output_dir: Path) -> None:
+    from generators.dashboard_generator import DashboardGenerator
+    gen = DashboardGenerator()
+    html = gen.generate(
+        ir_dir=output_dir,
+        impact_index=output_dir / "_impact_index.json",
+    )
+    dash_path = output_dir / "dashboard.html"
+    dash_path.write_text(html, encoding="utf-8")
+    print(f"      🖥  Dashboard → {dash_path}")
 
 
 if __name__ == "__main__":

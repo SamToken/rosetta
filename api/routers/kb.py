@@ -19,12 +19,15 @@ Endpoints écriture :
 from __future__ import annotations
 
 import asyncio
+import json
+import os
+import re
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Response
 
 from api.deps import KBServiceDep
-import re
 
 from api.schemas import (
     AddPendingRequest,
@@ -44,6 +47,56 @@ router = APIRouter(prefix="/kb", tags=["KB"])
 
 
 # =============================================================================
+# Relations sémantiques — agrégation depuis les IRs JSON
+# =============================================================================
+
+def _load_relations_from_irs() -> list[KBEntryResponse]:
+    """Scanne tous les IRs JSON archivés et agrège les relations sémantiques."""
+    base = Path(
+        os.environ.get("ROSETTA_API_OUTPUT", "~/rosetta-data/api_jobs")
+    ).expanduser()
+    if not base.exists():
+        return []
+
+    seen: set[str] = set()
+    entries: list[KBEntryResponse] = []
+
+    for json_file in sorted(base.rglob("*_business_logic.json")):
+        try:
+            data = json.loads(json_file.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        for rel in data.get("relations", []):
+            rid = rel.get("id", "")
+            if not rid or rid in seen:
+                continue
+            seen.add(rid)
+            from_e = rel.get("from_entity") or {}
+            to_e = rel.get("to_entity") or {}
+            fval = from_e.get("value", "?")
+            tval = to_e.get("value", "?")
+            kind = rel.get("kind", "?")
+            entries.append(KBEntryResponse(
+                code=f"{fval} → {tval}",
+                label=f"{kind} — {fval} → {tval}",
+                domaine=rel.get("domaine") or "—",
+                confiance=rel.get("confiance") or "medium",
+                section="relations",
+                notes=rel.get("semantique") or "",
+                source=rel.get("pattern") or "",
+                pending_questions=0,
+                lie_a=[],
+                relation_kind=kind,
+                relation_from=fval,
+                relation_to=tval,
+                relation_direction=rel.get("direction") or "one_way",
+                trouve_dans=rel.get("trouvé_dans") or [],
+            ))
+
+    return entries
+
+
+# =============================================================================
 # Lecture
 # =============================================================================
 
@@ -53,7 +106,13 @@ router = APIRouter(prefix="/kb", tags=["KB"])
     summary="Tableau de bord de la Knowledge Base",
 )
 async def get_stats(svc: KBServiceDep) -> KBStatsResponse:
-    s = await asyncio.to_thread(svc.stats)
+    s, rels = await asyncio.gather(
+        asyncio.to_thread(svc.stats),
+        asyncio.to_thread(_load_relations_from_irs),
+    )
+    rel_high     = sum(1 for r in rels if r.confiance == "high")
+    rel_medium   = sum(1 for r in rels if r.confiance == "medium")
+    rel_inferred = sum(1 for r in rels if r.confiance == "inferred")
     return KBStatsResponse(
         projet=s.projet,
         version=s.version,
@@ -65,10 +124,11 @@ async def get_stats(svc: KBServiceDep) -> KBStatsResponse:
         colonnes=s.colonnes,
         vues=s.vues,
         requetes=s.requetes,
-        total=s.total,
-        high=s.high,
-        medium=s.medium,
-        inferred=s.inferred,
+        relations=len(rels),
+        total=s.total + len(rels),
+        high=s.high + rel_high,
+        medium=s.medium + rel_medium,
+        inferred=s.inferred + rel_inferred,
         pending_total=s.pending_total,
         pending_high=s.pending_high,
     )
@@ -104,7 +164,10 @@ async def list_domains(svc: KBServiceDep) -> list[str]:
     summary="Liste toutes les entrées KB (toutes sections)",
 )
 async def list_entries(svc: KBServiceDep) -> list[KBEntryResponse]:
-    data = await asyncio.to_thread(svc.load)
+    data, rels = await asyncio.gather(
+        asyncio.to_thread(svc.load),
+        asyncio.to_thread(_load_relations_from_irs),
+    )
     sections = [
         ("codes",                  data.get("codes", {}) or {}),
         ("regles",                 data.get("regles", {}) or {}),
@@ -131,6 +194,7 @@ async def list_entries(svc: KBServiceDep) -> list[KBEntryResponse]:
                 pending_questions=pending_q,
                 lie_a=lie_a if isinstance(lie_a, list) else [lie_a],
             ))
+    entries.extend(rels)
     # Tri : high en tête, puis alphabétique par code
     order = {"high": 0, "medium": 1, "inferred": 2}
     entries.sort(key=lambda e: (order.get(e.confiance, 3), e.code.lower()))

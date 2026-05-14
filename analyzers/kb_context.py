@@ -88,6 +88,30 @@ class KBContextProvider:
                 meta.get("kb_domaine") or md_path.parent.name or ""
             )
 
+            if str(meta.get("kb_type")) == "relation":
+                from_meta = meta.get("from") or {}
+                to_meta = meta.get("to") or {}
+                kind = str(meta.get("kind", "implies"))
+                from_val = str(from_meta.get("value", "?"))
+                to_val = str(to_meta.get("value", "?"))
+                entry = KBEntry(
+                    nom=str(meta.get("kb_nom", md_path.stem)),
+                    kb_type="relation",
+                    domaine=domaine,
+                    confiance=str(meta.get("kb_confiance", "medium")),
+                    label=f"Relation {kind}: {from_val} → {to_val}",
+                    semantique=(
+                        _extract_section(content, "Sémantique")
+                        or _extract_section(content, "Semantique")
+                    ),
+                    fichier="",  # scoring par domaine uniquement
+                    source_path=md_path,
+                    concepts=_extract_section(content, "Conditions"),
+                )
+                self._entries.append(entry)
+                count += 1
+                continue
+
             entry = KBEntry(
                 nom=str(meta.get("kb_nom", md_path.stem)),
                 kb_type=str(meta.get("kb_type", "regle")),

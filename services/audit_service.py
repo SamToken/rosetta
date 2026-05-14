@@ -188,6 +188,7 @@ class AuditPipeline:
         self._call_graph: Any = None
         self._kb_provider: Any = None
         self._kb_lookup: Any = None
+        self._known_tokens: frozenset = frozenset()  # filtre O(1) pour RelationExtractor
 
         from telemetry.performance_logger import PerformanceLogger
         self._telemetry = PerformanceLogger()
@@ -231,6 +232,16 @@ class AuditPipeline:
                 self._p("  [KB] YAML lookup activé — tokens connus résolus sans LLM")
             except Exception:
                 pass
+
+        try:
+            from rosetta_kb import DEFAULT_KB_PATH
+            from services.kb_service import KBService
+            _kb_path = Path(DEFAULT_KB_PATH).expanduser().resolve()
+            if _kb_path.exists():
+                self._known_tokens = KBService(_kb_path).list_known_tokens()
+                self._p(f"  [KB] {len(self._known_tokens)} token(s) indexés pour RelationExtractor")
+        except Exception:
+            pass
 
     # ── Résolution des entrées ────────────────────────────────────────────────
 
@@ -295,9 +306,10 @@ class AuditPipeline:
         worker: AuditPipeline = cls.__new__(cls)
         worker.options = parent.options
         worker._p = progress
-        worker._call_graph = parent._call_graph    # read-only après setup()
+        worker._call_graph = parent._call_graph      # read-only après setup()
         worker._kb_provider = parent._kb_provider  # read-only après setup()
         worker._kb_lookup = parent._kb_lookup      # read-only après setup()
+        worker._known_tokens = parent._known_tokens  # frozenset immuable
         worker._telemetry = parent._telemetry      # partagé, protégé par Lock
         return worker
 
@@ -564,6 +576,17 @@ class AuditPipeline:
         detail = ", ".join(f"{n}×{t}" for t, n in sorted(counts.items()))
         self._p(f"        ✓ {len(ir.flags)} flags ({detail})")
 
+        # Étape 2b — Relations sémantiques (déterministe)
+        if self._known_tokens:
+            try:
+                from analyzers.relation_extractor import RelationExtractor
+                rel_extractor = RelationExtractor(kb_token_exists=self._known_tokens.__contains__)
+                ir.relations = rel_extractor.extract(ir)
+                if ir.relations:
+                    self._p(f"        ✓ {len(ir.relations)} relation(s) extraite(s)")
+            except Exception as exc:
+                self._p(f"        ⚠ RelationExtractor : {exc}")
+
         # Étape 3 — Enrichissement LLM
         enricher = None
         if opts.no_llm:
@@ -649,11 +672,16 @@ class AuditPipeline:
         self._p(f"        → {brief_rel}")
 
         # Étape 4b — Fiches KB (--kb-output-dir)
-        if opts.kb_output_dir and ir.llm_insights:
+        if opts.kb_output_dir and (ir.llm_insights or ir.relations):
             try:
                 from generators.kb_fiche_generator import KBFicheGenerator
                 kb_gen = KBFicheGenerator(opts.kb_output_dir, domain=opts.kb_domain)
                 created, updated, skipped = kb_gen.generate(ir, php_source_path=php_path)
+                if ir.relations:
+                    rc, ru, rs = kb_gen.generate_relations(ir, php_source_path=php_path)
+                    created += rc
+                    updated += ru
+                    skipped += rs
                 self._p(
                     f"  [KB] {created} fiche(s) créée(s), "
                     f"{updated} mise(s) à jour, {skipped} ignorée(s) (high)"
