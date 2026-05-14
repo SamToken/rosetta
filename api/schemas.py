@@ -197,6 +197,30 @@ class DeleteKBEntryResponse(BaseModel):
     message: str
 
 
+class UpdateConfianceRequest(BaseModel):
+    confiance: Literal["high", "medium", "inferred"]
+
+
+class UpdateConfianceResponse(BaseModel):
+    success: bool
+    code: str
+    confiance: str
+    message: str
+
+
+class ValidateRelationRequest(BaseModel):
+    relation_from: str
+    relation_to: str
+    relation_kind: str
+    confiance: Literal["high", "medium", "inferred"] = "high"
+
+
+class ValidateRelationResponse(BaseModel):
+    success: bool
+    updated: int
+    message: str
+
+
 class AddPendingRequest(BaseModel):
     """Paramètres pour ajouter une question dans la file PO."""
 

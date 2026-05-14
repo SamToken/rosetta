@@ -40,8 +40,12 @@ from api.schemas import (
     LookupResponse,
     PendingItemResponse,
     SearchResultResponse,
+    UpdateConfianceRequest,
+    UpdateConfianceResponse,
     ValidatePendingRequest,
     ValidatePendingResponse,
+    ValidateRelationRequest,
+    ValidateRelationResponse,
 )
 
 router = APIRouter(prefix="/kb", tags=["KB"])
@@ -403,6 +407,70 @@ async def add_pending(body: AddPendingRequest, svc: KBServiceDep) -> AddPendingR
         code=result.code,
         priorite=result.priorite,
         destination=result.destination,
+    )
+
+
+@router.patch(
+    "/relation/validate",
+    response_model=ValidateRelationResponse,
+    summary="Valider une relation sémantique (met à jour la confiance dans les JSON sources)",
+)
+async def validate_relation(body: ValidateRelationRequest) -> ValidateRelationResponse:
+    base = Path(os.environ.get("ROSETTA_API_OUTPUT", "~/rosetta-data/api_jobs")).expanduser()
+    if not base.exists():
+        raise HTTPException(status_code=404, detail="Dossier jobs introuvable")
+
+    updated = 0
+
+    def _update_jsons() -> int:
+        count = 0
+        for json_file in base.rglob("*_business_logic.json"):
+            try:
+                data = json.loads(json_file.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            changed = False
+            for rel in data.get("relations", []):
+                fv = (rel.get("from_entity") or {}).get("value", "")
+                tv = (rel.get("to_entity") or {}).get("value", "")
+                kind = rel.get("kind", "")
+                if fv == body.relation_from and tv == body.relation_to and kind == body.relation_kind:
+                    rel["confiance"] = body.confiance
+                    changed = True
+                    count += 1
+            if changed:
+                json_file.write_text(
+                    json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+                )
+        return count
+
+    updated = await asyncio.to_thread(_update_jsons)
+    if updated == 0:
+        raise HTTPException(status_code=404, detail="Relation introuvable dans les jobs archivés")
+    return ValidateRelationResponse(
+        success=True, updated=updated,
+        message=f"{updated} occurrence(s) mises à jour → {body.confiance}",
+    )
+
+
+@router.patch(
+    "/{code}/confiance",
+    response_model=UpdateConfianceResponse,
+    summary="Mettre à jour la confiance d'une entrée KB YAML",
+    responses={404: {"description": "Entrée introuvable"}},
+)
+async def update_confiance(
+    code: str,
+    body: UpdateConfianceRequest,
+    section: str = Query(..., description="Section KB cible"),
+    svc: KBServiceDep = None,
+) -> UpdateConfianceResponse:
+    updated = await asyncio.to_thread(svc.update_confiance, code, section, body.confiance)
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"'{code}' introuvable dans '{section}'")
+    return UpdateConfianceResponse(
+        success=True, code=code, confiance=body.confiance,
+        message=f"'{code}' → {body.confiance}",
     )
 
 
