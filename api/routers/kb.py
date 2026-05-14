@@ -139,6 +139,7 @@ async def get_stats(svc: KBServiceDep) -> KBStatsResponse:
         inferred=s.inferred + rel_inferred,
         pending_total=s.pending_total,
         pending_high=s.pending_high,
+        pending_po=s.pending_po,
     )
 
 

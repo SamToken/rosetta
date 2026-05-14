@@ -153,6 +153,7 @@ class KBStats:
     # Pending
     pending_total: int = 0
     pending_high: int = 0
+    pending_po: int = 0       # regles_metier avec confiance != high
     # Mode répertoire
     is_dir: bool = False
     files: list[FileEntry] = field(default_factory=list)
@@ -1075,6 +1076,10 @@ class KBService:
                 conf_counts[c] = conf_counts.get(c, 0) + 1
 
         pending_high = sum(1 for p in pending.values() if p.get("priorite") == "high")
+        pending_po = sum(
+            1 for e in regles_metier.values()
+            if isinstance(e, dict) and e.get("confiance") != "high"
+        )
 
         files: list[FileEntry] = []
         if self.kb_path.is_dir():
@@ -1106,6 +1111,7 @@ class KBService:
             inferred=conf_counts.get("inferred", 0),
             pending_total=len(pending),
             pending_high=pending_high,
+            pending_po=pending_po,
             is_dir=self.kb_path.is_dir(),
             files=files,
         )

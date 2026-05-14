@@ -108,6 +108,7 @@ class KBStatsResponse(BaseModel):
     inferred: int
     pending_total: int
     pending_high: int
+    pending_po: int = Field(0, description="Règles métier avec confiance != high (à valider PO)")
 
 
 class LookupResponse(BaseModel):
