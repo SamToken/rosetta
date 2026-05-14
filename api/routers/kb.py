@@ -134,6 +134,13 @@ async def get_stats(svc: KBServiceDep) -> KBStatsResponse:
     )
 
 
+_BASE_DOMAINS = {
+    "commun", "ticketing", "sla", "diagnostic", "interco",
+    "aircom", "airele", "orchestra", "scenario", "enrichissement-alarmes",
+    "oceane", "referentiel", "supervision",
+}
+
+
 @router.get(
     "/domains",
     response_model=list[str],
