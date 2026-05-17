@@ -97,15 +97,18 @@ _PAT_F_IF_HDR = re.compile(
     re.DOTALL,
 )
 
-# Equality comparisons inside a condition string
+# Equality comparisons inside a condition string — accepts plain $var or $arr['key']
 _PAT_F_CMP = re.compile(
-    r"\$(?P<var>\w+)\s*(?:==|===)\s*['\"](?P<value>[^'\"]{1,60})['\"]"
+    r"\$(?P<var>\w+)(?:\[['\"](?P<key>\w+)['\"]\])?\s*(?:==|===)\s*['\"](?P<value>[^'\"]{1,60})['\"]"
 )
 
 # returnLongLabel value in a PHP return array
 _PAT_F_LABEL = re.compile(
     r"['\"]returnLongLabel['\"]\s*=>\s*['\"](?P<label>[^'\"]+)['\"]"
 )
+
+# } else { — plain else block (NOT else if)
+_PAT_F_ELSE_HDR = re.compile(r"\}\s*else\s*\{")
 
 # return $this->methodName( delegate call
 _PAT_F_CALL = re.compile(
@@ -194,6 +197,7 @@ class RelationExtractor:
             relations.extend(self._extract_pattern_b(ep.raw_code, method, source_file, base_line))
             relations.extend(self._extract_pattern_c(ep.raw_code, method, source_file, base_line))
             relations.extend(self._extract_pattern_f(ep.raw_code, method, source_file, base_line))
+            relations.extend(self._extract_pattern_f_else(ep.raw_code, method, source_file, base_line))
             relations.extend(self._extract_pattern_g(ep.raw_code, method, source_file, base_line))
 
         self._link_see_also(relations, ir.flags)
@@ -529,7 +533,9 @@ class RelationExtractor:
                 val = cm.group("value")
                 if val not in outer_vals and m.start() > best_start:
                     best_start = m.start()
-                    best_cond = f"if (${cm.group('var')} == '{val}')"
+                    key = cm.group("key")
+                    key_part = f"['{key}']" if key else ""
+                    best_cond = f"if (${cm.group('var')}{key_part} == '{val}')"
         return best_cond
 
     def _extract_pattern_f(
@@ -547,9 +553,9 @@ class RelationExtractor:
 
             abs_line = base_line + code[: m.start()].count("\n")
 
-            # Extract == comparisons from the condition
+            # Extract == comparisons from the condition — (var, key_or_None, value)
             comparisons = [
-                (cm.group("var"), cm.group("value"))
+                (cm.group("var"), cm.group("key"), cm.group("value"))
                 for cm in _PAT_F_CMP.finditer(condition)
             ]
             if not comparisons:
@@ -557,7 +563,7 @@ class RelationExtractor:
 
             # Keep only situation codes (H0–H4, I1–I2…) or KB-known values
             valid = [
-                (var, val) for var, val in comparisons
+                (var, key, val) for var, key, val in comparisons
                 if _PAT_F_SITUATION.match(val) or self._kb_exists(val)
             ]
             if not valid:
@@ -575,10 +581,11 @@ class RelationExtractor:
                 cm.group("method") for cm in _PAT_F_CALL.finditer(body)
             ))
 
-            outer_vals = {val for _, val in valid}
+            outer_vals = {val for _, _, val in valid}
 
-            for var, val in valid:
-                cond_str = f"if (${var} == '{val}')"
+            for var, key, val in valid:
+                key_part = f"['{key}']" if key else ""
+                cond_str = f"if (${var}{key_part} == '{val}')"
 
                 for label, label_pos in label_positions.items():
                     key = ("f_label", val, label)
@@ -625,6 +632,60 @@ class RelationExtractor:
                             pattern="pattern_f",
                             conditions=[cond_str],
                         ))
+
+        return rels
+
+    def _extract_pattern_f_else(
+        self, code: str, method: str, source_file: str, base_line: int
+    ) -> list[Relation]:
+        """Branche else finale d'une chaîne if/elseif : heuristique 'sinon'."""
+        rels: list[Relation] = []
+        seen: set[tuple] = set()
+
+        for m in _PAT_F_ELSE_HDR.finditer(code):
+            open_pos = m.end() - 1
+            body = self._brace_body(code, open_pos)
+            if body is None:
+                continue
+
+            labels = [lm.group("label") for lm in _PAT_F_LABEL.finditer(body)]
+            if not labels:
+                continue
+
+            abs_line = base_line + code[: m.start()].count("\n")
+
+            # Chercher un code situation implicite dans le corps de l'else
+            situation_val: str | None = None
+            for lit_m in _PAT_LITERAL.finditer(body):
+                candidate = lit_m.group("token")
+                if _PAT_F_SITUATION.match(candidate):
+                    situation_val = candidate
+                    break
+
+            from_val = situation_val or "sinon"
+            from_type = "situation" if situation_val else "event"
+            cond_label = f"sinon ({situation_val})" if situation_val else "sinon"
+
+            for label in labels:
+                key = ("f_else", from_val, label)
+                if key in seen:
+                    continue
+                seen.add(key)
+                rels.append(Relation(
+                    id=self._next_id(),
+                    kind="transitions_to",
+                    from_entity=EntityRef(type=from_type, value=from_val),
+                    to_entity=EntityRef(type="event", value=label),
+                    direction="one_way",
+                    confiance="medium",
+                    trouvé_dans=[CodeRef(fichier=source_file, methode=method, ligne=abs_line)],
+                    semantique=(
+                        f"La branche else (situation implicite `{from_val}`) mène à "
+                        f"`{label}` dans `{method}`."
+                    ),
+                    pattern="pattern_f",
+                    conditions=[cond_label],
+                ))
 
         return rels
 
@@ -704,7 +765,7 @@ class RelationExtractor:
                 conditions=[cond],
             ))
 
-        # Step 2 — equality comparisons ($var == 'VALUE')
+        # Step 2 — equality comparisons ($var == 'VALUE' or $var['key'] == 'VALUE')
         for m in _PAT_F_CMP.finditer(code):
             var = m.group("var")
             val = m.group("value")
@@ -723,8 +784,10 @@ class RelationExtractor:
 
             # Only emit produces for situation codes or KB-known values
             if _PAT_F_SITUATION.match(val) or self._kb_exists(val):
+                key = m.group("key")
+                key_part = f"['{key}']" if key else ""
                 _emit_prod(call, val, "situation", cmp_pos,
-                           f"si ${var} == '{val}'")
+                           f"si ${var}{key_part} == '{val}'")
 
         # Step 3 — validity tests (isset, is_array, etc.)
         for m in _PAT_G_VALIDITY.finditer(code):
