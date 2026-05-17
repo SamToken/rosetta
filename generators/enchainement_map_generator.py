@@ -79,12 +79,11 @@ _METHOD_MAXLEN = 25
 
 
 def _shorten_label(text: str) -> str:
-    """Apply shortcuts first; for long labels: first 20 chars + 4-char hash for uniqueness."""
+    """Apply shortcuts first; otherwise truncate at _LABEL_MAXLEN chars."""
     if text in _LABEL_SHORTCUTS:
         return _LABEL_SHORTCUTS[text]
     if len(text) > _LABEL_MAXLEN:
-        h = hashlib.md5(text.encode()).hexdigest()[:4]
-        return text[:20] + f"…[{h}]"
+        return text[:_LABEL_MAXLEN - 1] + "…"
     return text
 
 
@@ -124,15 +123,23 @@ _STOP = frozenset({"de", "le", "la", "les", "du", "un", "une", "en", "et", "ou",
 
 
 def _make_short_id(text: str, taken: set[str]) -> str:
-    """'CONFIRMATION + DEMANDE INTERVENTION' → 'CONF_DEMA_INTE' (unique)."""
+    """'CONFIRMATION + DEMANDE INTERVENTION' → 'CONF_DEMA_INTE' (unique).
+
+    En cas de collision, ajoute un suffixe hash 4 chars dérivé du label
+    complet (pas du label tronqué) — le hash reste dans l'ID, jamais dans
+    le label affiché.
+    """
     words = re.findall(r'[A-Za-z][A-Za-z0-9]*', text)
     meaningful = [w for w in words if len(w) >= 3 and w.lower() not in _STOP]
     parts = [w[:4].upper() for w in meaningful[:4]]
     base = "_".join(parts) if parts else "NODE"
-    cand = base
+    if base not in taken:
+        return base
+    h = hashlib.md5(text.encode()).hexdigest()[:4]
+    cand = f"{base}_{h}"
     n = 2
     while cand in taken:
-        cand = f"{base}_{n}"
+        cand = f"{base}_{h}_{n}"
         n += 1
     return cand
 
