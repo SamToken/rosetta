@@ -21,6 +21,7 @@ CLI:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sys
@@ -78,11 +79,12 @@ _METHOD_MAXLEN = 25
 
 
 def _shorten_label(text: str) -> str:
-    """Apply shortcuts first; otherwise truncate at _LABEL_MAXLEN chars."""
+    """Apply shortcuts first; for long labels: first 20 chars + 4-char hash for uniqueness."""
     if text in _LABEL_SHORTCUTS:
         return _LABEL_SHORTCUTS[text]
     if len(text) > _LABEL_MAXLEN:
-        return text[:_LABEL_MAXLEN - 1] + "…"
+        h = hashlib.md5(text.encode()).hexdigest()[:4]
+        return text[:20] + f"…[{h}]"
     return text
 
 
@@ -254,6 +256,75 @@ def _node_cluster(val: str, etype: str) -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# Sinon inference — remplace les nœuds 'sinon' par la situation implicite
+# ---------------------------------------------------------------------------
+
+def _infer_sinon(relations: list[dict]) -> list[dict]:
+    """Résout les nœuds 'sinon' en deux passes :
+
+    Passe 1 — substitution : si Pattern G produit exactement 1 situation
+    non encore testée dans Pattern F, remplace tous les from='sinon' par
+    cette valeur (ex : call produit H1/H2/H3, testés H1/H2 → sinon = H3).
+
+    Passe 2 — déduplication : supprime les relations sinon → X quand X est
+    déjà la cible d'une situation nommée (H1/H2/H3 → X). Élimine les doublons
+    produits par les else imbriqués à l'intérieur des branches if/elseif.
+    """
+    _PAT_SIT = re.compile(r'^[A-Z]\d{0,2}$')
+
+    # ── Passe 1 : inférer la situation du else final via Pattern G ──────
+    call_produces: dict[str, set[str]] = {}
+    for r in relations:
+        if r.get("pattern") == "pattern_g" and r.get("kind") == "produces":
+            val = (r.get("to_entity") or {}).get("value", "")
+            if _PAT_SIT.match(val):
+                call = (r.get("from_entity") or {}).get("value", "")
+                call_produces.setdefault(call, set()).add(val)
+
+    f_tested: set[str] = {
+        (r.get("from_entity") or {}).get("value", "")
+        for r in relations
+        if (r.get("pattern") == "pattern_f"
+            and r.get("kind") == "transitions_to"
+            and _PAT_SIT.match((r.get("from_entity") or {}).get("value", "")))
+    }
+
+    inferred: set[str] = set()
+    for produced in call_produces.values():
+        inferred.update(produced - f_tested)
+
+    if len(inferred) == 1:
+        inferred_val = next(iter(inferred))
+        substituted = []
+        for r in relations:
+            if ((r.get("from_entity") or {}).get("value") == "sinon"
+                    and r.get("pattern") == "pattern_f"):
+                r = dict(r)
+                r["from_entity"] = {"type": "situation", "value": inferred_val}
+                r["conditions"] = [f"sinon ({inferred_val})"]
+            substituted.append(r)
+        relations = substituted
+
+    # ── Passe 2 : supprimer sinon → X si X déjà couvert par H_any → X ──
+    covered_targets: set[str] = {
+        (r.get("to_entity") or {}).get("value", "")
+        for r in relations
+        if (r.get("pattern") == "pattern_f"
+            and r.get("kind") == "transitions_to"
+            and _PAT_SIT.match((r.get("from_entity") or {}).get("value", "")))
+    }
+
+    return [
+        r for r in relations
+        if not (
+            (r.get("from_entity") or {}).get("value") == "sinon"
+            and r.get("pattern") == "pattern_f"
+            and (r.get("to_entity") or {}).get("value", "") in covered_targets
+        )
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Core: generate_map
 # ---------------------------------------------------------------------------
 
@@ -282,8 +353,11 @@ def generate_map(
             return False
         return True
 
+    # Scope + infer sinon situations from Pattern G (scoped only)
+    scoped = _infer_sinon([r for r in relations if _keep(r)])
+
     useful = [
-        r for r in relations
+        r for r in scoped
         if (
             (
                 r.get("kind") in ("transitions_to", "implies", "requires")
@@ -294,17 +368,14 @@ def generate_map(
                 and (r.get("to_entity") or {}).get("value", "") not in _TRIVIAL_PRODUCES
             )
         )
-        and _keep(r)
     ]
 
     # Pattern G — inject source modules even when all their produces are trivial.
     # We register the module node in the "analyse" cluster without adding an edge,
     # so the "Phase d'analyse" cluster shows callers detected by Pattern G.
     _g_module_nodes: list[tuple[str, str]] = []  # (value, etype)
-    for r in relations:
+    for r in scoped:
         if r.get("pattern") != "pattern_g" or r.get("kind") != "requires":
-            continue
-        if not _keep(r):
             continue
         te = (r.get("to_entity") or {})
         val, etype = te.get("value", ""), te.get("type", "module")
@@ -409,6 +480,17 @@ def generate_map(
         lines.append("    %% Nœuds non classés")
         for n in ungrouped_labeled:
             lines.append(_node_def(n, "    "))
+        lines.append("")
+
+    # Invisible ordering hints to force LR layout: Analyse ← Situations ← Sorties
+    _an = sorted(by_cluster.get("analyse", []))
+    _sn = sorted(by_cluster.get("situations", []))
+    _on = sorted(by_cluster.get("sorties", []))
+    if _an and _sn:
+        lines.append(f"    {_an[0]} ~~~ {_sn[0]}")
+    if _sn and _on:
+        lines.append(f"    {_sn[0]} ~~~ {_on[0]}")
+    if (_an and _sn) or (_sn and _on):
         lines.append("")
 
     # Arrows
