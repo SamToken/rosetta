@@ -406,12 +406,15 @@ def main() -> None:
 
 
 def _generate_enchainement_map(output_dir: Path) -> None:
-    from generators.enchainement_map_generator import _load_relations, generate_md
+    from generators.enchainement_map_generator import _load_relations, generate_md, generate_service_maps
     relations = _load_relations(output_dir)
     md = generate_md(relations, title="Cartographie des enchaînements")
     map_path = output_dir / "enchainement_map.md"
     map_path.write_text(md, encoding="utf-8")
     print(f"      🗺  Carte enchaînements → {map_path}")
+    maps_dir = output_dir / "maps"
+    written = generate_service_maps(relations, maps_dir)
+    print(f"      🗂  Cartes par service → {maps_dir}/ ({len(written)} fichiers)")
 
 
 def _generate_dashboard(output_dir: Path) -> None:
