@@ -380,6 +380,9 @@ def main() -> None:
 
         if args.dashboard:
             _generate_dashboard(output_dir)
+
+        if args.map:
+            _generate_enchainement_map(output_dir)
         return
 
     # ── Mode batch ───────────────────────────────────────────────────────────

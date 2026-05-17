@@ -99,6 +99,9 @@ def _job_to_response(job: Job, include_logs: bool = True) -> JobStatusResponse:
     logs = [log.message for log in job.logs] if include_logs else []
     # Dashboard auto-généré à la demande — disponible dès qu'il y a des résultats
     has_dashboard = result is not None
+    has_enchainement_map = (
+        result is not None and (_job_output_dir(job.id) / "enchainement_map.md").exists()
+    )
 
     return JobStatusResponse(
         job_id=job.id,
@@ -110,6 +113,7 @@ def _job_to_response(job: Job, include_logs: bool = True) -> JobStatusResponse:
         error=job.error,
         result=result,
         has_dashboard=has_dashboard,
+        has_enchainement_map=has_enchainement_map,
     )
 
 
@@ -391,6 +395,58 @@ def _get_job_output_dir(job_id: str) -> Path | None:
             return Path(result.output_dir)
         except Exception:
             return None
+
+
+_ROSETTA_ROOT = Path(__file__).parent.parent.parent
+
+
+@router.get(
+    "/enchainement-map",
+    response_class=PlainTextResponse,
+    summary="Contenu du dernier enchainement_map.md généré (CLI ou job)",
+)
+async def get_enchainement_map(path: str = Query(default="output/enchainement_map.md")) -> str:
+    """Retourne le Markdown de la carte d'enchaînements Mermaid.
+
+    Par défaut lit output/enchainement_map.md relatif à la racine Rosetta.
+    Passer ?path= pour pointer vers n'importe quel .md dans l'arbre des jobs.
+    """
+    candidate = (_ROSETTA_ROOT / path).resolve()
+    allowed_roots = [
+        _ROSETTA_ROOT.resolve(),
+        Path("~/rosetta-data").expanduser().resolve(),
+    ]
+    if not any(str(candidate).startswith(str(r)) for r in allowed_roots):
+        raise HTTPException(status_code=403, detail="Accès refusé.")
+    if not candidate.exists() or candidate.suffix != ".md":
+        raise HTTPException(status_code=404, detail=f"Fichier introuvable : {path}")
+    return candidate.read_text(encoding="utf-8")
+
+
+@router.get(
+    "/maps",
+    response_model=list[dict],
+    summary="Lister les cartes Mermaid disponibles dans output/maps/",
+)
+async def list_maps() -> list[dict]:
+    """Retourne la liste des cartes .md disponibles dans output/maps/.
+
+    Chaque entrée: {"label": "AutomatisationCarte", "path": "output/maps/map_AutomatisationCarte.md"}
+    """
+    maps_dir = _ROSETTA_ROOT / "output" / "maps"
+    if not maps_dir.exists():
+        return []
+    result = []
+    for f in sorted(maps_dir.glob("*.md")):
+        name = f.stem  # e.g. "map_AutomatisationCarte" or "_all_enchainements"
+        if name.startswith("map_"):
+            label = name[4:]  # strip "map_"
+        elif name == "_all_enchainements":
+            label = "Tous les services"
+        else:
+            label = name
+        result.append({"label": label, "path": f"output/maps/{f.name}"})
+    return result
 
 
 @router.get(
@@ -694,3 +750,5 @@ async def get_job_flags(job_id: str) -> list[FlagOut]:
     if output_dir is None:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' introuvable ou sans résultats.")
     return await asyncio.to_thread(_load_flags_with_recipes, output_dir)
+
+

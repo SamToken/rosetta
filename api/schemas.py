@@ -78,6 +78,7 @@ class JobStatusResponse(BaseModel):
     error: Optional[str] = None
     result: Optional[AuditJobResult] = None
     has_dashboard: bool = Field(False, description="True si dashboard.html est disponible pour ce job")
+    has_enchainement_map: bool = Field(False, description="True si enchainement_map.md existe dans l'output du job")
 
 
 # =============================================================================

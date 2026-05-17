@@ -75,6 +75,7 @@ _PAT_B_PAIR = re.compile(
 # Pattern C — switch/case transitions et dispatch
 # ---------------------------------------------------------------------------
 
+
 _PAT_C_SWITCH_HDR = re.compile(
     r"switch\s*\(\s*\$(?P<var>\w+(?:\s*\[['\"][\w\s]+['\"]\])?)\s*\)\s*\{"
 )
@@ -85,6 +86,78 @@ _PAT_C_SVC_PROP = re.compile(r"\$(?P<var>\w+)\s*=\s*\$this\s*->\s*(?P<svc>\w+[Ss
 _PAT_C_APP_GET = re.compile(
     r"\$this\s*->\s*app\s*->\s*get\s*\(['\"](?P<svc>[\w]+)['\"]\)\s*->\s*(?P<meth>\w+)\s*\("
 )
+
+# ---------------------------------------------------------------------------
+# Pattern F — arbres de décision if/elseif → return returnLongLabel
+# ---------------------------------------------------------------------------
+
+# Match if/elseif header; condition captured between parens (no '{' inside)
+_PAT_F_IF_HDR = re.compile(
+    r"(?:else\s*)?if\s*\((?P<condition>[^{]{1,800})\)\s*\{",
+    re.DOTALL,
+)
+
+# Equality comparisons inside a condition string
+_PAT_F_CMP = re.compile(
+    r"\$(?P<var>\w+)\s*(?:==|===)\s*['\"](?P<value>[^'\"]{1,60})['\"]"
+)
+
+# returnLongLabel value in a PHP return array
+_PAT_F_LABEL = re.compile(
+    r"['\"]returnLongLabel['\"]\s*=>\s*['\"](?P<label>[^'\"]+)['\"]"
+)
+
+# return $this->methodName( delegate call
+_PAT_F_CALL = re.compile(
+    r"return\s+\$this\s*->\s*(?P<method>\w+)\s*\("
+)
+
+# Situation code: one uppercase letter + 0–2 digits (H0–H4, I1–I2…)
+_PAT_F_SITUATION = re.compile(r"^[A-Z]\d{0,2}$")
+
+# ---------------------------------------------------------------------------
+# Pattern G — variable assigned from service call, then tested
+# ---------------------------------------------------------------------------
+
+# $var = $this->app->get('Svc')->method(  |  $this->svc->method(  |  $this->method(
+_PAT_G_ASSIGN = re.compile(
+    r"\$(?P<var>[a-zA-Z_]\w{1,49})\s*=\s*"
+    r"(?:"
+    r"\$this\s*->\s*app\s*->\s*get\s*\(\s*['\"](?P<svc1>\w+)['\"]\s*\)\s*->\s*(?P<met1>\w+)\s*\("
+    r"|\$this\s*->\s*(?P<svc2>(?!app\b)\w+)\s*->\s*(?P<met2>\w+)\s*\("
+    r"|\$this\s*->\s*(?P<met3>\w+)\s*\("
+    r")",
+)
+
+# if [(!)] (isset|is_array|key_exists|empty|is_null) ($var  — validity test
+_PAT_G_VALIDITY = re.compile(
+    r"if\s*\(\s*"
+    r"(?P<negation>!)?"
+    r"(?P<test>isset|is_array|key_exists|empty|is_null)"
+    r"\s*\(\s*"
+    r"(?:['\"][^'\"]*['\"]\s*,\s*)?"  # optional first arg for key_exists
+    r"\$(?P<var>[a-zA-Z_]\w{1,49})",
+)
+
+_G_TRIVIAL_VARS: frozenset[str] = frozenset({
+    "result", "return", "value", "data", "tmp",
+    "i", "j", "k", "key", "val", "item", "row", "record",
+})
+
+_G_VALIDITY_VALUES: dict[tuple[str, str], str] = {
+    ("!", "isset"):      "absent",
+    ("",  "isset"):      "présent",
+    ("!", "is_array"):   "non-array",
+    ("",  "is_array"):   "array",
+    ("!", "key_exists"): "clé absente",
+    ("",  "key_exists"): "clé présente",
+    ("!", "empty"):      "non vide",
+    ("",  "empty"):      "vide",
+    ("",  "is_null"):    "null",
+    ("!", "is_null"):    "non null",
+}
+
+_G_MAX_LINES = 50
 
 
 class RelationExtractor:
@@ -120,6 +193,8 @@ class RelationExtractor:
             relations.extend(self._extract_pattern_a(ep.raw_code, method, source_file, base_line))
             relations.extend(self._extract_pattern_b(ep.raw_code, method, source_file, base_line))
             relations.extend(self._extract_pattern_c(ep.raw_code, method, source_file, base_line))
+            relations.extend(self._extract_pattern_f(ep.raw_code, method, source_file, base_line))
+            relations.extend(self._extract_pattern_g(ep.raw_code, method, source_file, base_line))
 
         self._link_see_also(relations, ir.flags)
         return relations
@@ -408,6 +483,270 @@ class RelationExtractor:
                         pattern="pattern_c",
                         conditions=[f"switch sur ${switch_var}"],
                     ))
+
+        return rels
+
+    # -------------------------------------------------------------------------
+    # Pattern F — arbres de décision if/elseif → return returnLongLabel
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def _brace_body(code: str, open_pos: int) -> str | None:
+        """Return the text between matched braces; open_pos must point to '{'."""
+        depth = 0
+        for i, ch in enumerate(code[open_pos:]):
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return code[open_pos + 1 : open_pos + i]
+        return None
+
+    @staticmethod
+    def _discriminating_cond(body: str, label_start: int, outer_vals: set[str]) -> str | None:
+        """Return the innermost non-trivial if-condition that contains label_start.
+
+        Scans all if-headers in body that start before label_start, picks the
+        deepest one whose block actually contains label_start and whose == value
+        is not in outer_vals (i.e. not the situation-code we already know).
+        """
+        best_start = -1
+        best_cond: str | None = None
+        for m in _PAT_F_IF_HDR.finditer(body):
+            if m.start() >= label_start:
+                break
+            open_pos = m.end() - 1
+            inner = RelationExtractor._brace_body(body, open_pos)
+            if inner is None:
+                continue
+            inner_start = open_pos + 1
+            inner_end = open_pos + len(inner) + 1
+            if not (inner_start <= label_start <= inner_end):
+                continue
+            cond_str = m.group("condition")
+            for cm in _PAT_F_CMP.finditer(cond_str):
+                val = cm.group("value")
+                if val not in outer_vals and m.start() > best_start:
+                    best_start = m.start()
+                    best_cond = f"if (${cm.group('var')} == '{val}')"
+        return best_cond
+
+    def _extract_pattern_f(
+        self, code: str, method: str, source_file: str, base_line: int
+    ) -> list[Relation]:
+        rels: list[Relation] = []
+        seen: set[tuple] = set()
+
+        for m in _PAT_F_IF_HDR.finditer(code):
+            condition = m.group("condition")
+            open_pos = m.end() - 1  # last char of match is '{'
+            body = self._brace_body(code, open_pos)
+            if body is None:
+                continue
+
+            abs_line = base_line + code[: m.start()].count("\n")
+
+            # Extract == comparisons from the condition
+            comparisons = [
+                (cm.group("var"), cm.group("value"))
+                for cm in _PAT_F_CMP.finditer(condition)
+            ]
+            if not comparisons:
+                continue
+
+            # Keep only situation codes (H0–H4, I1–I2…) or KB-known values
+            valid = [
+                (var, val) for var, val in comparisons
+                if _PAT_F_SITUATION.match(val) or self._kb_exists(val)
+            ]
+            if not valid:
+                continue
+
+            # Track label positions: label → first occurrence offset in body
+            label_positions: dict[str, int] = {}
+            for lm in _PAT_F_LABEL.finditer(body):
+                label = lm.group("label")
+                if label not in label_positions:
+                    label_positions[label] = lm.start()
+
+            # All return $this->method() delegate calls in this branch
+            calls = list(dict.fromkeys(
+                cm.group("method") for cm in _PAT_F_CALL.finditer(body)
+            ))
+
+            outer_vals = {val for _, val in valid}
+
+            for var, val in valid:
+                cond_str = f"if (${var} == '{val}')"
+
+                for label, label_pos in label_positions.items():
+                    key = ("f_label", val, label)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    discrim = self._discriminating_cond(body, label_pos, outer_vals)
+                    conditions = [cond_str] + ([discrim] if discrim else [])
+                    rels.append(Relation(
+                        id=self._next_id(),
+                        kind="transitions_to",
+                        from_entity=EntityRef(type="situation", value=val),
+                        to_entity=EntityRef(type="event", value=label),
+                        direction="one_way",
+                        confiance="high",
+                        trouvé_dans=[CodeRef(fichier=source_file, methode=method, ligne=abs_line)],
+                        semantique=(
+                            f"La situation `{val}` mène à `{label}` "
+                            f"dans `{method}` (branche if)."
+                        ),
+                        pattern="pattern_f",
+                        conditions=conditions,
+                    ))
+
+                # Emit delegate-call relations only when the block has no terminal labels
+                if not label_positions:
+                    for call in calls:
+                        key = ("f_call", val, call)
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        rels.append(Relation(
+                            id=self._next_id(),
+                            kind="requires",
+                            from_entity=EntityRef(type="situation", value=val),
+                            to_entity=EntityRef(type="module", value=f"this.{call}"),
+                            direction="one_way",
+                            confiance="high",
+                            trouvé_dans=[CodeRef(fichier=source_file, methode=method, ligne=abs_line)],
+                            semantique=(
+                                f"La situation `{val}` délègue à `this.{call}` "
+                                f"dans `{method}` (branche if)."
+                            ),
+                            pattern="pattern_f",
+                            conditions=[cond_str],
+                        ))
+
+        return rels
+
+    # -------------------------------------------------------------------------
+    # Pattern G — variable produite par un appel, puis testée
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def _normalize_g_call(m: re.Match) -> str:
+        """Normalize a Pattern G assignment match to a readable call target."""
+        svc1 = m.group("svc1")
+        if svc1:
+            return f"{svc1}.{m.group('met1')}"
+        svc2 = m.group("svc2")
+        if svc2:
+            return f"{svc2}.{m.group('met2')}"
+        met3 = m.group("met3")
+        return f"this.{met3}" if met3 else ""
+
+    def _extract_pattern_g(
+        self, code: str, method: str, source_file: str, base_line: int
+    ) -> list[Relation]:
+        rels: list[Relation] = []
+        seen_req: set[tuple[str, str]] = set()   # (var, call)
+        seen_prod: set[tuple[str, str]] = set()  # (call, value)
+
+        # Step 1 — build assignment map: var → (call_target, char_pos)
+        assignments: dict[str, tuple[str, int]] = {}
+        for m in _PAT_G_ASSIGN.finditer(code):
+            var = m.group("var")
+            if var.lower() in _G_TRIVIAL_VARS:
+                continue
+            call = self._normalize_g_call(m)
+            if not call:
+                continue
+            if var not in assignments:
+                assignments[var] = (call, m.start())
+
+        if not assignments:
+            return rels
+
+        def _emit_req(var: str, call: str, assign_pos: int) -> None:
+            key = (var, call)
+            if key in seen_req:
+                return
+            seen_req.add(key)
+            aline = base_line + code[:assign_pos].count("\n")
+            rels.append(Relation(
+                id=self._next_id(),
+                kind="requires",
+                from_entity=EntityRef(type="variable", value=var),
+                to_entity=EntityRef(type="module", value=call),
+                direction="one_way",
+                confiance="high",
+                trouvé_dans=[CodeRef(fichier=source_file, methode=method, ligne=aline)],
+                semantique=f"`${var}` est produit par `{call}` dans `{method}`.",
+                pattern="pattern_g",
+            ))
+
+        def _emit_prod(call: str, val: str, val_type: str, pos: int,
+                       cond: str) -> None:
+            key = (call, val)
+            if key in seen_prod:
+                return
+            seen_prod.add(key)
+            pline = base_line + code[:pos].count("\n")
+            rels.append(Relation(
+                id=self._next_id(),
+                kind="produces",
+                from_entity=EntityRef(type="module", value=call),
+                to_entity=EntityRef(type=val_type, value=val),
+                direction="one_way",
+                confiance="medium",
+                trouvé_dans=[CodeRef(fichier=source_file, methode=method, ligne=pline)],
+                semantique=f"`{call}` peut produire `{val}` (observé dans `{method}`).",
+                pattern="pattern_g",
+                conditions=[cond],
+            ))
+
+        # Step 2 — equality comparisons ($var == 'VALUE')
+        for m in _PAT_F_CMP.finditer(code):
+            var = m.group("var")
+            val = m.group("value")
+            if var not in assignments:
+                continue
+            call, assign_pos = assignments[var]
+            cmp_pos = m.start()
+            if assign_pos >= cmp_pos:
+                continue
+            a_line = code[:assign_pos].count("\n")
+            c_line = code[:cmp_pos].count("\n")
+            if c_line - a_line > _G_MAX_LINES:
+                continue
+
+            _emit_req(var, call, assign_pos)
+
+            # Only emit produces for situation codes or KB-known values
+            if _PAT_F_SITUATION.match(val) or self._kb_exists(val):
+                _emit_prod(call, val, "situation", cmp_pos,
+                           f"si ${var} == '{val}'")
+
+        # Step 3 — validity tests (isset, is_array, etc.)
+        for m in _PAT_G_VALIDITY.finditer(code):
+            var = m.group("var")
+            if var not in assignments:
+                continue
+            call, assign_pos = assignments[var]
+            v_pos = m.start()
+            if assign_pos >= v_pos:
+                continue
+            a_line = code[:assign_pos].count("\n")
+            v_line = code[:v_pos].count("\n")
+            if v_line - a_line > _G_MAX_LINES:
+                continue
+
+            _emit_req(var, call, assign_pos)
+
+            negation = m.group("negation") or ""
+            test = m.group("test")
+            val = _G_VALIDITY_VALUES.get((negation, test), f"{negation}{test}")
+            _emit_prod(call, val, "event", v_pos,
+                       f"{negation}{test}(${var})")
 
         return rels
 

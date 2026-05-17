@@ -707,3 +707,168 @@ Puis importer :
 - [ ] Brief PO cross-domaine — regrouper les pending par domaine métier (pas par fichier PHP) : tout ce qui touche OCEANE ensemble, tout ce qui touche les modules ensemble, etc. — priorité après le KB humain (réunion fusion cloturer ticket)
 - [ ] **Cockpit — Supprimer / archiver une entrée KB** : bouton poubelle dans la table KB → `DELETE /kb/{code}` → confirmation → invalidation query. Actuellement on édite le YAML à la main.
 - [ ] **Cockpit — Panel détail entrée KB** : clic sur une ligne de la table → panneau latéral (ou modal) affichant toutes les notes, lié_à, fichiers sources, historique confiance. La table truncate les notes aujourd'hui.
+
+---
+
+## 11. NEXT TASKS
+
+### Immédiat (avant prochaine session dev)
+
+#### 1. Lancer la migration des règles
+```bash
+cp -r rosetta-data/kb/ rosetta-data/kb_backup/
+python scripts/migrate_regles.py rosetta-data/kb/
+```
+Vérifie que l'inventaire KB affiche : Règles métier ~24, Bugs connus ~36, Observations ~14.
+
+#### 2. Enrichir la KB avec les tokens modules métier
+Capturer via l'API `/kb/capture` :
+- `Rendre la main` (domaine: scenario, type: code)
+- `DERCO TRANS` (domaine: scenario, type: code)
+- Tous les noms de modules visibles dans `ConfigScenarioService.php::formatModules()`
+- Les tokens remontés dans les logs "À enrichir" après chaque analyse
+
+Sans ça, Pattern C ne produit aucune relation sur ConfigScenario.
+
+#### 3. Batch d'analyses sur les fichiers clés
+```bash
+for f in EnchainementController.php \
+         EnchainementParametrableController.php \
+         ScenarioExecutionController.php \
+         ConfigScenarioService.php \
+         ConfigScenarioExecutionController.php \
+         AssistantController.php \
+         OrchestraService.php \
+         VariableService.php \
+         AutomatisationDslamService.php \
+         AutomatisationMachinService.php; do
+  python rosetta_analyze.py /chemin/vers/astro/.../$f \
+    --kb-root ./rosetta-data/kb/ --no-llm --dashboard --map
+done
+
+python rosetta_impact.py build ./output/ -o ./output/ --kb-root ./rosetta-data/kb/
+python rosetta_kb.py import ./output/kb_fiches/
+```
+
+#### 4. Valider avec le PO les ~10 règles métier en attente
+Page Cockpit → Pending PO. Valider ou reclasser chaque entrée.
+
+#### 5. Inspecter la carte Mermaid
+Ouvrir `output/enchainement_map.md` dans VS Code (Ctrl+Shift+V) ou
+via le bouton "🗺 Carte" dans le Cockpit. Vérifier que les transitions
+sont correctes et lisibles.
+
+---
+
+### Court terme (prochaine session dev)
+
+#### 6. `rosetta explain Fichier.php::methode`
+Nouvelle commande CLI qui agrège en une page :
+- Résumé de la méthode (3 lignes, LLM ou template)
+- Bugs connus (lookup KB `bug_connu` sur les tokens de la méthode)
+- Flags avec recettes migration
+- Relations métier touchées
+- "Appelé par" / "Appelle" (nécessite call graph branché)
+- Impact cross-fichier des tokens de la méthode
+
+Fichiers à créer : `rosetta_explain.py` (CLI) + `generators/explain_generator.py`.
+Dépend de : call graph (`analyzers/call_graph.py` existe mais pas branché).
+
+#### 7. Import CSV des enchaînements paramétrables Oracle
+Script `rosetta_import_enchainements.py` qui :
+- Lit un CSV exporté de `SCENARIO_EXECUTION` / `SCENARIO_EXECUTION_MODULE`
+- Colonnes attendues : `situation_depart`, `situation_arrivee`, `module`, `condition`, `domaine`
+- Crée des relations `transitions_to` avec `source: config_db`, `confiance: high`
+- Import dans la KB via `rosetta_kb.py import`
+
+Ça donne les 60% manquants de la cartographie (les enchaînements paramétrables
+qui ne sont pas dans le code PHP).
+
+#### 8. Corriger Colonnes/Vues Oracle à 0
+Diagnostic dans `services/kb_service.py` :
+- Vérifier `_IMPORT_TYPE_ROUTES` pour `colonne` et `vue`
+- Vérifier que `KBFicheGenerator` émet des fiches `kb_type: colonne`
+  quand le token est de kind `column` / `table` / `view_path`
+- Si les fiches existent dans `output/kb_fiches/` mais pas dans la KB → routing
+- Si aucune fiche n'est générée → generator
+
+#### 9. Badge bug connu sur les flags (page Job)
+Dans l'onglet Flags & Recettes :
+- Pour chaque flag, lookup KB sur fragment/token
+- Si match `bug_connu` → badge `🐛 Bug connu` + label + statut corrigé
+- Si `corrige: true` → badge grisé `🐛 Corrigé`
+- Badge cliquable → détail du bug
+
+Backend déjà prêt (`GET /audit/{job_id}/flags`), frontend à câbler.
+
+#### 10. Dropdown de reclassification dans la page KB
+Sur chaque ligne du tableau KB, dropdown pour changer le `kb_type` :
+- Code ↔ Règle métier ↔ Relation
+- Persiste dans le YAML via `PUT /kb/entries/{id}/type`
+- Le PO corrige les erreurs de l'heuristique de classification
+
+---
+
+### Moyen terme (sessions suivantes)
+
+#### 11. Recettes migration additionnelles (9 → 30)
+Ajouter dans `generators/migration_recipes.py` :
+- `Zend_Form` → Symfony Form
+- `Zend_Auth` → Security bundle
+- `Zend_Db_Select` → Doctrine QueryBuilder
+- `Zend_Log` → Monolog
+- `Zend_Cache` → Symfony Cache
+- `Zend_Translate` → Symfony Translation
+- `Zend_Validate` → Symfony Validator
+- `Zend_Controller_Plugin` → EventSubscriber
+- `Zend_Controller_Action_Helper` → Controller argument resolver
+- `Zend_Paginator` → KnpPaginatorBundle
+- `Zend_Navigation` → KnpMenuBundle
+- `Zend_Config_Ini` → `.env` + `services.yaml`
+- `Zend_Application_Bootstrap` → Kernel + bundles
+- `Zend_Db_Table` → Doctrine Entity + Repository
+- `Zend_Session_Namespace` → SessionInterface typed bags
+- `Zend_Http_Client` → HttpClient (Symfony)
+- `Zend_Json` → `json_encode/decode` natif
+- `Zend_Date` → Carbon ou DateTimeImmutable
+- `Zend_Filter` → Symfony Form DataTransformer
+- `Zend_Acl` → Symfony Voter
+- `Zend_Layout` → Twig base template + blocks
+
+#### 12. Patterns D + E dans RelationExtractor
+- **Pattern D** — séquence de modules dans `executeConfigScenario()`
+  (dispatch switch/case → `implies(code, service.method)`)
+- **Pattern E** — appels API dans `Automatisation*Service.php`
+  (`requires(service, api.method)`)
+
+#### 13. Dashboard v2 — vue native Next.js
+Recréer les 4 vues du dashboard en composants React dans le Cockpit.
+Données live via API, même design system, plus de `file://`.
+
+#### 14. Carte des enchaînements interactive dans le Cockpit
+Nœuds cliquables → détail situation en KB. Filtrage par domaine.
+Légende : trait plein (legacy) / pointillé (paramétrable) / gris (inféré).
+
+---
+
+### Long terme
+
+#### 15. Doc par feature (cross-fichier)
+Générer une doc par feature métier (ouverture d'enchaînement, exécution
+de scénario) au lieu de par contrôleur. Exploite call graph + relations.
+
+#### 16. Détection code mort
+`is_called_from_other_files: bool` sur `EntryPoint`. Croise impact
+index avec call graph.
+
+#### 17. Call graph intégré
+`analyzers/call_graph.py` existe mais n'est pas branché en prod.
+Nécessaire pour `rosetta explain`, `requires`, et détection code mort.
+
+#### 18. RAG indexing
+Vectoriser la KB (ChromaDB/pgvector) pour lookup sémantique quand
+elle dépasse 500 entrées.
+
+#### 19. Analyse multi-fichiers
+Analyser un module entier (tous les *Service.php d'un domaine) en un
+seul run pour call graph cross-fichier et relations inter-services.
