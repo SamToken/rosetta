@@ -74,6 +74,7 @@ _LABEL_SHORTCUTS: dict[str, str] = {
 }
 
 _LABEL_MAXLEN = 30
+_METHOD_MAXLEN = 25
 
 
 def _shorten_label(text: str) -> str:
@@ -85,16 +86,32 @@ def _shorten_label(text: str) -> str:
     return text
 
 
-def _safe_label(text: str, is_event: bool = False) -> str:
-    """Apply shortcuts + optional truncation, then escape for Mermaid node labels.
+def _shorten_method_name(name: str, max_len: int = _METHOD_MAXLEN) -> str:
+    """Strip 'this.' prefix and truncate long method names for Mermaid readability."""
+    if name.startswith("this."):
+        name = name[5:]
+    if len(name) <= max_len:
+        return name
+    return name[:max_len - 3] + "..."
 
-    For event labels (returnLongLabel strings), apply shortcuts + 30-char truncation.
-    For module/situation labels, only apply shortcuts, keep up to 60 chars.
+
+def _safe_label(text: str, is_event: bool = False, is_module: bool = False) -> str:
+    """Apply type-specific label shortening, then escape for Mermaid node labels.
+
+    - event  : shortcuts dict + 30-char truncation (returnLongLabel strings)
+    - module : strip 'this.' + 25-char truncation (method names)
+    - other  : pass-through, 60-char hard cap
     """
-    shortened = _shorten_label(text) if is_event else text
-    escaped = shortened.replace('"', "'").replace("::", "·")
-    limit = _LABEL_MAXLEN if is_event else 60
-    return escaped[:limit]
+    if is_module:
+        shortened = _shorten_method_name(text)
+        limit = 60  # already capped by _shorten_method_name
+    elif is_event:
+        shortened = _shorten_label(text)
+        limit = _LABEL_MAXLEN
+    else:
+        shortened = text
+        limit = 60
+    return shortened.replace('"', "'").replace("::", "·")[:limit]
 
 
 # ---------------------------------------------------------------------------
@@ -370,8 +387,7 @@ def generate_map(
     def _node_def(n: str, indent: str) -> str:
         if n in node_labels:
             _, etype = node_info.get(n, ("", ""))
-            is_ev = etype == "event"
-            return f'{indent}{n}["{_safe_label(node_labels[n], is_event=is_ev)}"]'
+            return f'{indent}{n}["{_safe_label(node_labels[n], is_event=etype == "event", is_module=etype == "module")}"]'
         return f"{indent}{n}"
 
     # Subgraphs (left → right: Analyse → Situations → Sorties)
