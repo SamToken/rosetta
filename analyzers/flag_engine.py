@@ -8,6 +8,7 @@ Zéro LLM — 100% déterministe et testable sans réseau.
 import re
 import tree_sitter_php as tsphp
 from tree_sitter import Language, Parser
+from analyzers.constants import STOP_TOKENS
 from ir.schema import IRSchema, Flag, FlagType, ImpactCategory, OperationType
 
 _PHP_LANGUAGE = Language(tsphp.language_php())
@@ -146,12 +147,30 @@ IMPACT_CATEGORY_MAP: dict[str, ImpactCategory] = {
     "chained_method_call":       ImpactCategory.CRITICAL_CORRUPTION,
 }
 
+# Valeurs exclues du flag magic_value par décision explicite — 'OK'/'KO' et les
+# mots-clés SQL/PHP sortent via cette liste, jamais par accident de regex.
+MAGIC_VALUE_STOPWORDS: frozenset[str] = STOP_TOKENS
+
 MAGIC_VALUE_PATTERNS = [
     re.compile(r"!=\s*'([a-z_]+)'"),   # != 'admin'
     re.compile(r"==\s*'([a-z_]+)'"),   # == 'active'
     re.compile(r"=\s*'([a-z_]+)'"),    # = 'active' (assignment or comparison)
     re.compile(r"==\s*(\d{2,})"),      # == 47 (multi-digit integer literals)
+    re.compile(r"""['"]([A-Z][A-Z0-9_]{1,})['"]"""),  # 'H1', "TP2", 'ST_OUV', 'C_TYP_FLX'
 ]
+
+# case 'H1': — les codes situation des switch n'apparaissent pas dans control_flow
+# (l'extracteur ne produit des ControlBlocks que pour les if)
+CASE_LITERAL_PATTERN = re.compile(r"""case\s+['"]([A-Z][A-Z0-9_]{1,})['"]""")
+
+# Requêtes SQL construites dynamiquement — complète les patterns "id =" . de SECURITY_PATTERNS
+SQL_KEYWORD_PATTERN = re.compile(r'\b(?:SELECT|INSERT|UPDATE|DELETE)\b', re.IGNORECASE)
+QUOTED_STRING_PATTERN = re.compile(r'''(["'])((?:\\.|(?!\1).)*)\1''', re.DOTALL)
+SQL_CONCAT_QUESTION = (
+    "La requête d'accès aux données est construite dynamiquement à partir de valeurs "
+    "variables. Les standards de sécurité prévus dans la cible imposent-ils une "
+    "protection paramétrique pour cet accès ?"
+)
 
 EMAIL_AFTER_WRITE_PATTERNS = [
     (r'\$mail\s*->\s*send\s*\(', "un email est envoyé"),
@@ -192,12 +211,19 @@ class FlagEngine:
         return f"{prefix}_{self._counter}"
 
     def analyze(self, ir: IRSchema) -> list[Flag]:
-        """Point d'entrée principal. Retourne tous les flags détectés."""
+        """Point d'entrée principal. Retourne tous les flags détectés.
+
+        Toute méthode-règle (_check_* / _detect_*) DOIT être appelée ici —
+        une règle volontairement désactivée reste listée, commentée avec
+        ``# DISABLED: raison``. Le test tests/test_flag_engine_coverage.py
+        vérifie cette exhaustivité par introspection.
+        """
         self._counter = 0
         flags: list[Flag] = []
         flags.extend(self._check_missing_branches(ir))
         flags.extend(self._check_magic_values(ir))
         flags.extend(self._check_security_risks(ir))
+        flags.extend(self._detect_sql_concat(ir))
         flags.extend(self._check_unmapped_deps(ir))
         flags.extend(self._check_db_without_pagination(ir))
         flags.extend(self._check_side_effects_after_write(ir))
@@ -281,6 +307,8 @@ class FlagEngine:
             for pattern in MAGIC_VALUE_PATTERNS:
                 for match in pattern.finditer(block.condition):
                     value = match.group(1)
+                    if value.upper() in MAGIC_VALUE_STOPWORDS:
+                        continue
                     key = (block.id, value)
                     if key in seen:
                         continue
@@ -313,6 +341,8 @@ class FlagEngine:
             for pattern in MAGIC_VALUE_PATTERNS:
                 for match in pattern.finditer(op.details):
                     value = match.group(1)
+                    if value.upper() in MAGIC_VALUE_STOPWORDS:
+                        continue
                     key = (op.id, value)
                     if key in seen:
                         continue
@@ -328,6 +358,36 @@ class FlagEngine:
                             f"Cette valeur est-elle susceptible d'évoluer ?"
                         ),
                     ))
+
+        # Scan les case des switch — codes situation courts ('H1', 'TP2') absents
+        # du control_flow, qui ne couvre que les if
+        for ep in ir.entry_points:
+            if not ep.raw_code:
+                continue
+            for match in CASE_LITERAL_PATTERN.finditer(ep.raw_code):
+                value = match.group(1)
+                if value.upper() in MAGIC_VALUE_STOPWORDS:
+                    continue
+                key = (ep.name, value)
+                if key in seen:
+                    continue
+                seen.add(key)
+                abs_line = (ep.start_line or 0) + ep.raw_code[:match.start()].count('\n')
+                flags.append(Flag(
+                    id=self._next_id("magic_value"),
+                    type="magic_value",
+                    location=ep.name,
+                    fragment=self._extract_line(ep.raw_code, match.start()),
+                    question=(
+                        f"Valeur de référence non documentée — une branche de traitement "
+                        f"est dédiée au cas '{value}'. "
+                        f"D'où vient cette valeur ? Fait-elle partie d'une liste de référence définie dans le cahier des charges ?"
+                    ),
+                    source_line=abs_line if ep.start_line else None,
+                    method_name=ep.name,
+                    method_original_name=ep.original_name,
+                    context_lines=self._extract_context_lines(ep.raw_code, match.start(), max_lines=5),
+                ))
 
         return flags
 
@@ -368,6 +428,68 @@ class FlagEngine:
                         context_lines=context,
                     ))
 
+        return flags
+
+    # =========================================================================
+    # Règle 3b — Requêtes SQL construites dynamiquement
+    # Couvre : "SELECT…" . $var, sprintf("…%s…"), variable concaténée
+    # puis passée à query()/fetchAll()/fetchRow()
+    # =========================================================================
+
+    def _detect_sql_concat(self, ir: IRSchema) -> list[Flag]:
+        flags = []
+        seen: set[tuple] = set()
+        for ep in ir.entry_points:
+            code = ep.raw_code
+            if not code:
+                continue
+
+            sites: list[int] = []
+
+            # Cas 1 — concaténation directe : "SELECT …" . $var
+            for m in QUOTED_STRING_PATTERN.finditer(code):
+                if not SQL_KEYWORD_PATTERN.search(m.group(2)):
+                    continue
+                if re.match(r'\s*\.\s*\$', code[m.end():m.end() + 20]):
+                    sites.append(m.start())
+
+            # Cas 2 — sprintf("SELECT … %s …", $var)
+            for m in re.finditer(r'sprintf\s*\(\s*(["\'])((?:\\.|(?!\1).)*)\1', code, re.DOTALL):
+                if SQL_KEYWORD_PATTERN.search(m.group(2)) and '%s' in m.group(2):
+                    sites.append(m.start())
+
+            # Cas 3 — variable SQL concaténée puis réutilisée dans query()/fetchAll()
+            sql_vars: set[str] = set()
+            for m in re.finditer(r'\$(\w+)\s*\.?=\s*(["\'])((?:\\.|(?!\2).)*)\2', code, re.DOTALL):
+                if SQL_KEYWORD_PATTERN.search(m.group(3)):
+                    sql_vars.add(m.group(1))
+            for var in sql_vars:
+                concatenated = (
+                    re.search(rf'\${var}\s*\.=', code)
+                    or re.search(rf'\${var}\s*=\s*[^;]*\.\s*\$', code)
+                )
+                used = re.search(rf'->(?:query|fetchAll|fetchRow)\s*\(\s*\${var}\b', code)
+                if concatenated and used:
+                    sites.append(used.start())
+
+            for pos in sites:
+                fragment = self._extract_line(code, pos)
+                key = (ep.name, fragment)
+                if key in seen:
+                    continue
+                seen.add(key)
+                abs_line = (ep.start_line or 0) + code[:pos].count('\n')
+                flags.append(Flag(
+                    id=self._next_id("security"),
+                    type="security_risk",
+                    location=ep.name,
+                    fragment=fragment,
+                    question=SQL_CONCAT_QUESTION,
+                    source_line=abs_line if ep.start_line else None,
+                    method_name=ep.name,
+                    method_original_name=ep.original_name,
+                    context_lines=self._extract_context_lines(code, pos, max_lines=7),
+                ))
         return flags
 
     # =========================================================================

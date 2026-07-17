@@ -248,11 +248,17 @@ def test_pattern_f_pattern_field():
 # ---------------------------------------------------------------------------
 
 def test_pattern_f_conditions_present():
-    """Each Pattern F relation records the triggering == condition."""
+    """Each Pattern F relation records the triggering condition.
+
+    Branches if/elseif → condition '==' ; branche else finale → 'sinon'
+    (heuristique du else implicite, cf. _extract_pattern_f_else).
+    """
     ir = _make_ir(_PHP_FIXTURE_F)
     for r in _pattern_f_rels(ir):
         assert r.conditions, f"No conditions on {r.from_entity.value} → {r.to_entity.value}"
-        assert any("==" in c for c in r.conditions), f"Condition should contain '==': {r.conditions}"
+        assert any("==" in c or c.startswith("sinon") for c in r.conditions), (
+            f"Condition should contain '==' or 'sinon': {r.conditions}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -260,13 +266,23 @@ def test_pattern_f_conditions_present():
 # ---------------------------------------------------------------------------
 
 def test_pattern_f_entity_types():
-    """transitions_to: from=situation,to=event. requires: from=situation,to=module."""
+    """transitions_to: from=situation,to=event. requires: from=situation,to=module.
+
+    Exception : la branche else sans code situation inférable produit un
+    from_entity 'sinon' de type event (heuristique else implicite).
+    """
     ir = _make_ir(_PHP_FIXTURE_F)
     for r in _pattern_f_rels(ir):
-        assert r.from_entity.type == "situation", (
-            f"from_entity.type should be 'situation', got {r.from_entity.type!r} "
-            f"for {r.from_entity.value} → {r.to_entity.value}"
-        )
+        if r.from_entity.value == "sinon":
+            assert r.from_entity.type == "event", (
+                f"else implicite : from_entity.type should be 'event', "
+                f"got {r.from_entity.type!r}"
+            )
+        else:
+            assert r.from_entity.type == "situation", (
+                f"from_entity.type should be 'situation', got {r.from_entity.type!r} "
+                f"for {r.from_entity.value} → {r.to_entity.value}"
+            )
         if r.kind == "transitions_to":
             assert r.to_entity.type == "event", (
                 f"to_entity.type should be 'event', got {r.to_entity.type!r}"

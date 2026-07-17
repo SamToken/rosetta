@@ -169,6 +169,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--kb-output-dir", default=None, metavar="DIR")
     p.add_argument("--kb-domain", default=None, metavar="DOMAIN")
+    p.add_argument(
+        "--kb-trust-medium", action="store_true",
+        help="Les entrées KB medium court-circuitent le LLM (défaut : contexte prompt seulement)",
+    )
     p.add_argument("--from-json", default=None, metavar="JSON")
     p.add_argument("--retry-failed", action="store_true")
     p.add_argument("--debug-rules", action="store_true")
@@ -325,6 +329,7 @@ def main() -> None:
             kb_root=Path(args.kb_root).expanduser() if args.kb_root else None,
             kb_output_dir=Path(args.kb_output_dir).expanduser() if args.kb_output_dir else None,
             kb_domain=args.kb_domain,
+            kb_trust_medium=args.kb_trust_medium,
             git_root=Path(args.git_root) if args.git_root else None,
         )
     except EnvironmentError as exc:

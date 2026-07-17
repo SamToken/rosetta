@@ -49,6 +49,7 @@ class AuditOptions:
     kb_root: Optional[Path] = None
     kb_output_dir: Optional[Path] = None
     kb_domain: Optional[str] = None
+    kb_trust_medium: bool = False  # medium court-circuite le LLM (sinon : contexte prompt)
     git_root: Optional[Path] = None
     max_workers: int = 1  # >1 active le ThreadPoolExecutor en mode batch API
 
@@ -242,6 +243,25 @@ class AuditPipeline:
                 self._p(f"  [KB] {len(self._known_tokens)} token(s) indexés pour RelationExtractor")
         except Exception:
             pass
+
+    def _print_kb_maturity(self) -> None:
+        """Dashboard maturité KB — une ligne par domaine, objectif >60% high."""
+        try:
+            from rosetta_kb import DEFAULT_KB_PATH
+            from services.kb_service import KBService
+            kb_path = Path(DEFAULT_KB_PATH).expanduser().resolve()
+            if not kb_path.exists():
+                return
+            rows = KBService(kb_path).maturity_by_domain()
+        except Exception:
+            return
+        if not rows:
+            return
+        self._p("  📈 Maturité KB (objectif : >60% high) :")
+        for domain, high, total in rows:
+            pct = round(100.0 * high / total, 1) if total else 0.0
+            mark = "✅" if pct > 60 else "⚠️ "
+            self._p(f"     {mark} {domain:<30} {high}/{total} high ({pct}%)")
 
     # ── Résolution des entrées ────────────────────────────────────────────────
 
@@ -475,6 +495,7 @@ class AuditPipeline:
                     model=self.options.model,
                     kb_provider=self._kb_provider,
                     kb_lookup=self._kb_lookup,
+                    kb_trust_medium=self.options.kb_trust_medium,
                 )
                 method_bodies: dict[str, str] = {}
                 for ep in ir.entry_points:
@@ -601,6 +622,7 @@ class AuditPipeline:
                     model=opts.model,
                     kb_provider=self._kb_provider,
                     kb_lookup=self._kb_lookup,
+                    kb_trust_medium=opts.kb_trust_medium,
                 )
                 ir = enricher.enrich(ir)
                 self._p(f"        ✓ {len(ir.llm_insights)} insights générés")
@@ -615,6 +637,13 @@ class AuditPipeline:
                         if cov.top_candidates:
                             top3 = ", ".join(f"{t}({n}×)" for t, n in cov.top_candidates[:3])
                             self._p(f"     → À enrichir en KB : {top3}")
+                        self._p(
+                            f"     kb_hits : {enricher.kb_hits} · "
+                            f"kb_medium_hits : {enricher.kb_medium_hits}"
+                            + ("" if opts.kb_trust_medium
+                               else " (injectés en contexte prompt, pas en remplacement)")
+                        )
+                        self._print_kb_maturity()
             except ImportError as exc:
                 self._p(f"        ⚠ LLM indisponible ({exc}) — mode déterministe uniquement")
             except Exception as exc:

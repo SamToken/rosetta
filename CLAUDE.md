@@ -25,7 +25,7 @@ Sans KB, chaque token ambigu coûte 30 min de reverse engineering ou un appel LL
 ```
 ~/projects/rosetta/              # Repo perso GitHub — OUTILS uniquement
 ├── rosetta_kb.py                # CLI KB v2
-├── kb_import.py                 # Import fiches KB (.github/kb/ ou docs-kb/) → knowledge_base.yaml
+├── kb_import.py                 # Import fiches KB (.github/kb/ ou docs-kb/) → ~/rosetta-data/kb/
 ├── llm_enricher.py              # Pipeline enrichissement AST → KB
 ├── aliases.sh                   # Aliases shell (kb-check, kb-sync, kb-import, kb-stats)
 ├── Makefile                     # Targets : kb-check, kb-sync, kb-import, kb-full
@@ -49,20 +49,23 @@ Sans KB, chaque token ambigu coûte 30 min de reverse engineering ou un appel LL
             └── requete_RQ_ORCHESTRA_ETX.md
 
 ~/rosetta-data/                  # Dossier LOCAL, hors tout repo
-├── knowledge_base.yaml          # Source de vérité KB (données corporate)
+├── kb/                          # Source de vérité KB — répertoire multi-domaines (données corporate)
+│   ├── _global.yaml             #   pending_validation + entrées sans domaine
+│   ├── ConfigScenarioService.yaml
+│   └── ...                      #   un YAML par service/domaine
 └── docs-kb/                     # Docs générées par personas Copilot (format Oracle/SQL)
     ├── colonne_C_TYP_FLX.md
     ├── vue_V_TICKET_SLA.md
     └── requete_RQ_SLA_BREACH.md
 ```
 
-Variable d'environnement : `ROSETTA_KB=~/rosetta-data/knowledge_base.yaml`
+Variable d'environnement : `ROSETTA_KB=~/rosetta-data/kb` (répertoire — l'ancien `knowledge_base.yaml` unique n'existe plus depuis le split multi-domaines de mai 2026)
 
 ---
 
 ## 2. KNOWLEDGE BASE — SCHÉMA YAML
 
-Le fichier `knowledge_base.yaml` a 6 sections :
+Chaque fichier YAML du KB (répertoire `~/rosetta-data/kb/`) a 6 sections :
 
 ```yaml
 meta:
@@ -324,7 +327,7 @@ Aucune.
 Entrée  : ~/rosetta-data/docs-kb/*.md  (docs Copilot Oracle/SQL)
           — OU —
           ~/projects/astro/.github/kb/ (fiches KB Astro avec anchors drift)
-Sortie  : ~/rosetta-data/knowledge_base.yaml (enrichi)
+Sortie  : ~/rosetta-data/kb/ (YAML par domaine, enrichi)
 Librairie : python-frontmatter + pyyaml
 ```
 
@@ -504,7 +507,7 @@ kb-check
 # = python3 ~/projects/astro/.github/rosetta/kb_drift_check.py ~/projects/astro
 # Sortie attendue : [PASS] Toutes les fiches KB sont synchronisées.
 
-# 3. Importer dans le KB local (knowledge_base.yaml)
+# 3. Importer dans le KB local (~/rosetta-data/kb/)
 kb-import
 # = python3 ~/projects/rosetta/kb_import.py ~/projects/astro/.github/kb/
 # Sortie : 5 ajoutée(s), 0 mise(s) à jour, 0 ignorée(s), 0 erreur(s)

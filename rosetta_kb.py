@@ -185,6 +185,56 @@ def cmd_add_pending(args: argparse.Namespace, svc: KBService) -> int:
     return 0
 
 
+def cmd_promote(args: argparse.Namespace, svc: KBService) -> int:
+    codes: list[str] = []
+    if getattr(args, "from_file", None):
+        path = Path(args.from_file).expanduser()
+        if not path.exists():
+            print(f"[!] Fichier introuvable : {path}")
+            return 1
+        codes = [
+            line.strip() for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        ]
+        if not codes:
+            print(f"[!] Aucun code dans {path} (une ligne = un code).")
+            return 1
+    if getattr(args, "code", None):
+        codes.append(args.code)
+    if not codes:
+        print("[!] Fournir --code NOM ou --from-file validations.txt.")
+        return 1
+
+    failures = 0
+    for code in codes:
+        result = svc.promote(
+            code=code, source=args.source,
+            domain=getattr(args, "domaine", None),
+            validated_by=getattr(args, "validated_by", None) or "PO",
+        )
+        if result.success:
+            print(f"[✓] '{result.code}' promu en high ({result.section} — {result.domain or 'kb'})")
+        else:
+            print(f"[!] {result.error}")
+            failures += 1
+    if len(codes) > 1:
+        print(f"    {len(codes) - failures}/{len(codes)} promue(s), {failures} refusée(s)")
+    return 1 if failures else 0
+
+
+def cmd_demote(args: argparse.Namespace, svc: KBService) -> int:
+    result = svc.demote(
+        code=args.code, confiance=getattr(args, "to_confiance", "medium"),
+        source=getattr(args, "source", None),
+        domain=getattr(args, "domaine", None),
+    )
+    if not result.success:
+        print(f"[!] {result.error}")
+        return 1
+    print(f"[✓] '{result.code}' rétrogradé en {result.confiance} ({result.section} — {result.domain or 'kb'})")
+    return 0
+
+
 def cmd_capture_colonne(args: argparse.Namespace, svc: KBService) -> int:
     result = svc.capture_colonne(
         nom=args.nom, label=args.label, domain=_domain_of(args),
@@ -378,6 +428,97 @@ def cmd_split(args: argparse.Namespace, svc: KBService) -> int:
     return 0
 
 
+def cmd_import_config(args: argparse.Namespace, svc: KBService) -> int:
+    """Importe les enchaînements paramétrables depuis des exports CSV Oracle."""
+    import json
+    from analyzers.config_db_importer import ConfigDbImporter
+
+    importer = ConfigDbImporter()
+    all_relations = []
+    summary: list[str] = []
+
+    if args.scenario_modules:
+        p = Path(args.scenario_modules).expanduser().resolve()
+        try:
+            rels = importer.import_scenario_modules(p)
+            scenarios = len({c for r in rels if r.kind == "requires" for c in [r.from_entity.value]})
+            all_relations.extend(rels)
+            summary.append(f"[CONFIG] {p.name} → {len(rels)} relations ({scenarios} scénarios)")
+        except FileNotFoundError:
+            print(f"Erreur : fichier introuvable {p}", file=sys.stderr)
+            return 1
+
+    if args.parametres:
+        p = Path(args.parametres).expanduser().resolve()
+        try:
+            rels = importer.import_parametres_transfert(p)
+            all_relations.extend(rels)
+            summary.append(f"[CONFIG] {p.name} → {len(rels)} relations")
+        except FileNotFoundError:
+            print(f"Erreur : fichier introuvable {p}", file=sys.stderr)
+            return 1
+
+    if args.automatisation:
+        p = Path(args.automatisation).expanduser().resolve()
+        try:
+            rels = importer.import_automatisation_values(p)
+            all_relations.extend(rels)
+            summary.append(f"[CONFIG] {p.name} → {len(rels)} relations")
+        except FileNotFoundError:
+            print(f"Erreur : fichier introuvable {p}", file=sys.stderr)
+            return 1
+
+    if not all_relations:
+        print("Aucun CSV fourni (--scenario-modules, --parametres, --automatisation).")
+        return 0
+
+    # ── Fusion avec les relations code existantes (cross-fichiers JSON) ─────
+    out_dir = Path(args.output_dir).expanduser().resolve()
+    code_rels: list[dict] = []
+    if out_dir.exists():
+        import json as _json
+        for f in sorted(out_dir.rglob("*_business_logic.json")):
+            if f.name == "config_db_business_logic.json":
+                continue  # ne pas se comparer à soi-même
+            try:
+                data = _json.loads(f.read_text(encoding="utf-8"))
+                code_rels.extend(data.get("relations", []))
+            except Exception:
+                pass
+
+    enriched_code, new_config = importer.merge_with_code_relations(all_relations, code_rels)
+    confirmed = sum(1 for r in enriched_code if r.get("confirmed_by_both"))
+
+    # ── Écrire le JSON pour le générateur de carte ──────────────────────────
+    out_dir.mkdir(parents=True, exist_ok=True)
+    payload = {"relations": [r.model_dump() for r in new_config]}
+    payload_str = json.dumps(payload, ensure_ascii=False, indent=2)
+
+    config_json = out_dir / "config_db_business_logic.json"
+    config_json.write_text(payload_str, encoding="utf-8")
+
+    # Copier aussi dans ROSETTA_API_OUTPUT pour que l'API le détecte
+    api_out = Path(
+        os.environ.get("ROSETTA_API_OUTPUT", "~/rosetta-data/api_jobs")
+    ).expanduser()
+    if api_out.exists() and api_out.is_dir():
+        api_json = api_out / "config_db_business_logic.json"
+        api_json.write_text(payload_str, encoding="utf-8")
+
+    # ── Persister dans le KB YAML par domaine ───────────────────────────────
+    rel_dicts = [r.model_dump() for r in new_config]
+    added, skipped, _ = svc.merge_config_relations(rel_dicts)
+
+    # ── Rapport ─────────────────────────────────────────────────────────────
+    for line in summary:
+        print(line)
+    domains = len({r.get("domaine", "configuration") for r in rel_dicts})
+    print(f"[KB] {len(all_relations)} relations config_db traitées ({domains} domaines)")
+    print(f"[KB] {added} nouvelles, {skipped} doublons ignorés, {confirmed} confirment le code")
+    print(f"[MAP] → {config_json}")
+    return 0
+
+
 def cmd_import(args: argparse.Namespace, svc: KBService) -> int:
     docs_dir = Path(args.docs_dir).expanduser().resolve()
     try:
@@ -453,6 +594,22 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--kb-type", dest="kb_type", default="code",
                    choices=["code", "regle", "colonne", "vue", "requete"])
     p.add_argument("--domaine", help="Domaine métier (stocké dans le pending pour validate)")
+
+    # ── promote / demote ──────────────────────────────────────────────────────
+    p = sub.add_parser("promote", help="Monter une entrée EXISTANTE en confiance high (session PO)")
+    p.add_argument("--code", help="Code à promouvoir (ou --from-file pour un lot)")
+    p.add_argument("--from-file", dest="from_file", metavar="TXT",
+                   help="Batch : fichier texte, une ligne = un code (# = commentaire)")
+    p.add_argument("--source", required=True, help='Ex : "PO validé 17/07"')
+    p.add_argument("--domaine", help="Limiter la recherche au fichier de ce domaine")
+    p.add_argument("--validated-by", dest="validated_by", default="PO")
+
+    p = sub.add_parser("demote", help="Baisser la confiance d'une entrée existante")
+    p.add_argument("--code", required=True)
+    p.add_argument("--to", dest="to_confiance", default="medium",
+                   choices=["medium", "inferred"])
+    p.add_argument("--source")
+    p.add_argument("--domaine")
 
     # ── capture-colonne ───────────────────────────────────────────────────────
     p = sub.add_parser("capture-colonne", help="Capturer une colonne Oracle obscure")
@@ -558,6 +715,28 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Fichiers PHP sources cités en haut du document, séparés par virgule")
     p.add_argument("--output", help="Fichier de sortie .md (défaut: stdout)")
 
+    # ── import-config ─────────────────────────────────────────────────────────
+    p = sub.add_parser(
+        "import-config",
+        help="Importer des enchaînements paramétrables depuis des exports CSV Oracle",
+    )
+    p.add_argument(
+        "--scenario-modules", metavar="CSV",
+        help="CSV des modules de scénario (colonnes : id_scenario, ordre, code_module, valeur, id_param)",
+    )
+    p.add_argument(
+        "--parametres", metavar="CSV",
+        help="CSV des paramètres de transfert (colonnes : id_param, mode_transfert, exec_dernier_module_cas_1_2, …)",
+    )
+    p.add_argument(
+        "--automatisation", metavar="CSV",
+        help="CSV des valeurs d'automatisation situation→action (colonnes : code_detecteur, …, situation, action)",
+    )
+    p.add_argument(
+        "--output-dir", metavar="DIR", default="./output",
+        help="Dossier de sortie pour config_db_business_logic.json (défaut: ./output)",
+    )
+
     return parser
 
 
@@ -571,6 +750,8 @@ COMMANDS = {
     "pending":         cmd_pending,
     "validate":        cmd_validate,
     "add-pending":     cmd_add_pending,
+    "promote":         cmd_promote,
+    "demote":          cmd_demote,
     "capture-colonne": cmd_capture_colonne,
     "capture-vue":     cmd_capture_vue,
     "capture-requete": cmd_capture_requete,
@@ -579,6 +760,7 @@ COMMANDS = {
     "export":          cmd_export,
     "split":           cmd_split,
     "import":          cmd_import,
+    "import-config":   cmd_import_config,
     "export-prompt":   cmd_export_prompt,
     "export-brief":    cmd_export_brief,
     "export-human":    cmd_export_human,

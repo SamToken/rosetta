@@ -420,7 +420,14 @@ def generate_map(
         fid = nid(fv, ft)
         tid = nid(tv, tt)
 
-        style = "-.->" if r.get("kind") in ("implies", "requires", "produces") else "-->"
+        _is_dotted = (
+            r.get("kind") in ("implies", "requires", "produces")
+            or r.get("pattern") == "config_db"
+            or r.get("confirmed_by_both")
+        )
+        style = "-.->" if _is_dotted and not r.get("confirmed_by_both") else (
+            "==>" if r.get("confirmed_by_both") else "-->"
+        )
 
         key: Arrow = (fid, tid)
         if key not in arrows:
@@ -531,6 +538,17 @@ def generate_md(
         header += f"Domaine : `{domaine}`\n\n"
     if service:
         header += f"Service : `{service}`\n\n"
+
+    has_config_db = any(r.get("pattern") == "config_db" for r in relations)
+    has_confirmed = any(r.get("confirmed_by_both") for r in relations)
+    if has_config_db or has_confirmed:
+        legend_parts = ["─── extrait du code"]
+        if has_config_db:
+            legend_parts.append("┈┈┈ paramétrable (BD)")
+        if has_confirmed:
+            legend_parts.append("══ confirmé code+BD")
+        header += "> **Légende :** " + "     ".join(legend_parts) + "\n\n"
+
     return header + "```mermaid\n" + diagram + "\n```\n"
 
 

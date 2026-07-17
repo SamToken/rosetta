@@ -4,6 +4,7 @@ Contient toute la logique métier et la persistance YAML extraites de rosetta_kb
 Aucun print, aucun argparse, aucune interaction console.
 Toutes les méthodes retournent des dataclasses ou des str (pour les exports texte).
 """
+import copy
 import json
 import re
 from collections import Counter
@@ -53,6 +54,7 @@ class LookupResult:
     code: str
     section: Optional[str] = None
     entry: Optional[dict] = None
+    matched_key: Optional[str] = None   # clé canonique si match normalisé/alias
 
     def to_enricher_dict(self) -> dict[str, Any]:
         """Format attendu par llm_enricher.py / audit_service.py."""
@@ -77,7 +79,10 @@ class LookupResult:
         """Format pour --json dans le CLI lookup."""
         if not self.found:
             return {"found": False, "code": self.code}
-        return {"found": True, "code": self.code, "section": self.section, **(self.entry or {})}
+        out = {"found": True, "code": self.code, "section": self.section, **(self.entry or {})}
+        if self.matched_key and self.matched_key != self.code:
+            out["matched_key"] = self.matched_key
+        return out
 
 
 @dataclass
@@ -119,6 +124,16 @@ class ValidateResult:
     code: str
     action: str               # "created" | "updated"
     domain: str
+    error: Optional[str] = None
+
+
+@dataclass
+class PromoteResult:
+    success: bool
+    code: str
+    section: Optional[str] = None
+    domain: Optional[str] = None
+    confiance: Optional[str] = None
     error: Optional[str] = None
 
 
@@ -186,6 +201,15 @@ class SplitResult:
 # ---------------------------------------------------------------------------
 # Utilitaires bas niveau (module-level, sans état)
 # ---------------------------------------------------------------------------
+
+def normalize_token(token: str) -> str:
+    """Forme canonique d'un token pour le matching KB.
+
+    Les tokens remontés du PHP legacy arrivent en variantes (casse, quotes,
+    espaces) : ``Gatape`` vs ``GATAPE``, ``'ST_OUV'`` vs ``ST_OUV``.
+    """
+    return token.strip().strip("'\"`").strip().casefold()
+
 
 def normalize_domain(name: str) -> str:
     """'OrchestraService.php' → 'OrchestraService' · 'orchestra-service' → identique."""
@@ -464,6 +488,9 @@ class KBService:
 
     def __init__(self, kb_path: Path) -> None:
         self.kb_path = kb_path
+        self._cache: Optional[dict] = None
+        self._cache_stamp: Optional[tuple] = None
+        self._norm_index: dict[str, tuple[str, str]] = {}
 
     # ── Persistance privée ────────────────────────────────────────────────────
 
@@ -477,6 +504,18 @@ class KBService:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as f:
             yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+        self._cache = None
+        self._cache_stamp = None
+
+    def _stamp(self) -> tuple:
+        """Empreinte disque du KB (mtimes) — invalide le cache sans re-parser."""
+        if self.kb_path.is_dir():
+            return tuple(sorted(
+                (str(p), p.stat().st_mtime_ns) for p in self.kb_path.glob("*.yaml")
+            ))
+        if self.kb_path.exists():
+            return ((str(self.kb_path), self.kb_path.stat().st_mtime_ns),)
+        return ()
 
     def _load_kb_dir(self) -> dict:
         merged = _empty_kb()
@@ -506,7 +545,9 @@ class KBService:
                 base["sql_artifacts"][sub].update(sa.get(sub, {}))
             base["relations"].update(d.get("relations", {}))
             return base
-        return self.load()
+        # KB fichier unique : copie profonde — load() est caché, et l'appelant
+        # mute le dict retourné (parfois sans écrire, ex. import dry_run).
+        return copy.deepcopy(self.load())
 
     def _save_for_write(self, data: dict, domain: str) -> None:
         if self.kb_path.is_dir():
@@ -524,8 +565,9 @@ class KBService:
             with self.kb_path.open("w", encoding="utf-8") as f:
                 yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
-    def _lookup_all(self, data: dict, code: str) -> Optional[dict[str, Any]]:
-        checks = [
+    @staticmethod
+    def _buckets(data: dict) -> list[tuple[str, dict]]:
+        return [
             ("codes",                  data.get("codes", {})),
             ("regles",                 data.get("regles", {})),
             ("regles_metier",          data.get("regles_metier", {})),
@@ -536,9 +578,41 @@ class KBService:
             ("sql_artifacts.vues",     data.get("sql_artifacts", {}).get("vues", {})),
             ("sql_artifacts.requetes", data.get("sql_artifacts", {}).get("requetes", {})),
         ]
-        for section, bucket in checks:
+
+    def _build_norm_index(self, data: dict) -> dict[str, tuple[str, str]]:
+        """Index token normalisé → (section, clé canonique).
+
+        Les clés réelles priment toujours ; les alias explicites (champ
+        ``aliases`` d'une entrée) ne s'ajoutent que s'ils ne masquent rien.
+        ``lié_à`` n'est PAS indexé : il signifie « en relation avec », pas
+        « synonyme de » — le résoudre renverrait la sémantique d'une autre entrée.
+        """
+        index: dict[str, tuple[str, str]] = {}
+        buckets = self._buckets(data)
+        for section, bucket in buckets:
+            for key in bucket:
+                index.setdefault(normalize_token(str(key)), (section, str(key)))
+        for section, bucket in buckets:
+            for key, entry in bucket.items():
+                if not isinstance(entry, dict):
+                    continue
+                for alias in entry.get("aliases") or []:
+                    index.setdefault(normalize_token(str(alias)), (section, str(key)))
+        return index
+
+    def _lookup_all(self, data: dict, code: str) -> Optional[dict[str, Any]]:
+        buckets = self._buckets(data)
+        for section, bucket in buckets:
             if bucket and code in bucket:
-                return {"section": section, "entry": bucket[code]}
+                return {"section": section, "entry": bucket[code], "matched_key": code}
+        # Fallback normalisé (casse, quotes, espaces) + alias explicites
+        hit = self._norm_index.get(normalize_token(code))
+        if hit:
+            section, key = hit
+            by_section = dict(buckets)
+            entry = by_section.get(section, {}).get(key)
+            if entry is not None:
+                return {"section": section, "entry": entry, "matched_key": key}
         return None
 
     def _next_pending_id(self, pending: dict) -> str:
@@ -550,18 +624,30 @@ class KBService:
     # ── API publique : Chargement ─────────────────────────────────────────────
 
     def load(self) -> dict:
-        """Charge le KB complet (vue fusionnée, lecture seule)."""
+        """Charge le KB complet (vue fusionnée, lecture seule).
+
+        Le résultat est caché en mémoire et invalidé automatiquement dès
+        qu'un fichier YAML change sur disque (comparaison des mtimes) —
+        les lookups en boucle ne re-parsent plus tout le répertoire.
+        """
+        stamp = self._stamp()
+        if self._cache is not None and stamp == self._cache_stamp:
+            return self._cache
         if self.kb_path.is_dir():
-            return self._load_kb_dir()
-        base = _empty_kb()
-        if self.kb_path.exists():
-            with self.kb_path.open(encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-            base.update(data)
-        base.setdefault("sql_artifacts", {})
-        base["sql_artifacts"].setdefault("colonnes", {})
-        base["sql_artifacts"].setdefault("vues", {})
-        base["sql_artifacts"].setdefault("requetes", {})
+            base = self._load_kb_dir()
+        else:
+            base = _empty_kb()
+            if self.kb_path.exists():
+                with self.kb_path.open(encoding="utf-8") as f:
+                    data = yaml.safe_load(f) or {}
+                base.update(data)
+            base.setdefault("sql_artifacts", {})
+            base["sql_artifacts"].setdefault("colonnes", {})
+            base["sql_artifacts"].setdefault("vues", {})
+            base["sql_artifacts"].setdefault("requetes", {})
+        self._cache = base
+        self._cache_stamp = stamp
+        self._norm_index = self._build_norm_index(base)
         return base
 
     def load_pending(self) -> dict:
@@ -611,7 +697,8 @@ class KBService:
         if not hit:
             return LookupResult(found=False, code=code)
         return LookupResult(found=True, code=code,
-                            section=hit["section"], entry=hit["entry"])
+                            section=hit["section"], entry=hit["entry"],
+                            matched_key=hit.get("matched_key"))
 
     def lookup_for_enricher(self, token: str) -> dict[str, Any]:
         """API pour llm_enricher.py — format dict compatible."""
@@ -1000,6 +1087,132 @@ class KBService:
             target[code]["confiance"] = confiance
             self._write_file(self.kb_path, data)
             return True
+
+    # ── API publique : Promotion / rétrogradation de confiance ───────────────
+
+    def _update_entry_fields(
+        self, code: str, fields: dict, remove: tuple = (),
+        domain: Optional[str] = None,
+    ) -> tuple[Optional[str], Optional[str]]:
+        """Met à jour une entrée EXISTANTE (toutes sections). Aucune création implicite.
+
+        Retourne (section, nom_de_domaine) ou (None, None) si introuvable.
+        """
+        if self.kb_path.is_dir():
+            files = ([_domain_file(self.kb_path, domain)] if domain
+                     else sorted(self.kb_path.glob("*.yaml")))
+            for yaml_file in files:
+                if not yaml_file.exists() or yaml_file.name == "_global.yaml":
+                    continue
+                data = self._read_file(yaml_file)
+                for section, bucket in self._buckets(data):
+                    if code in bucket and isinstance(bucket[code], dict):
+                        bucket[code].update(fields)
+                        for key in remove:
+                            bucket[code].pop(key, None)
+                        data.setdefault("meta", {})["last_updated"] = str(date.today())
+                        self._write_file(yaml_file, data)
+                        return section, yaml_file.stem
+            return None, None
+        data = copy.deepcopy(self.load())
+        for section, bucket in self._buckets(data):
+            if code in bucket and isinstance(bucket[code], dict):
+                bucket[code].update(fields)
+                for key in remove:
+                    bucket[code].pop(key, None)
+                data.setdefault("meta", {})["last_updated"] = str(date.today())
+                self._write_file(self.kb_path, data)
+                return section, None
+        return None, None
+
+    def promote(
+        self, *, code: str, source: str,
+        domain: Optional[str] = None, validated_by: str = "PO",
+    ) -> PromoteResult:
+        """Monte une entrée existante en confiance high (action humaine — session PO).
+
+        Refuse si l'entrée n'existe pas : promote ne crée jamais d'entrée.
+        """
+        fields = {
+            "confiance": "high",
+            "source": source,
+            "validated_by": validated_by,
+            "validated_date": str(date.today()),
+        }
+        section, fname = self._update_entry_fields(code, fields, domain=domain)
+        if not section:
+            where = f" (domaine {domain})" if domain else ""
+            return PromoteResult(
+                success=False, code=code,
+                error=f"'{code}' introuvable dans le KB{where} — "
+                      f"promote ne crée jamais d'entrée (utilisez capture).",
+            )
+        return PromoteResult(success=True, code=code, section=section,
+                             domain=fname or domain, confiance="high")
+
+    def demote(
+        self, *, code: str, confiance: str = "medium",
+        source: Optional[str] = None, domain: Optional[str] = None,
+    ) -> PromoteResult:
+        """Baisse la confiance d'une entrée existante (medium ou inferred).
+
+        Retire validated_by/validated_date : une entrée rétrogradée n'est plus validée.
+        """
+        if confiance not in ("medium", "inferred"):
+            return PromoteResult(
+                success=False, code=code,
+                error="demote accepte uniquement 'medium' ou 'inferred'.",
+            )
+        fields: dict[str, Any] = {"confiance": confiance}
+        if source:
+            fields["source"] = source
+        section, fname = self._update_entry_fields(
+            code, fields, remove=("validated_by", "validated_date"), domain=domain,
+        )
+        if not section:
+            where = f" (domaine {domain})" if domain else ""
+            return PromoteResult(
+                success=False, code=code,
+                error=f"'{code}' introuvable dans le KB{where}.",
+            )
+        return PromoteResult(success=True, code=code, section=section,
+                             domain=fname or domain, confiance=confiance)
+
+    # ── API publique : Maturité par domaine ──────────────────────────────────
+
+    def maturity_by_domain(self) -> list[tuple[str, int, int]]:
+        """Ratio de maturité KB : [(domaine, nb_high, nb_total)].
+
+        Mode répertoire : un domaine = un fichier YAML (hors _global).
+        Mode fichier unique : regroupement par champ ``domaine`` des entrées.
+        """
+        rows: list[tuple[str, int, int]] = []
+        if self.kb_path.is_dir():
+            for yaml_file in sorted(self.kb_path.glob("*.yaml")):
+                if yaml_file.name == "_global.yaml":
+                    continue
+                data = self._read_file(yaml_file)
+                high = total = 0
+                for _section, bucket in self._buckets(data):
+                    for entry in bucket.values():
+                        if not isinstance(entry, dict):
+                            continue
+                        total += 1
+                        if entry.get("confiance") == "high":
+                            high += 1
+                if total:
+                    rows.append((yaml_file.stem, high, total))
+            return rows
+        by_domain: dict[str, list[int]] = {}
+        for _section, bucket in self._buckets(self.load()):
+            for entry in bucket.values():
+                if not isinstance(entry, dict):
+                    continue
+                agg = by_domain.setdefault(entry.get("domaine", "commun"), [0, 0])
+                agg[1] += 1
+                if entry.get("confiance") == "high":
+                    agg[0] += 1
+        return [(d, h, t) for d, (h, t) in sorted(by_domain.items())]
 
     # ── API publique : Suppression ────────────────────────────────────────────
 
@@ -1772,6 +1985,62 @@ class KBService:
                 self._save_for_write(data, domain)
 
         return result
+
+    # ── Import relations config_db ────────────────────────────────────────────
+
+    def merge_config_relations(self, relations: list[dict]) -> tuple[int, int, int]:
+        """Fusionne des relations config_db dans les fichiers YAML de domaine.
+
+        Dédup strict par (kind, from_entity.value, to_entity.value).
+        Quand une relation code existante correspond, elle est enrichie avec
+        confirmed_by_both=True et confiance=high.
+
+        Returns:
+            (added, skipped, confirmed) — nouvelles, doublons ignorés, confirmées
+        """
+        by_domain: dict[str, list[dict]] = {}
+        for rel in relations:
+            domain = rel.get("domaine") or "configuration"
+            by_domain.setdefault(domain, []).append(rel)
+
+        total_added = total_skipped = total_confirmed = 0
+
+        for domain, domain_rels in by_domain.items():
+            data = self._load_for_write(domain)
+            existing = data.setdefault("relations", {})
+
+            existing_index: dict[tuple[str, str, str], str] = {
+                (
+                    r.get("kind", ""),
+                    (r.get("from_entity") or {}).get("value", ""),
+                    (r.get("to_entity") or {}).get("value", ""),
+                ): rid
+                for rid, r in existing.items()
+            }
+
+            for rel in domain_rels:
+                key = (
+                    rel.get("kind", ""),
+                    (rel.get("from_entity") or {}).get("value", ""),
+                    (rel.get("to_entity") or {}).get("value", ""),
+                )
+                if key in existing_index:
+                    rid = existing_index[key]
+                    if existing[rid].get("pattern") != "config_db":
+                        existing[rid]["confirmed_by_both"] = True
+                        existing[rid]["confiance"] = "high"
+                        total_confirmed += 1
+                    else:
+                        total_skipped += 1
+                else:
+                    existing[rel["id"]] = rel
+                    existing_index[key] = rel["id"]
+                    total_added += 1
+
+            data["relations"] = existing
+            self._save_for_write(data, domain)
+
+        return total_added, total_skipped, total_confirmed
 
 
 # ---------------------------------------------------------------------------

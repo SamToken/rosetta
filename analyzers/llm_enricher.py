@@ -246,6 +246,7 @@ class LLMEnricher:
         model: str = "claude-sonnet-4-6",
         kb_provider: Optional["KBContextProvider"] = None,
         kb_lookup: Optional[Callable[[str], dict]] = None,
+        kb_trust_medium: bool = False,
     ):
         import anthropic
         self.client = anthropic.Anthropic()
@@ -253,8 +254,20 @@ class LLMEnricher:
         self.usage = TokenUsage()
         self.kb_provider = kb_provider
         self._kb_lookup = kb_lookup
+        self.kb_trust_medium = kb_trust_medium
         self._kb_hits = 0
+        self._kb_medium_hits = 0
         self.coverage = KBCoverageReport()
+
+    @property
+    def kb_hits(self) -> int:
+        """Flags résolus par le KB sans appel LLM."""
+        return self._kb_hits
+
+    @property
+    def kb_medium_hits(self) -> int:
+        """Tokens medium rencontrés (injectés en contexte, ou résolus si kb_trust_medium)."""
+        return self._kb_medium_hits
 
     def enrich(self, ir: IRSchema) -> IRSchema:
         """Enrichit tous les flags de l'IR. Retourne l'IR modifié."""
@@ -285,12 +298,16 @@ class LLMEnricher:
                 continue
 
             # Tentative KB avant LLM (0 token)
-            kb_insight = self._try_kb_insight(flag)
+            kb_insight, kb_medium_ctx = self._try_kb_insight(flag)
             if kb_insight:
                 ir.llm_insights.append(kb_insight)
                 self._kb_hits += 1
+                if kb_insight.source == "kb_medium":
+                    self._kb_medium_hits += 1
                 self.coverage.flags_kb_resolved += 1
                 continue
+            if kb_medium_ctx:
+                self._kb_medium_hits += 1
 
             self.coverage.flags_llm_needed += 1
             if self._kb_lookup:
@@ -304,7 +321,7 @@ class LLMEnricher:
                 or method_bodies.get(flag.method_name or "")
             )
             try:
-                insight = self._ask_llm(flag, method_body, kb_context)
+                insight = self._ask_llm(flag, method_body, kb_context, kb_medium_ctx)
                 ir.llm_insights.append(insight)
             except Exception as e:
                 print(f"  ⚠ Échec pour flag {flag.id} : {e}")
@@ -376,8 +393,9 @@ class LLMEnricher:
             if val not in STOP_TOKENS:
                 candidates.append(KBToken(value=val, kind="literal"))
 
-        # 2. Constantes SCREAMING_SNAKE_CASE non quotées
-        for m in re.finditer(r'\b([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)\b', raw):
+        # 2. Constantes MAJUSCULES non quotées — underscore non requis, pour
+        #    couvrir les codes courts (H1, TP2) comme C_TYP_FLX ; STOP_TOKENS filtre
+        for m in re.finditer(r'\b([A-Z][A-Z0-9_]{1,})\b', raw):
             val = m.group(1)
             if val not in STOP_TOKENS:
                 candidates.append(KBToken(value=val, kind="constant"))
@@ -427,11 +445,19 @@ class LLMEnricher:
 
         return result
 
-    def _try_kb_insight(self, flag: Flag) -> Optional[LLMInsight]:
-        """Résout un flag depuis le KB YAML sans appel LLM. Retourne None si non trouvé."""
-        if not self._kb_lookup:
-            return None
+    def _try_kb_insight(self, flag: Flag) -> tuple[Optional[LLMInsight], str]:
+        """Résout un flag depuis le KB YAML sans appel LLM.
 
+        Retourne (insight, contexte_medium) :
+        - high → (LLMInsight source="kb", "") — court-circuite le LLM ;
+        - medium → court-circuite uniquement si kb_trust_medium ; sinon la fiche
+          part en contexte du prompt LLM (2e élément) au lieu de le remplacer ;
+        - non trouvé / inferred → (None, "").
+        """
+        if not self._kb_lookup:
+            return None, ""
+
+        medium_context = ""
         tokens = self._extract_kb_tokens(flag)
         # Recherche dans l'ordre de fiabilité décroissante
         kind_priority = {k: i for i, k in enumerate(self._KIND_ORDER)}
@@ -469,16 +495,23 @@ class LLMEnricher:
                     confidence=0.92,
                     source="kb",
                     needs_human_validation=False,
-                )
+                ), ""
             elif confiance == "medium":
-                return LLMInsight(
-                    flag_id=flag.id,
-                    business_rule=f"{label} (à confirmer en session PO).",
-                    confidence=0.55,
-                    source="kb_medium",
-                    needs_human_validation=True,
-                )
-        return None
+                if self.kb_trust_medium:
+                    return LLMInsight(
+                        flag_id=flag.id,
+                        business_rule=f"{label} (à confirmer en session PO).",
+                        confidence=0.55,
+                        source="kb_medium",
+                        needs_human_validation=True,
+                    ), ""
+                # 0.55 trop généreux pour court-circuiter : la fiche part en
+                # contexte du prompt, et on continue à chercher un token high
+                if not medium_context:
+                    medium_context = f"{token.value} : {label}"
+                    if semantique:
+                        medium_context += f" — {semantique}"
+        return None, medium_context
 
     def _is_worth_enriching(self, flag: Flag) -> bool:
         """Retourne False si le fragment est trop minimal pour apporter de la valeur."""
@@ -502,8 +535,9 @@ class LLMEnricher:
         flag: Flag,
         method_body: Optional[str] = None,
         kb_context: str = "",
+        kb_medium_context: str = "",
     ) -> LLMInsight:
-        user_message = self._build_prompt(flag, method_body, kb_context)
+        user_message = self._build_prompt(flag, method_body, kb_context, kb_medium_context)
 
         response = self.client.messages.create(
             model=self.model,
@@ -531,10 +565,17 @@ class LLMEnricher:
         flag: Flag,
         method_body: Optional[str] = None,
         kb_context: str = "",
+        kb_medium_context: str = "",
     ) -> str:
         parts: list[str] = []
         if kb_context:
             parts.append(kb_context)
+        if kb_medium_context:
+            parts.append(
+                "Indication issue de la base de connaissance (fiabilité moyenne, "
+                "non validée — à confirmer, ne pas la considérer comme certaine) :\n"
+                f"{kb_medium_context}"
+            )
         if method_body:
             parts.append(
                 f"Méthode complète ({flag.method_name or flag.method_original_name}) :\n"
