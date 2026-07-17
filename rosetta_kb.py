@@ -519,6 +519,50 @@ def cmd_import_config(args: argparse.Namespace, svc: KBService) -> int:
     return 0
 
 
+def cmd_pending_worksheet(args: argparse.Namespace, svc: KBService) -> int:
+    md = svc.export_worksheet(
+        domaine=getattr(args, "domaine", None) or None,
+        priorite=getattr(args, "priorite", None) or None,
+    )
+    if not md:
+        print("(aucune question pending correspondant aux filtres)")
+        return 0
+    if getattr(args, "output", None):
+        out = Path(args.output).expanduser()
+        out.write_text(md, encoding="utf-8")
+        n = md.count("\n## ") + (1 if md.startswith("## ") else 0)
+        print(f"[✓] Worksheet écrit dans {out} ({n} question(s) à remplir)")
+        print(f"    Après remplissage : rosetta_kb.py pending-apply {out}")
+    else:
+        print(md)
+    return 0
+
+
+def cmd_pending_apply(args: argparse.Namespace, svc: KBService) -> int:
+    path = Path(args.fichier).expanduser()
+    if not path.exists():
+        print(f"[!] Fichier introuvable : {path}")
+        return 1
+    result = svc.apply_worksheet(
+        path.read_text(encoding="utf-8"),
+        source=getattr(args, "source", None),
+    )
+    print(
+        f"[✓] {result.validated} validée(s) → KB high, "
+        f"{result.deleted} supprimée(s), {result.skipped} laissée(s) en attente"
+    )
+    for err in result.errors:
+        print(f"  [!] {err}")
+    _print_maturity(svc)
+    return 1 if result.errors else 0
+
+
+def cmd_pending_dedup(args: argparse.Namespace, svc: KBService) -> int:
+    merged, remaining = svc.dedup_pending()
+    print(f"[✓] {merged} doublon(s) fusionné(s) — {remaining} question(s) restantes")
+    return 0
+
+
 def _print_maturity(svc: KBService) -> None:
     rows = svc.maturity_by_domain()
     if not rows:
@@ -653,6 +697,18 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--kb-type", dest="kb_type", default="code",
                    choices=["code", "regle", "colonne", "vue", "requete"])
     p.add_argument("--domaine", help="Domaine métier (stocké dans le pending pour validate)")
+
+    # ── pending-worksheet / pending-apply / pending-dedup ────────────────────
+    p = sub.add_parser("pending-worksheet", help="Exporter la file PO en fiche à remplir (validation en lot)")
+    p.add_argument("--domaine", help="Filtrer par domaine")
+    p.add_argument("--priorite", choices=["high", "medium", "low"])
+    p.add_argument("--output", help="Fichier .md de sortie (défaut: stdout)")
+
+    p = sub.add_parser("pending-apply", help="Appliquer une fiche remplie → validations KB high en lot")
+    p.add_argument("fichier", help="Worksheet .md rempli")
+    p.add_argument("--source", help='Défaut : "PO validé — <date>"')
+
+    sub.add_parser("pending-dedup", help="Fusionner les questions pending portant le même code")
 
     # ── promote / demote ──────────────────────────────────────────────────────
     p = sub.add_parser("promote", help="Monter une entrée EXISTANTE en confiance high (session PO)")
@@ -818,6 +874,9 @@ COMMANDS = {
     "pending":         cmd_pending,
     "validate":        cmd_validate,
     "add-pending":     cmd_add_pending,
+    "pending-worksheet": cmd_pending_worksheet,
+    "pending-apply":   cmd_pending_apply,
+    "pending-dedup":   cmd_pending_dedup,
     "promote":         cmd_promote,
     "demote":          cmd_demote,
     "capture-colonne": cmd_capture_colonne,

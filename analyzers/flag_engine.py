@@ -792,6 +792,13 @@ class FlagEngine:
                 for match in re.finditer(pattern, ep.raw_code, re.IGNORECASE):
                     raw_val = re.search(r"['\"]([^'\"]+)['\"]", match.group())
                     value = raw_val.group(1) if raw_val else match.group().strip("=? '\"")
+                    # Un code situation est court et en MAJUSCULES (H1, TP2, ST_OUV).
+                    # Filtre le bruit : minuscules ('ko', 'ligne'), chiffres seuls
+                    # ('0'), stopwords ('OK') — ils noyaient le signal des rapports.
+                    if not re.fullmatch(r"[A-Z][A-Z0-9_]{0,7}", value):
+                        continue
+                    if value in MAGIC_VALUE_STOPWORDS:
+                        continue
                     key = (ep.name, value)
                     if key in seen:
                         continue

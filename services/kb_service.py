@@ -128,6 +128,14 @@ class ValidateResult:
 
 
 @dataclass
+class WorksheetResult:
+    validated: int = 0
+    deleted: int = 0
+    skipped: int = 0
+    errors: list[str] = field(default_factory=list)
+
+
+@dataclass
 class PromoteResult:
     success: bool
     code: str
@@ -1047,7 +1055,11 @@ class KBService:
     # ── API publique : Mise à jour confiance ─────────────────────────────────
 
     def update_confiance(self, code: str, section: str, confiance: str) -> bool:
-        """Met à jour uniquement la confiance d'une entrée YAML. Retourne True si trouvée."""
+        """Met à jour la confiance d'une entrée YAML. Retourne True si trouvée.
+
+        Cohérence avec promote/demote : monter en high (action humaine via le
+        Cockpit) trace validated_by/validated_date ; redescendre les retire.
+        """
         _SECTION_KEYS: dict[str, tuple[str, ...]] = {
             "codes":                   ("codes",),
             "regles":                  ("regles",),
@@ -1071,8 +1083,13 @@ class KBService:
                 target = bucket.get(keys[-1], {})
                 if code in target and isinstance(target[code], dict):
                     target[code]["confiance"] = confiance
-                    from datetime import date as _date
-                    data.setdefault("meta", {})["last_updated"] = str(_date.today())
+                    if confiance == "high":
+                        target[code].setdefault("validated_by", "cockpit")
+                        target[code]["validated_date"] = str(date.today())
+                    else:
+                        target[code].pop("validated_by", None)
+                        target[code].pop("validated_date", None)
+                    data.setdefault("meta", {})["last_updated"] = str(date.today())
                     self._write_file(yaml_file, data)
                     return True
             return False
@@ -1085,6 +1102,12 @@ class KBService:
             if code not in target or not isinstance(target[code], dict):
                 return False
             target[code]["confiance"] = confiance
+            if confiance == "high":
+                target[code].setdefault("validated_by", "cockpit")
+                target[code]["validated_date"] = str(date.today())
+            else:
+                target[code].pop("validated_by", None)
+                target[code].pop("validated_date", None)
             self._write_file(self.kb_path, data)
             return True
 
@@ -1177,6 +1200,140 @@ class KBService:
             )
         return PromoteResult(success=True, code=code, section=section,
                              domain=fname or domain, confiance=confiance)
+
+    # ── API publique : Worksheet PO (remplissage en lot, de mémoire) ─────────
+
+    def export_worksheet(
+        self, domaine: Optional[str] = None, priorite: Optional[str] = None,
+    ) -> str:
+        """Exporte la file PO en fiche Markdown à remplir hors ligne.
+
+        Un bloc par question : `label:` / `réponse:` / `action:` à compléter,
+        puis ``apply_worksheet`` valide le tout en lot.
+        """
+        pending = self.load_pending()
+        items = [
+            (pid, item) for pid, item in sorted(pending.items())
+            if (not domaine or (item.get("domaine") or "") == domaine)
+            and (not priorite or item.get("priorite") == priorite)
+        ]
+        if not items:
+            return ""
+        lines = [
+            f"# Worksheet PO — {len(items)} question(s) — {date.today()}",
+            "",
+            "> Remplir `réponse:` (et un `label:` court si utile), de mémoire, en vrac.",
+            "> Bloc laissé vide = question intouchée · `action: supprimer` = question retirée.",
+            "> Puis : `rosetta_kb.py pending-apply <ce_fichier>` — tout part en KB high d'un coup.",
+            "",
+        ]
+        for pid, item in items:
+            dom = f" ({item.get('domaine')})" if item.get("domaine") else ""
+            prio = (item.get("priorite") or "medium").upper()
+            lines.append(f"## {pid} — {item.get('code', '?')}  [{prio}]{dom}")
+            lines.append(f"Q: {(item.get('question') or '').strip()}")
+            fichiers = item.get("fichiers") or []
+            if fichiers:
+                lines.append(f"Dans: {', '.join(fichiers[:4])}")
+            lines += ["label:", "réponse:", "action:", ""]
+        return "\n".join(lines)
+
+    def apply_worksheet(self, text: str, source: Optional[str] = None) -> WorksheetResult:
+        """Applique une fiche remplie : chaque bloc avec réponse → validation KB high."""
+        result = WorksheetResult()
+
+        blocks: list[tuple[str, dict]] = []
+        current_id: Optional[str] = None
+        current: dict[str, str] = {}
+        current_field: Optional[str] = None
+        for line in text.splitlines():
+            m = re.match(r"^##\s+(PV-\d+|[A-Za-z0-9_-]+)\s+—", line)
+            if m:
+                if current_id:
+                    blocks.append((current_id, current))
+                current_id, current, current_field = m.group(1), {}, None
+                continue
+            if current_id is None:
+                continue
+            fm = re.match(r"^(label|réponse|reponse|action)\s*:\s*(.*)$", line, re.IGNORECASE)
+            if fm:
+                key = fm.group(1).lower()
+                if key == "reponse":
+                    key = "réponse"
+                current[key] = fm.group(2).strip()
+                current_field = key
+                continue
+            if line.startswith(("Q:", "Dans:", "#", ">")):
+                current_field = None
+                continue
+            # continuation multi-ligne de la réponse
+            if current_field == "réponse" and line.strip():
+                current["réponse"] = f"{current.get('réponse', '')} {line.strip()}".strip()
+        if current_id:
+            blocks.append((current_id, current))
+
+        effective_source = source or f"PO validé — {date.today()}"
+        for pid, fields in blocks:
+            action = (fields.get("action") or "").strip().lower()
+            label = (fields.get("label") or "").strip()
+            reponse = (fields.get("réponse") or "").strip()
+
+            if action in ("supprimer", "delete"):
+                pending = self.load_pending()
+                if pid in pending:
+                    del pending[pid]
+                    self.save_pending(pending)
+                    result.deleted += 1
+                else:
+                    result.errors.append(f"{pid} introuvable (suppression)")
+                continue
+
+            if not label and not reponse:
+                result.skipped += 1
+                continue
+
+            vr = self.validate_pending(
+                pending_id=pid,
+                label=label or _truncate(reponse, 120),
+                notes=reponse or None,
+                source=effective_source,
+            )
+            if vr.success:
+                result.validated += 1
+            else:
+                result.errors.append(f"{pid} : {vr.error}")
+        return result
+
+    def dedup_pending(self) -> tuple[int, int]:
+        """Fusionne les pending portant le même code (fichiers unis, priorité max).
+
+        Retourne (nb_fusionnés, nb_restants).
+        """
+        pending = self.load_pending()
+        prio_rank = {"high": 2, "medium": 1, "low": 0}
+        keeper_by_code: dict[str, str] = {}
+        merged = 0
+        for pid in sorted(pending):
+            item = pending[pid]
+            code = item.get("code") or pid
+            keeper_id = keeper_by_code.get(code)
+            if keeper_id is None:
+                keeper_by_code[code] = pid
+                continue
+            keeper = pending[keeper_id]
+            fichiers = list(dict.fromkeys(
+                (keeper.get("fichiers") or []) + (item.get("fichiers") or [])
+            ))
+            if fichiers:
+                keeper["fichiers"] = fichiers
+            if (prio_rank.get(item.get("priorite", "medium"), 1)
+                    > prio_rank.get(keeper.get("priorite", "medium"), 1)):
+                keeper["priorite"] = item["priorite"]
+            del pending[pid]
+            merged += 1
+        if merged:
+            self.save_pending(pending)
+        return merged, len(pending)
 
     # ── API publique : Import config Oracle (confiance high) ─────────────────
 

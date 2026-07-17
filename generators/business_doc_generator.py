@@ -224,7 +224,7 @@ class BusinessDocGenerator:
         confidence = ir.metadata.confidence_score
 
         lines.append(f"# {controller}Controller — Règles Métier")
-        lines.append(f"Extrait le : {extracted_at} | Confiance extraction : {confidence}")
+        lines.append(f"Extrait le : {extracted_at} | Confiance extraction : {confidence:.2f}")
         lines.append("")
 
         # Index de recherche rapide
@@ -240,6 +240,16 @@ class BusinessDocGenerator:
         # Une section par action
         # =====================================================================
         for ep in ir.entry_points:
+            ep_flags = flags_by_location.get(ep.name, [])
+            to_validate = _build_validation_list(ep_flags, insights_by_flag)
+            has_risk = ep.risk_score is not None and ep.risk_score > 0
+
+            # Méthode sans risque, sans flag, sans question : pas de section vide
+            # (les actions de contrôleur restent listées — la route est une info)
+            if (ir.metadata.file_type != "controller"
+                    and not ep_flags and not to_validate and not has_risk):
+                continue
+
             if ir.metadata.file_type == "controller":
                 methods = "/".join(ep.http_methods)
                 lines.append(f"## Action : {ep.name}")
@@ -270,7 +280,6 @@ class BusinessDocGenerator:
                     lines.append(f"| **Score normalisé** | | **{ep.risk_score}/100** {badge} |")
             lines.append("")
 
-            ep_flags = flags_by_location.get(ep.name, [])
             security_flags = [f for f in ep_flags if f.type == "security_risk"]
             business_flags = [f for f in ep_flags if f.type == "business_logic_unclear"]
 
@@ -302,7 +311,6 @@ class BusinessDocGenerator:
                 lines.append("")
 
             # --- Questions ouvertes pour arbitrage ---
-            to_validate = _build_validation_list(ep_flags, insights_by_flag)
             if to_validate:
                 lines.append("### Questions ouvertes pour arbitrage")
                 for item in to_validate:
