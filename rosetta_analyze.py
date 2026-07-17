@@ -173,6 +173,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--kb-trust-medium", action="store_true",
         help="Les entrées KB medium court-circuitent le LLM (défaut : contexte prompt seulement)",
     )
+    p.add_argument(
+        "--oracle-config", default=None, metavar="DIR",
+        help="Répertoire d'exports CSV Oracle + oracle_manifest.yaml — active le croisement code↔config",
+    )
     p.add_argument("--from-json", default=None, metavar="JSON")
     p.add_argument("--retry-failed", action="store_true")
     p.add_argument("--debug-rules", action="store_true")
@@ -330,6 +334,9 @@ def main() -> None:
             kb_output_dir=Path(args.kb_output_dir).expanduser() if args.kb_output_dir else None,
             kb_domain=args.kb_domain,
             kb_trust_medium=args.kb_trust_medium,
+            oracle_config_dir=(
+                Path(args.oracle_config).expanduser() if args.oracle_config else None
+            ),
             git_root=Path(args.git_root) if args.git_root else None,
         )
     except EnvironmentError as exc:
@@ -383,6 +390,11 @@ def main() -> None:
         if args.debug_rules:
             _print_debug_rules([result.ir])
 
+        if args.oracle_config:
+            _generate_oracle_crossref(
+                Path(args.oracle_config).expanduser(), [result.ir], output_dir
+            )
+
         if args.dashboard:
             _generate_dashboard(output_dir)
 
@@ -403,6 +415,12 @@ def main() -> None:
     if args.debug_rules:
         _print_debug_rules([r.ir for r in batch.results])
 
+    if args.oracle_config:
+        _generate_oracle_crossref(
+            Path(args.oracle_config).expanduser(),
+            [r.ir for r in batch.results], output_dir,
+        )
+
     if args.dashboard:
         _generate_dashboard(output_dir)
 
@@ -420,6 +438,53 @@ def _generate_enchainement_map(output_dir: Path) -> None:
     maps_dir = output_dir / "maps"
     written = generate_service_maps(relations, maps_dir)
     print(f"      🗂  Cartes par service → {maps_dir}/ ({len(written)} fichiers)")
+
+
+def _generate_oracle_crossref(oracle_dir: Path, irs: list, output_dir: Path) -> None:
+    """Rapport _crossref.md + transitions config pour la carte Mermaid."""
+    import json
+
+    from analyzers.config_crossref import (
+        ConfigCrossref, build_report, collect_code_tokens, detect_conflicts, to_relations,
+    )
+    from extractors.oracle_config_extractor import MANIFEST_NAME, OracleConfigExtractor
+
+    manifest = oracle_dir / MANIFEST_NAME
+    if not manifest.exists():
+        print(f"⚠  Manifeste Oracle introuvable : {manifest}")
+        return
+
+    rows = OracleConfigExtractor(manifest).extract(oracle_dir)
+    xref = ConfigCrossref(rows)
+    config_hits = sum(1 for ir in irs for f in ir.flags if f.resolved_by_config)
+    tokens = collect_code_tokens(irs, extra_json_dir=output_dir)
+
+    # Transitions config → JSON relations (ramassé par --map) + conflits
+    cfg_rels = to_relations(rows)
+    code_rels: list[dict] = []
+    for f in sorted(output_dir.glob("*_business_logic.json")):
+        if f.name == "oracle_config_business_logic.json":
+            continue
+        try:
+            code_rels.extend(
+                json.loads(f.read_text(encoding="utf-8")).get("relations", [])
+            )
+        except Exception:
+            pass
+    conflicts = detect_conflicts(code_rels, cfg_rels)
+    if cfg_rels:
+        (output_dir / "oracle_config_business_logic.json").write_text(
+            json.dumps({"relations": cfg_rels}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    report_path = output_dir / "_crossref.md"
+    report_path.write_text(
+        build_report(xref, tokens, config_hits=config_hits, conflicts=conflicts),
+        encoding="utf-8",
+    )
+    suffix = f" — ⚠ {len(conflicts)} conflit(s) code↔config" if conflicts else ""
+    print(f"      🔀 Croisement code↔config → {report_path}{suffix}")
 
 
 def _generate_dashboard(output_dir: Path) -> None:

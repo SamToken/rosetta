@@ -1178,6 +1178,63 @@ class KBService:
         return PromoteResult(success=True, code=code, section=section,
                              domain=fname or domain, confiance=confiance)
 
+    # ── API publique : Import config Oracle (confiance high) ─────────────────
+
+    def import_oracle_rows(self, rows: list) -> ImportResult:
+        """Importe des OracleConfigRow (role=config) en confiance high.
+
+        - Idempotent : clé = cle dans la section cible — ré-import = mise à jour.
+        - Une entrée high existante qui ne vient PAS d'un import oracle
+          (PO validé, capture manuelle) n'est jamais écrasée : le PO prime.
+        """
+        result = ImportResult()
+        by_domain: dict[str, list] = {}
+        for row in rows:
+            if row.role != "config":
+                continue
+            by_domain.setdefault(row.domaine or "commun", []).append(row)
+
+        for domain, drows in by_domain.items():
+            data = self._load_for_write(domain)
+            for row in drows:
+                keys = _IMPORT_TYPE_ROUTES.get(row.kb_type, ("codes",))
+                section = data
+                for k in keys[:-1]:
+                    section = section.setdefault(k, {})
+                section = section.setdefault(keys[-1], {})
+
+                existing = section.get(row.cle)
+                if (
+                    isinstance(existing, dict)
+                    and existing.get("confiance") == "high"
+                    and not str(existing.get("source", "")).startswith("oracle_config:")
+                ):
+                    result.ignored += 1
+                    result.messages.append(
+                        f"[skip] {row.cle} — high existant hors oracle (le PO prime)"
+                    )
+                    continue
+
+                entry: dict[str, Any] = {
+                    "label": row.label or row.cle,
+                    "confiance": "high",
+                    "source": f"oracle_config:{row.table}",
+                    "domaine": domain,
+                }
+                if row.ordre is not None:
+                    entry["ordre"] = row.ordre
+                if row.conditions:
+                    entry["conditions"] = [f"{k} = {v}" for k, v in row.conditions.items()]
+
+                if isinstance(existing, dict):
+                    existing.update(entry)
+                    result.updated += 1
+                else:
+                    section[row.cle] = entry
+                    result.added += 1
+            self._save_for_write(data, domain)
+        return result
+
     # ── API publique : Maturité par domaine ──────────────────────────────────
 
     def maturity_by_domain(self) -> list[tuple[str, int, int]]:

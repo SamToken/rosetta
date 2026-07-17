@@ -152,3 +152,6 @@ kb/
 # Windows Zone Identifier (WSL artefacts)
 *:Zone.Identifier
 *:Avecto.Zone.Identifier
+
+# Manifeste Oracle local — contient des noms de tables réels, jamais versionné
+oracle_manifest.yaml

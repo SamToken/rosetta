@@ -519,6 +519,65 @@ def cmd_import_config(args: argparse.Namespace, svc: KBService) -> int:
     return 0
 
 
+def _print_maturity(svc: KBService) -> None:
+    rows = svc.maturity_by_domain()
+    if not rows:
+        return
+    print("\n  📈 Maturité KB (objectif : >60% high) :")
+    for domain, high, total in rows:
+        pct = round(100.0 * high / total, 1) if total else 0.0
+        mark = "✅" if pct > 60 else "⚠️ "
+        print(f"     {mark} {domain:<30} {high}/{total} high ({pct}%)")
+
+
+def cmd_oracle_scaffold(args: argparse.Namespace, svc: KBService) -> int:
+    from extractors.oracle_config_extractor import scaffold_manifest
+
+    csv_dir = Path(args.csv_dir).expanduser().resolve()
+    if not csv_dir.is_dir():
+        print(f"[!] Répertoire introuvable : {csv_dir}")
+        return 1
+    out = scaffold_manifest(
+        csv_dir, Path(args.output).expanduser() if getattr(args, "output", None) else None
+    )
+    print(f"[✓] Squelette manifeste → {out}")
+    print("    Compléter colonne_cle / colonne_label / colonnes_conditions,")
+    print(f"    puis lancer : rosetta_kb.py import-oracle {csv_dir} --manifest {out}")
+    return 0
+
+
+def cmd_import_oracle(args: argparse.Namespace, svc: KBService) -> int:
+    from extractors.oracle_config_extractor import MANIFEST_NAME, OracleConfigExtractor
+
+    csv_dir = Path(args.csv_dir).expanduser().resolve()
+    manifest = (
+        Path(args.manifest).expanduser().resolve()
+        if getattr(args, "manifest", None) else csv_dir / MANIFEST_NAME
+    )
+    if not manifest.exists():
+        print(f"[!] Manifeste introuvable : {manifest}")
+        print(f"    Générer un squelette : rosetta_kb.py oracle-scaffold {csv_dir}")
+        return 1
+
+    try:
+        rows = OracleConfigExtractor(manifest).extract(csv_dir)
+    except Exception as exc:  # manifeste invalide, CSV illisible
+        print(f"[!] Extraction impossible : {exc}")
+        return 1
+
+    config_rows = [r for r in rows if r.role == "config"]
+    result = svc.import_oracle_rows(config_rows)
+    print(
+        f"[ORACLE] {len(config_rows)} ligne(s) config lues — "
+        f"{result.added} ajoutée(s), {result.updated} mise(s) à jour, "
+        f"{result.ignored} ignorée(s) (PO prime)"
+    )
+    for msg in result.messages:
+        print(f"  {msg}")
+    _print_maturity(svc)
+    return 0
+
+
 def cmd_import(args: argparse.Namespace, svc: KBService) -> int:
     docs_dir = Path(args.docs_dir).expanduser().resolve()
     try:
@@ -685,6 +744,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Simuler l'import sans écrire le KB",
     )
 
+    # ── oracle-scaffold / import-oracle ──────────────────────────────────────
+    p = sub.add_parser("oracle-scaffold", help="Générer un squelette de manifeste depuis un répertoire CSV")
+    p.add_argument("csv_dir", help="Répertoire contenant les exports CSV Oracle")
+    p.add_argument("--output", help="Chemin du manifeste généré (défaut: <dir>/oracle_manifest.yaml)")
+
+    p = sub.add_parser("import-oracle", help="Importer la config Oracle en KB (confiance high)")
+    p.add_argument("csv_dir", help="Répertoire contenant les exports CSV Oracle")
+    p.add_argument("--manifest", help="Manifeste YAML (défaut: <dir>/oracle_manifest.yaml)")
+
     # ── export-prompt ─────────────────────────────────────────────────────────
     p = sub.add_parser("export-prompt", help="Exporter le KB au format compact pour injection LLM")
     p.add_argument("--domaine", help="Filtrer par domaine (ex: ticketing, sav)")
@@ -761,6 +829,8 @@ COMMANDS = {
     "split":           cmd_split,
     "import":          cmd_import,
     "import-config":   cmd_import_config,
+    "import-oracle":   cmd_import_oracle,
+    "oracle-scaffold": cmd_oracle_scaffold,
     "export-prompt":   cmd_export_prompt,
     "export-brief":    cmd_export_brief,
     "export-human":    cmd_export_human,

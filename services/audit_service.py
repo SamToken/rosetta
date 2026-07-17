@@ -50,6 +50,7 @@ class AuditOptions:
     kb_output_dir: Optional[Path] = None
     kb_domain: Optional[str] = None
     kb_trust_medium: bool = False  # medium court-circuite le LLM (sinon : contexte prompt)
+    oracle_config_dir: Optional[Path] = None  # répertoire CSV + oracle_manifest.yaml
     git_root: Optional[Path] = None
     max_workers: int = 1  # >1 active le ThreadPoolExecutor en mode batch API
 
@@ -189,6 +190,7 @@ class AuditPipeline:
         self._call_graph: Any = None
         self._kb_provider: Any = None
         self._kb_lookup: Any = None
+        self._config_crossref: Any = None  # ConfigCrossref si --oracle-config
         self._known_tokens: frozenset = frozenset()  # filtre O(1) pour RelationExtractor
 
         from telemetry.performance_logger import PerformanceLogger
@@ -243,6 +245,27 @@ class AuditPipeline:
                 self._p(f"  [KB] {len(self._known_tokens)} token(s) indexés pour RelationExtractor")
         except Exception:
             pass
+
+        if opts.oracle_config_dir:
+            try:
+                from analyzers.config_crossref import ConfigCrossref
+                from extractors.oracle_config_extractor import (
+                    MANIFEST_NAME, OracleConfigExtractor,
+                )
+                manifest = opts.oracle_config_dir / MANIFEST_NAME
+                rows = OracleConfigExtractor(manifest).extract(opts.oracle_config_dir)
+                self._config_crossref = ConfigCrossref(rows)
+                self._p(
+                    f"  [ORACLE] {len(self._config_crossref.config_rows)} ligne(s) "
+                    f"config chargées depuis {opts.oracle_config_dir}"
+                )
+            except FileNotFoundError:
+                self._p(
+                    f"⚠  Manifeste Oracle introuvable dans {opts.oracle_config_dir} "
+                    f"— lancer : rosetta_kb.py oracle-scaffold {opts.oracle_config_dir}"
+                )
+            except Exception as exc:
+                self._p(f"⚠  Config Oracle ignorée : {exc}")
 
     def _print_kb_maturity(self) -> None:
         """Dashboard maturité KB — une ligne par domaine, objectif >60% high."""
@@ -596,6 +619,12 @@ class AuditPipeline:
             counts[f.type] = counts.get(f.type, 0) + 1
         detail = ", ".join(f"{n}×{t}" for t, n in sorted(counts.items()))
         self._p(f"        ✓ {len(ir.flags)} flags ({detail})")
+
+        # Étape 2a — Croisement config Oracle (déterministe, avant LLM)
+        if self._config_crossref:
+            hits = self._config_crossref.annotate(ir)
+            if hits:
+                self._p(f"        🗄  {hits} flag(s) résolus par la config Oracle")
 
         # Étape 2b — Relations sémantiques (déterministe)
         if self._known_tokens:

@@ -257,7 +257,13 @@ class LLMEnricher:
         self.kb_trust_medium = kb_trust_medium
         self._kb_hits = 0
         self._kb_medium_hits = 0
+        self._config_hits = 0
         self.coverage = KBCoverageReport()
+
+    @property
+    def config_hits(self) -> int:
+        """Flags résolus par la configuration Oracle (skippés, 0 token LLM)."""
+        return self._config_hits
 
     @property
     def kb_hits(self) -> int:
@@ -291,6 +297,11 @@ class LLMEnricher:
                 print(f"  [KB] Contexte injecté : {kb_context.count('[') - kb_context.count('[KB')} règle(s) KB")
 
         for flag in ir.flags:
+            # Résolu par la config Oracle (crossref) — fait établi, 0 token LLM
+            if getattr(flag, "resolved_by_config", None):
+                self._config_hits += 1
+                continue
+
             if not self._is_worth_enriching(flag):
                 print(f"  ↷ {flag.id} skipped — fragment too minimal")
                 self.usage.skipped_flags += 1
@@ -330,6 +341,8 @@ class LLMEnricher:
             print(f"  ↷ {self.usage.skipped_flags} flag(s) skipped (fragment trop minimal)")
         if self._kb_hits:
             print(f"  📚 {self._kb_hits} flag(s) résolus depuis le KB (0 token LLM)")
+        if self._config_hits:
+            print(f"  🗄  {self._config_hits} flag(s) résolus par la config Oracle (0 token LLM)")
 
         if self.coverage.tokens_extracted_by_kind:
             total_ex = sum(self.coverage.tokens_extracted_by_kind.values())

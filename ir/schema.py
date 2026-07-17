@@ -202,6 +202,9 @@ class Flag(BaseModel):
     context_lines: Optional[str] = None     # ±3 lignes autour pour copier dans Copilot
     impact_category: ImpactCategory = ImpactCategory.LOGIC_GAP
     see_also: list[str] = Field(default_factory=list)  # IDs de Relation couvrant ce fragment
+    # Rempli par ConfigCrossref quand la valeur est un fait de configuration Oracle :
+    # {table, cle, label, conditions} — le LLM enricher skippe ces flags
+    resolved_by_config: Optional[dict] = None
 
 
 # =============================================================================

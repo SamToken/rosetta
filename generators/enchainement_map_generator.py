@@ -368,7 +368,8 @@ def generate_map(
         if (
             (
                 r.get("kind") in ("transitions_to", "implies", "requires")
-                and r.get("pattern") in ("pattern_c", "pattern_d", "pattern_f", "config_db")
+                and r.get("pattern") in ("pattern_c", "pattern_d", "pattern_f",
+                                         "config_db", "oracle_config")
             ) or (
                 r.get("kind") == "produces"
                 and r.get("pattern") == "pattern_g"
@@ -411,6 +412,7 @@ def generate_map(
     # ── Group arrows: (from_id, to_id) → (style, [unique conditions]) ───
     Arrow = tuple[str, str]
     arrows: dict[Arrow, tuple[str, list[str]]] = {}
+    conflict_keys: set[Arrow] = set()  # transitions où code et config divergent
 
     for r in useful:
         fv = (r.get("from_entity") or {}).get("value", "?")
@@ -422,7 +424,7 @@ def generate_map(
 
         _is_dotted = (
             r.get("kind") in ("implies", "requires", "produces")
-            or r.get("pattern") == "config_db"
+            or r.get("pattern") in ("config_db", "oracle_config")
             or r.get("confirmed_by_both")
         )
         style = "-.->" if _is_dotted and not r.get("confirmed_by_both") else (
@@ -430,6 +432,8 @@ def generate_map(
         )
 
         key: Arrow = (fid, tid)
+        if r.get("conflict"):
+            conflict_keys.add(key)
         if key not in arrows:
             arrows[key] = (style, [])
 
@@ -509,7 +513,10 @@ def generate_map(
 
     # Arrows
     lines.append("    %% Transitions")
-    for (fid, tid), (style, conds) in arrows.items():
+    conflict_indices: list[int] = []
+    for idx, ((fid, tid), (style, conds)) in enumerate(arrows.items()):
+        if (fid, tid) in conflict_keys:
+            conflict_indices.append(idx)
         if conds:
             cond_str = " / ".join(conds[:3])
             if len(conds) > 3:
@@ -518,6 +525,13 @@ def generate_map(
         else:
             lines.append(f'    {fid} {style} {tid}')
     lines.append("")
+
+    # Conflits code ↔ config → arêtes rouges
+    if conflict_indices:
+        lines.append("    %% Conflits code ↔ config")
+        for idx in conflict_indices:
+            lines.append(f"    linkStyle {idx} stroke:#d32f2f,stroke-width:3px")
+        lines.append("")
 
     return "\n".join(lines)
 
@@ -539,17 +553,33 @@ def generate_md(
     if service:
         header += f"Service : `{service}`\n\n"
 
-    has_config_db = any(r.get("pattern") == "config_db" for r in relations)
+    has_config_db = any(r.get("pattern") in ("config_db", "oracle_config") for r in relations)
     has_confirmed = any(r.get("confirmed_by_both") for r in relations)
-    if has_config_db or has_confirmed:
+    conflicts = [r for r in relations if r.get("conflict")]
+    if has_config_db or has_confirmed or conflicts:
         legend_parts = ["─── extrait du code"]
         if has_config_db:
             legend_parts.append("┈┈┈ paramétrable (BD)")
         if has_confirmed:
             legend_parts.append("══ confirmé code+BD")
+        if conflicts:
+            legend_parts.append("🔴 conflit code↔config")
         header += "> **Légende :** " + "     ".join(legend_parts) + "\n\n"
 
-    return header + "```mermaid\n" + diagram + "\n```\n"
+    body = header + "```mermaid\n" + diagram + "\n```\n"
+
+    if conflicts:
+        body += "\n## ⚠️ CONFLITS code ↔ config\n\n"
+        body += ("Le code et la configuration définissent différemment ces "
+                 "transitions — arbitrage prioritaire.\n\n")
+        for r in conflicts:
+            frm = (r.get("from_entity") or {}).get("value", "?")
+            to = (r.get("to_entity") or {}).get("value", "?")
+            table = r.get("oracle_table", "?")
+            body += f"- `{frm}` → `{to}` selon la config `[cfg:{table}]`, cible différente dans le code\n"
+        body += "\n"
+
+    return body
 
 
 def generate_service_maps(relations: list[dict], out_dir: Path) -> list[Path]:
