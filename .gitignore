@@ -155,3 +155,13 @@ kb/
 
 # Manifeste Oracle local — contient des noms de tables réels, jamais versionné
 oracle_manifest.yaml
+
+# Sorties d'analyse générées à la racine — données métier, jamais versionnées
+*_brief_po.md
+*_business_doc.md
+*_business_logic.json
+*_flags.md
+dashboard.html
+enchainement_map.md
+maps/
+aggregators/*.pdf
