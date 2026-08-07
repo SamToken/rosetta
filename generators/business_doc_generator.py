@@ -275,6 +275,11 @@ class BusinessDocGenerator:
             else:
                 lines.append(f"## Méthode : {ep.name}()")
 
+            if ep.called_by:
+                sources = ", ".join(f"`{c}()`" for c in ep.called_by[:8])
+                extra = f" (+{len(ep.called_by) - 8})" if len(ep.called_by) > 8 else ""
+                lines.append(f"**← Appelé par (cross-fichier)** : {sources}{extra}")
+
             if ep.callees:
                 targets = ", ".join(f"`{c}()`" for c in ep.callees[:8])
                 extra = f" (+{len(ep.callees) - 8})" if len(ep.callees) > 8 else ""

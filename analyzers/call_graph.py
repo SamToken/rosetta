@@ -32,8 +32,9 @@ _BODY_SNIPPET_LINES = 10   # Lignes du corps incluses dans le bundle
 _MAX_BUNDLE_METHODS  = 8   # Max de méthodes par bundle LLM
 
 # Version du schéma du cache .callgraph.json. Un bump force la réindexation au
-# chargement (le format a changé). v2 ajoute called_names (index inverse code mort).
-_CACHE_SCHEMA_VERSION = 2
+# chargement (le format a changé). v2 ajoute called_names (index inverse code mort) ;
+# v3 ajoute callers_by_target (arêtes inverses résolues « appelé par »).
+_CACHE_SCHEMA_VERSION = 3
 
 # Patterns d'extraction des appels de méthodes depuis un source PHP
 _RE_PROP_CALL   = re.compile(r'\$this->(\w+)->(\w+)\s*\(')   # $this->svc->method(
@@ -88,6 +89,9 @@ class CallGraphIndex:
         # Index inverse : noms de méthodes (lower) apparaissant comme CIBLE d'appel
         # quelque part dans l'arbre. Base de la détection de code mort (#4).
         self._called_names: set[str] = set()
+        # Arêtes inverses résolues : "TargetClass::method" → {"CallerClass::method"}.
+        # Base du « appelé par » et de la vue par feature (#3).
+        self._callers_by_target: dict[str, set[str]] = {}
 
     # =========================================================================
     # Construction
@@ -114,11 +118,19 @@ class CallGraphIndex:
         parser = Parser(_PHP_LANGUAGE)
 
         php_files = sorted(php_root.rglob("*.php"))
+        # Passe 1 : indexer les définitions (nécessaire avant de résoudre les arêtes)
         for php_file in php_files:
             try:
                 idx._index_file(php_file, parser)
             except Exception:
                 pass  # ignore les fichiers non parsables
+        # Passe 2 : arêtes inverses « appelé par » — resolve_strict a besoin de
+        # l'index complet (les cibles peuvent être dans d'autres fichiers).
+        for php_file in php_files:
+            try:
+                idx._index_edges(php_file, parser)
+            except Exception:
+                pass
 
         if cache_path:
             try:
@@ -154,6 +166,47 @@ class CallGraphIndex:
             key_cm = f"{class_name}::{sig.method_name}"
             self._by_method.setdefault(key_method, []).append(sig)
             self._by_class_method[key_cm] = sig
+
+    def _index_edges(self, path: Path, parser: Parser) -> None:
+        """Passe 2 : arêtes inverses résolues. Pour chaque méthode, résout ses
+        appels typés vers une classe certaine et enregistre l'arête inverse
+        target ← caller. À n'appeler qu'après l'indexation complète des définitions."""
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            return
+        class_name = _extract_class_name(content)
+        if not class_name:
+            return
+
+        from extractors.php_extractor import extract_property_types_from_source
+        try:
+            property_types = extract_property_types_from_source(content)
+        except Exception:
+            property_types = {}
+
+        content_bytes = content.encode("utf-8")
+        tree = parser.parse(content_bytes)
+
+        for node in _find_nodes(tree.root_node, "method_declaration"):
+            name_node = next((c for c in node.children if c.type == "name"), None)
+            if name_node is None:
+                continue
+            caller_method = content_bytes[name_node.start_byte:name_node.end_byte].decode("utf-8")
+            if caller_method.startswith("__"):
+                continue
+            body = content_bytes[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+            caller = f"{class_name}::{caller_method}"
+            for method, hint in _extract_called_methods(body, property_types):
+                if not hint:
+                    continue
+                sig = self.resolve_strict(method, hint)
+                if sig is None:
+                    continue
+                target = f"{sig.class_name}::{sig.method_name}"
+                if target == caller:
+                    continue  # ignore la récursion directe
+                self._callers_by_target.setdefault(target, set()).add(caller)
 
     def _extract_signature(
         self,
@@ -268,6 +321,11 @@ class CallGraphIndex:
         """
         return method_name.lower() in self._called_names
 
+    def callers_of(self, class_name: str, method_name: str) -> list[str]:
+        """« Appelé par » (#3) : liste triée des "Class::method" qui appellent
+        `class_name::method_name`, via les arêtes résolues (match de type exact)."""
+        return sorted(self._callers_by_target.get(f"{class_name}::{method_name}", set()))
+
     def dead_code_candidates(
         self,
         is_entrypoint=None,
@@ -355,6 +413,9 @@ class CallGraphIndex:
                 for k, v in self._by_class_method.items()
             },
             "called_names": sorted(self._called_names),
+            "callers_by_target": {
+                k: sorted(v) for k, v in self._callers_by_target.items()
+            },
         }
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -374,6 +435,9 @@ class CallGraphIndex:
         for k, sig in data["by_class_method"].items():
             idx._by_class_method[k] = MethodSignature(**sig)
         idx._called_names = set(data.get("called_names", []))
+        idx._callers_by_target = {
+            k: set(v) for k, v in data.get("callers_by_target", {}).items()
+        }
         return idx
 
 

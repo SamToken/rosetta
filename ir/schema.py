@@ -137,6 +137,8 @@ class EntryPoint(BaseModel):
     # Appels cross-fichier résolus (#3 vue par feature) — collaborateurs invoqués,
     # sous forme "ClassName::method". Renseigné si call graph + types résolus.
     callees: list[str] = Field(default_factory=list)
+    # « Appelé par » (#3) — "ClassName::method" qui invoquent cette méthode.
+    called_by: list[str] = Field(default_factory=list)
 
 
 class Operation(BaseModel):

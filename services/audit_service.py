@@ -622,8 +622,12 @@ class AuditPipeline:
         # magic __*) sont exclus car appelés hors code.
         if self._call_graph:
             from analyzers.call_graph import _extract_called_methods
+            from pathlib import Path as _Path
             suspects = 0
             prop_types = ir.metadata.property_types
+            # Nom de classe complet tel qu'indexé par le call graph (ex: le stem
+            # FooService), pas le controller_name tronqué (Foo).
+            class_full = _Path(ir.metadata.source_file).stem
             for ep in ir.entry_points:
                 orig = ep.original_name or ep.name
                 if orig.endswith("Action") or orig.startswith("__"):
@@ -631,6 +635,7 @@ class AuditPipeline:
                 ep.is_referenced = self._call_graph.is_referenced(orig)
                 ep.dead_code_suspected = not ep.is_referenced
                 suspects += ep.dead_code_suspected
+                ep.called_by = self._call_graph.callers_of(class_full, orig)
 
                 # Appels cross-fichier résolus (#3) — collaborateurs certains
                 seen_callees: set[str] = set()
