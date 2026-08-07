@@ -109,6 +109,11 @@ class PHPExtractor:
         tree = self._parser.parse(content_bytes)
         root = tree.root_node
 
+        parent, interfaces, traits = self._extract_class_structure(root, content_bytes)
+        ir.metadata.parent_class = parent
+        ir.metadata.interfaces = interfaces
+        ir.metadata.traits = traits
+
         ir.entry_points = self._extract_entry_points_ast(root, content_bytes, content, file_type)
         for ep in ir.entry_points:
             ep.risk_score, ep.risk_details, ep.critical_risk = self._compute_risk_score(ep)
@@ -146,6 +151,44 @@ class PHPExtractor:
             if m:
                 return m.group(1)
         return path.stem.replace('Controller', '').replace('Service', '')
+
+    def _extract_class_structure(
+        self, root_node, content_bytes: bytes
+    ) -> tuple[Optional[str], list[str], list[str]]:
+        """Extrait (classe parente, interfaces, traits) de la première classe.
+
+        Alimente #1/#2 : la logique métier legacy vit souvent dans la classe
+        parente ou des traits partagés, invisibles si on ne regarde que la classe
+        concrète."""
+        parent: Optional[str] = None
+        interfaces: list[str] = []
+        traits: list[str] = []
+
+        class_nodes = self._find_nodes(root_node, 'class_declaration')
+        if not class_nodes:
+            return parent, interfaces, traits
+        class_node = class_nodes[0]  # première classe du fichier
+
+        _NAME_TYPES = ('name', 'qualified_name')
+        for child in class_node.children:
+            if child.type == 'base_clause':
+                name = next((c for c in child.children if c.type in _NAME_TYPES), None)
+                if name is not None:
+                    parent = self._node_text(name, content_bytes)
+            elif child.type == 'class_interface_clause':
+                interfaces.extend(
+                    self._node_text(c, content_bytes)
+                    for c in child.children if c.type in _NAME_TYPES
+                )
+            elif child.type == 'declaration_list':
+                for decl in child.children:
+                    if decl.type == 'use_declaration':
+                        traits.extend(
+                            self._node_text(c, content_bytes)
+                            for c in decl.children if c.type in _NAME_TYPES
+                        )
+
+        return parent, interfaces, traits
 
     # =========================================================================
     # AST helpers

@@ -227,6 +227,24 @@ class BusinessDocGenerator:
         lines.append(f"Extrait le : {extracted_at} | Confiance extraction : {confidence:.2f}")
         lines.append("")
 
+        meta = ir.metadata
+        if meta.parent_class or meta.interfaces or meta.traits:
+            parts = []
+            if meta.parent_class:
+                parts.append(f"hérite de `{meta.parent_class}`")
+            if meta.traits:
+                parts.append("traits : " + ", ".join(f"`{t}`" for t in meta.traits))
+            if meta.interfaces:
+                parts.append("implémente : " + ", ".join(f"`{i}`" for i in meta.interfaces))
+            note = "> 🧬 **Héritage** — " + " · ".join(parts) + "."
+            if meta.parent_class:
+                note += (
+                    f" ⚠ Une partie du comportement peut vivre dans "
+                    f"`{meta.parent_class}` (hors de ce fichier)."
+                )
+            lines.append(note)
+            lines.append("")
+
         # Index de recherche rapide
         flags_by_location: dict[str, list[Flag]] = {}
         for flag in ir.flags:

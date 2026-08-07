@@ -185,6 +185,12 @@ class IRMetadata(BaseModel):
     confidence_score: float = 1.0  # 0-1, baisse si parsing incomplet
     file_type: str = "unknown"  # controller | service | helper | tools | repository | unknown
 
+    # Structure d'héritage (#1/#2) — où vit réellement le comportement. La logique
+    # métier legacy est souvent dans la classe parente ou des traits partagés.
+    parent_class: Optional[str] = None       # extends X
+    interfaces: list[str] = Field(default_factory=list)  # implements A, B
+    traits: list[str] = Field(default_factory=list)      # use TraitX; dans le corps
+
 
 class UnparsedSection(BaseModel):
     """Section que l'extracteur n'a pas pu parser."""
