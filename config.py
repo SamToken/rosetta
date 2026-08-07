@@ -52,6 +52,18 @@ class Settings:
 
     # ── Chemins opérationnels ────────────────────────────────────────────────
 
+    # ── Périmètre d'extraction PHP ───────────────────────────────────────────
+
+    @property
+    def extract_nonpublic_methods(self) -> bool:
+        """Inclure les méthodes privées/protégées des classes non-contrôleur
+        (Service/Helper/Tools/…) comme entry points.
+
+        Défaut : true. Mettre ROSETTA_EXTRACT_NONPUBLIC=false pour revenir à
+        l'ancien comportement (publiques uniquement)."""
+        raw = os.environ.get("ROSETTA_EXTRACT_NONPUBLIC", "true").strip().lower()
+        return raw not in ("0", "false", "no", "off", "")
+
     @property
     def kb_path(self) -> Path:
         raw = os.environ.get("ROSETTA_KB", "~/rosetta-data/kb")

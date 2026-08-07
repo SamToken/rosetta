@@ -68,8 +68,15 @@ class PHPExtractor:
     PATTERN_NEW     = re.compile(r'new\s+(\w+)\s*\(')
     PATTERN_SERVICE = re.compile(r'\$this->(\w+)->(?!view)')
 
-    def __init__(self, encoding: str = 'utf-8'):
+    def __init__(self, encoding: str = 'utf-8', include_nonpublic_methods: bool | None = None):
         self.encoding = encoding
+        if include_nonpublic_methods is None:
+            try:
+                from config import settings
+                include_nonpublic_methods = settings.extract_nonpublic_methods
+            except Exception:
+                include_nonpublic_methods = True
+        self.include_nonpublic_methods = include_nonpublic_methods
         self._parser = Parser(PHP_LANGUAGE)
         self._operation_counter = 0
         self._block_counter = 0
@@ -197,8 +204,10 @@ class PHPExtractor:
                     continue
                 clean_name = method_name[:-len('Action')]
             else:
-                # Services/Helpers/Tools : méthodes publiques uniquement
-                if visibility != 'public':
+                # Services/Helpers/Tools : publiques toujours ; privées/protégées
+                # si include_nonpublic_methods (défaut). ~15 % de la logique
+                # métier des *Service.php vit dans des méthodes privées.
+                if visibility != 'public' and not self.include_nonpublic_methods:
                     continue
                 clean_name = method_name
 
@@ -541,5 +550,12 @@ class PHPExtractor:
 # Fonction utilitaire
 # =============================================================================
 
-def extract_php(file_path: str | Path, encoding: str = 'utf-8') -> IRSchema:
-    return PHPExtractor(encoding=encoding).extract(file_path)
+def extract_php(
+    file_path: str | Path,
+    encoding: str = 'utf-8',
+    include_nonpublic_methods: bool | None = None,
+) -> IRSchema:
+    return PHPExtractor(
+        encoding=encoding,
+        include_nonpublic_methods=include_nonpublic_methods,
+    ).extract(file_path)
