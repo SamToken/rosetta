@@ -229,6 +229,26 @@ class CallGraphIndex:
             return None
         return candidates[0]
 
+    def resolve_strict(
+        self,
+        method_name: str,
+        class_hint: Optional[str],
+    ) -> Optional[MethodSignature]:
+        """Comme resolve() mais SANS fallback par nom : ne renvoie une signature
+        que si la classe correspond exactement (+ suffixes courants). Utilisé pour
+        les arêtes d'appel cross-fichier fiables (vue par feature #3) — mieux vaut
+        aucune arête qu'une arête fausse."""
+        if not class_hint:
+            return None
+        key = f"{class_hint}::{method_name}"
+        if key in self._by_class_method:
+            return self._by_class_method[key]
+        for suffix in ("Service", "Repository", "Helper", "Manager", "Tools"):
+            key = f"{class_hint}{suffix}::{method_name}"
+            if key in self._by_class_method:
+                return self._by_class_method[key]
+        return None
+
     def __len__(self) -> int:
         return len(self._by_class_method)
 

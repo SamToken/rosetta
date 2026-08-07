@@ -621,7 +621,9 @@ class AuditPipeline:
         # conservatrice par nom ; les points d'entrée framework (routing *Action,
         # magic __*) sont exclus car appelés hors code.
         if self._call_graph:
+            from analyzers.call_graph import _extract_called_methods
             suspects = 0
+            prop_types = ir.metadata.property_types
             for ep in ir.entry_points:
                 orig = ep.original_name or ep.name
                 if orig.endswith("Action") or orig.startswith("__"):
@@ -629,6 +631,19 @@ class AuditPipeline:
                 ep.is_referenced = self._call_graph.is_referenced(orig)
                 ep.dead_code_suspected = not ep.is_referenced
                 suspects += ep.dead_code_suspected
+
+                # Appels cross-fichier résolus (#3) — collaborateurs certains
+                seen_callees: set[str] = set()
+                for method, hint in _extract_called_methods(ep.raw_code or "", prop_types):
+                    if not hint:
+                        continue  # appel interne / non typé → pas d'arête fiable
+                    sig = self._call_graph.resolve_strict(method, hint)
+                    if sig is None:
+                        continue
+                    key = f"{sig.class_name}::{sig.method_name}"
+                    if key not in seen_callees:
+                        seen_callees.add(key)
+                        ep.callees.append(key)
             if suspects:
                 self._p(f"        🧹 {suspects} méthode(s) suspectée(s) code mort (jamais appelée)")
 

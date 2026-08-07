@@ -134,6 +134,10 @@ class EntryPoint(BaseModel):
     is_referenced: Optional[bool] = None
     dead_code_suspected: bool = False
 
+    # Appels cross-fichier résolus (#3 vue par feature) — collaborateurs invoqués,
+    # sous forme "ClassName::method". Renseigné si call graph + types résolus.
+    callees: list[str] = Field(default_factory=list)
+
 
 class Operation(BaseModel):
     """Une opération métier extraite du code."""

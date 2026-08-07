@@ -275,6 +275,11 @@ class BusinessDocGenerator:
             else:
                 lines.append(f"## Méthode : {ep.name}()")
 
+            if ep.callees:
+                targets = ", ".join(f"`{c}()`" for c in ep.callees[:8])
+                extra = f" (+{len(ep.callees) - 8})" if len(ep.callees) > 8 else ""
+                lines.append(f"**→ Appelle (cross-fichier)** : {targets}{extra}")
+
             if ep.risk_score is not None and ep.risk_score > 0:
                 badge = "🔴" if ep.critical_risk else ("🟡" if ep.risk_score > 40 else "🟢")
                 lines.append(f"**Risque : {badge} {ep.risk_score}/100**")
