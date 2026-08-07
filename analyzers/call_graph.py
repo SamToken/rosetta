@@ -33,8 +33,9 @@ _MAX_BUNDLE_METHODS  = 8   # Max de méthodes par bundle LLM
 
 # Version du schéma du cache .callgraph.json. Un bump force la réindexation au
 # chargement (le format a changé). v2 ajoute called_names (index inverse code mort) ;
-# v3 ajoute callers_by_target (arêtes inverses résolues « appelé par »).
-_CACHE_SCHEMA_VERSION = 3
+# v3 ajoute callers_by_target (arêtes inverses résolues « appelé par ») ;
+# v4 ajoute callees_by_source (arêtes avant, pour la carte de feature).
+_CACHE_SCHEMA_VERSION = 4
 
 # Patterns d'extraction des appels de méthodes depuis un source PHP
 _RE_PROP_CALL   = re.compile(r'\$this->(\w+)->(\w+)\s*\(')   # $this->svc->method(
@@ -92,6 +93,9 @@ class CallGraphIndex:
         # Arêtes inverses résolues : "TargetClass::method" → {"CallerClass::method"}.
         # Base du « appelé par » et de la vue par feature (#3).
         self._callers_by_target: dict[str, set[str]] = {}
+        # Arêtes avant résolues : "SourceClass::method" → {"TargetClass::method"}.
+        # Permet de traverser les chaînes controller→service→repo (carte de feature).
+        self._callees_by_source: dict[str, set[str]] = {}
 
     # =========================================================================
     # Construction
@@ -207,6 +211,7 @@ class CallGraphIndex:
                 if target == caller:
                     continue  # ignore la récursion directe
                 self._callers_by_target.setdefault(target, set()).add(caller)
+                self._callees_by_source.setdefault(caller, set()).add(target)
 
     def _extract_signature(
         self,
@@ -326,6 +331,34 @@ class CallGraphIndex:
         `class_name::method_name`, via les arêtes résolues (match de type exact)."""
         return sorted(self._callers_by_target.get(f"{class_name}::{method_name}", set()))
 
+    def callees_of(self, class_name: str, method_name: str) -> list[str]:
+        """« Appelle » (#3) : "Class::method" invoqués par `class_name::method_name`."""
+        return sorted(self._callees_by_source.get(f"{class_name}::{method_name}", set()))
+
+    def walk_downstream(
+        self,
+        root_key: str,
+        max_depth: int = 4,
+    ) -> list[tuple[int, str]]:
+        """Traversée en profondeur des arêtes avant depuis `root_key`
+        ("Class::method"). Retourne une liste ordonnée (profondeur, "Class::method")
+        pour rendre un arbre indenté (chaîne controller→service→repo). Garde-fou
+        anti-cycle : chaque nœud visité au plus une fois."""
+        out: list[tuple[int, str]] = []
+        visited: set[str] = {root_key}
+
+        def _dfs(key: str, depth: int) -> None:
+            if depth > max_depth:
+                return
+            for target in sorted(self._callees_by_source.get(key, ())):
+                out.append((depth, target))
+                if target not in visited:
+                    visited.add(target)
+                    _dfs(target, depth + 1)
+
+        _dfs(root_key, 1)
+        return out
+
     def dead_code_candidates(
         self,
         is_entrypoint=None,
@@ -416,6 +449,9 @@ class CallGraphIndex:
             "callers_by_target": {
                 k: sorted(v) for k, v in self._callers_by_target.items()
             },
+            "callees_by_source": {
+                k: sorted(v) for k, v in self._callees_by_source.items()
+            },
         }
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -437,6 +473,9 @@ class CallGraphIndex:
         idx._called_names = set(data.get("called_names", []))
         idx._callers_by_target = {
             k: set(v) for k, v in data.get("callers_by_target", {}).items()
+        }
+        idx._callees_by_source = {
+            k: set(v) for k, v in data.get("callees_by_source", {}).items()
         }
         return idx
 

@@ -414,6 +414,16 @@ class AuditPipeline:
         recipes_out.write_text(RecipeBook().render_catalog(), encoding="utf-8")
         self._p(f"   ✓ {recipes_out}")
 
+        # Carte de feature cross-fichier (#3) — nécessite le call graph
+        if self._call_graph:
+            from generators.feature_map_generator import FeatureMapGenerator
+            feature_out = details_dir / "feature_map.md"
+            feature_out.write_text(
+                FeatureMapGenerator().generate(all_irs, self._call_graph),
+                encoding="utf-8",
+            )
+            self._p(f"   ✓ {feature_out}")
+
         return BatchResult(
             php_paths=php_files,
             results=results,
