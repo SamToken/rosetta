@@ -161,6 +161,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--git-root", default=None, metavar="DIR")
     p.add_argument("--bug-check", action="store_true", help="Grille bugs techniques (13 catégories)")
     p.add_argument("--call-graph-root", default=None, metavar="DIR")
+    p.add_argument("--views", default=None, metavar="DIR",
+                   help="Répertoire de vues .phtml à analyser (XSS + effort Twig)")
     p.add_argument("--rebuild-callgraph", action="store_true")
     p.add_argument(
         "--kb-root",
@@ -337,6 +339,7 @@ def main() -> None:
             oracle_config_dir=(
                 Path(args.oracle_config).expanduser() if args.oracle_config else None
             ),
+            views_root=Path(args.views).expanduser() if args.views else None,
             git_root=Path(args.git_root) if args.git_root else None,
         )
     except EnvironmentError as exc:

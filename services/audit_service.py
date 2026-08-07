@@ -51,6 +51,7 @@ class AuditOptions:
     kb_domain: Optional[str] = None
     kb_trust_medium: bool = False  # medium court-circuite le LLM (sinon : contexte prompt)
     oracle_config_dir: Optional[Path] = None  # répertoire CSV + oracle_manifest.yaml
+    views_root: Optional[Path] = None  # répertoire de vues .phtml à analyser (#6)
     git_root: Optional[Path] = None
     max_workers: int = 1  # >1 active le ThreadPoolExecutor en mode batch API
 
@@ -423,6 +424,17 @@ class AuditPipeline:
                 encoding="utf-8",
             )
             self._p(f"   ✓ {feature_out}")
+
+        # Rapport de migration des vues .phtml (#6) — si --views fourni
+        if self.options.views_root and self.options.views_root.is_dir():
+            from analyzers.phtml_analyzer import analyze_phtml_file
+            from generators.views_report_generator import ViewsReportGenerator
+            phtml_files = sorted(self.options.views_root.rglob("*.phtml"))
+            reports = [analyze_phtml_file(p) for p in phtml_files]
+            views_out = details_dir / "views_report.md"
+            views_out.write_text(ViewsReportGenerator().generate(reports), encoding="utf-8")
+            xss = sum(r.unescaped_outputs for r in reports)
+            self._p(f"   ✓ {views_out} ({len(reports)} vues, {xss} sorties non échappées)")
 
         return BatchResult(
             php_paths=php_files,
