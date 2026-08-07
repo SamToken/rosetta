@@ -408,6 +408,12 @@ class AuditPipeline:
         )
         self._p(f"   ✓ {gaps_out}")
 
+        # Handbook de migration Zend→Symfony (catalogue complet, indépendant des flags)
+        from generators.migration_recipes import RecipeBook
+        recipes_out = details_dir / "migration_recipes.md"
+        recipes_out.write_text(RecipeBook().render_catalog(), encoding="utf-8")
+        self._p(f"   ✓ {recipes_out}")
+
         return BatchResult(
             php_paths=php_files,
             results=results,
