@@ -151,17 +151,50 @@ IMPACT_CATEGORY_MAP: dict[str, ImpactCategory] = {
 # mots-clés SQL/PHP sortent via cette liste, jamais par accident de regex.
 MAGIC_VALUE_STOPWORDS: frozenset[str] = STOP_TOKENS
 
+# Stop-words numériques triviaux, appliqués APRÈS match — 0/1 sont des drapeaux
+# booléens déguisés, pas des valeurs de référence métier.
+MAGIC_VALUE_NUMERIC_STOPWORDS: frozenset[str] = frozenset({"0", "1"})
+
+
+def _is_magic_noise(value: str) -> bool:
+    """True si la valeur matchée est du bruit à écarter du flag magic_value.
+
+    Écarte : chaîne vide, stopwords SQL/PHP/booléens, 0/1, et tout littéral
+    d'un seul caractère non alphanumérique. Sans ce filtre, le volume de flags
+    rend les rapports illisibles."""
+    v = value.strip()
+    if not v:
+        return True
+    if v.upper() in MAGIC_VALUE_STOPWORDS:
+        return True
+    if v in MAGIC_VALUE_NUMERIC_STOPWORDS:
+        return True
+    if len(v) == 1 and not v.isalnum():
+        return True
+    return False
+
+
 MAGIC_VALUE_PATTERNS = [
-    re.compile(r"!=\s*'([a-z_]+)'"),   # != 'admin'
-    re.compile(r"==\s*'([a-z_]+)'"),   # == 'active'
-    re.compile(r"=\s*'([a-z_]+)'"),    # = 'active' (assignment or comparison)
-    re.compile(r"==\s*(\d{2,})"),      # == 47 (multi-digit integer literals)
-    re.compile(r"""['"]([A-Z][A-Z0-9_]{1,})['"]"""),  # 'H1', "TP2", 'ST_OUV', 'C_TYP_FLX'
+    # comparaison == / != avec chaîne quotée — identifiant mixte (A-Za-z0-9_) :
+    # couvre minuscules ('admin'), MAJUSCULES ('CODE_X'), PascalCase et chiffres.
+    re.compile(r"""[=!]=\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]"""),
+    # comparaison == / != avec entier, quoté ou non, un chiffre ou plus :
+    # couvre == 47, == '3', != 2 (l'ancien \d{2,} ratait chiffres uniques et quotés).
+    re.compile(r"[=!]=\s*'?(\d+)'?"),
+    # littéral en MAJUSCULES quoté hors contexte de comparaison (SQL, valeurs) :
+    # 'H1', "TP2", 'ST_OUV', 'C_TYP_FLX'. Lookaround anti-bruit : exclut les
+    # sous-scripts de tableau ['CLÉ'] (accès structurel, pas valeur métier) —
+    # la vraie valeur d'une comparaison $x['CLÉ'] == 'VAL' reste captée par le
+    # pattern de comparaison ci-dessus.
+    re.compile(r"""(?<!\[)['"]([A-Z][A-Z0-9_]{1,})['"](?!\])"""),
 ]
 
-# case 'H1': — les codes situation des switch n'apparaissent pas dans control_flow
-# (l'extracteur ne produit des ControlBlocks que pour les if)
-CASE_LITERAL_PATTERN = re.compile(r"""case\s+['"]([A-Z][A-Z0-9_]{1,})['"]""")
+# case 'H1': / in_array('CODE_X', …) — codes situation absents du control_flow
+# (l'extracteur ne produit des ControlBlocks que pour les if). Scannés sur raw_code.
+CASE_LITERAL_PATTERN = re.compile(r"""case\s+['"]([A-Za-z_][A-Za-z0-9_]*)['"]""")
+IN_ARRAY_LITERAL_PATTERN = re.compile(
+    r"""in_array\s*\(\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]"""
+)
 
 # Requêtes SQL construites dynamiquement — complète les patterns "id =" . de SECURITY_PATTERNS
 SQL_KEYWORD_PATTERN = re.compile(r'\b(?:SELECT|INSERT|UPDATE|DELETE)\b', re.IGNORECASE)
@@ -307,7 +340,7 @@ class FlagEngine:
             for pattern in MAGIC_VALUE_PATTERNS:
                 for match in pattern.finditer(block.condition):
                     value = match.group(1)
-                    if value.upper() in MAGIC_VALUE_STOPWORDS:
+                    if _is_magic_noise(value):
                         continue
                     key = (block.id, value)
                     if key in seen:
@@ -341,7 +374,7 @@ class FlagEngine:
             for pattern in MAGIC_VALUE_PATTERNS:
                 for match in pattern.finditer(op.details):
                     value = match.group(1)
-                    if value.upper() in MAGIC_VALUE_STOPWORDS:
+                    if _is_magic_noise(value):
                         continue
                     key = (op.id, value)
                     if key in seen:
@@ -359,35 +392,41 @@ class FlagEngine:
                         ),
                     ))
 
-        # Scan les case des switch — codes situation courts ('H1', 'TP2') absents
-        # du control_flow, qui ne couvre que les if
+        # Scan raw_code : case des switch et in_array('CODE_X', …) — codes situation
+        # courts ('H1', 'TP2', …) absents du control_flow qui ne couvre que les if.
+        raw_scans = (
+            (CASE_LITERAL_PATTERN,
+             "une branche de traitement est dédiée au cas '{value}'"),
+            (IN_ARRAY_LITERAL_PATTERN,
+             "une appartenance à une liste est testée sur la valeur '{value}'"),
+        )
         for ep in ir.entry_points:
             if not ep.raw_code:
                 continue
-            for match in CASE_LITERAL_PATTERN.finditer(ep.raw_code):
-                value = match.group(1)
-                if value.upper() in MAGIC_VALUE_STOPWORDS:
-                    continue
-                key = (ep.name, value)
-                if key in seen:
-                    continue
-                seen.add(key)
-                abs_line = (ep.start_line or 0) + ep.raw_code[:match.start()].count('\n')
-                flags.append(Flag(
-                    id=self._next_id("magic_value"),
-                    type="magic_value",
-                    location=ep.name,
-                    fragment=self._extract_line(ep.raw_code, match.start()),
-                    question=(
-                        f"Valeur de référence non documentée — une branche de traitement "
-                        f"est dédiée au cas '{value}'. "
-                        f"D'où vient cette valeur ? Fait-elle partie d'une liste de référence définie dans le cahier des charges ?"
-                    ),
-                    source_line=abs_line if ep.start_line else None,
-                    method_name=ep.name,
-                    method_original_name=ep.original_name,
-                    context_lines=self._extract_context_lines(ep.raw_code, match.start(), max_lines=5),
-                ))
+            for pattern, phrase in raw_scans:
+                for match in pattern.finditer(ep.raw_code):
+                    value = match.group(1)
+                    if _is_magic_noise(value):
+                        continue
+                    key = (ep.name, value)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    abs_line = (ep.start_line or 0) + ep.raw_code[:match.start()].count('\n')
+                    flags.append(Flag(
+                        id=self._next_id("magic_value"),
+                        type="magic_value",
+                        location=ep.name,
+                        fragment=self._extract_line(ep.raw_code, match.start()),
+                        question=(
+                            f"Valeur de référence non documentée — {phrase.format(value=value)}. "
+                            f"D'où vient cette valeur ? Fait-elle partie d'une liste de référence définie dans le cahier des charges ?"
+                        ),
+                        source_line=abs_line if ep.start_line else None,
+                        method_name=ep.name,
+                        method_original_name=ep.original_name,
+                        context_lines=self._extract_context_lines(ep.raw_code, match.start(), max_lines=5),
+                    ))
 
         return flags
 
