@@ -333,6 +333,7 @@ class LLMEnricher:
             )
             try:
                 insight = self._ask_llm(flag, method_body, kb_context, kb_medium_ctx)
+                self._apply_grounding_guard(insight, flag, method_body)
                 ir.llm_insights.append(insight)
             except Exception as e:
                 print(f"  ⚠ Échec pour flag {flag.id} : {e}")
@@ -542,6 +543,21 @@ class LLMEnricher:
             return False
 
         return True
+
+    def _apply_grounding_guard(self, insight, flag, method_body) -> None:
+        """Garde anti-hallucination (#8) : si l'insight cite des artefacts code
+        absents du source fourni au LLM, le marque non ancré et abaisse la
+        confiance. N'invente rien — signale seulement."""
+        from analyzers.grounding import check_grounding
+        source_ctx = f"{flag.fragment or ''}\n{method_body or ''}"
+        insight_text = f"{insight.business_rule or ''} {insight.missing_context or ''}"
+        ungrounded = check_grounding(insight_text, source_ctx)
+        if ungrounded:
+            insight.grounded = False
+            insight.ungrounded_terms = ungrounded
+            insight.confidence = min(insight.confidence, 0.4)
+            insight.needs_human_validation = True
+            print(f"  ⚠ {flag.id} insight non ancré (à vérifier) : {', '.join(ungrounded)}")
 
     def _ask_llm(
         self,

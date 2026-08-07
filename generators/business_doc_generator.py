@@ -320,7 +320,7 @@ class BusinessDocGenerator:
                     if insight:
                         conf_pct = f"{insight.confidence:.0%}"
                         lines.append(f"- 🔴 **{business_label}** *(confiance {conf_pct})*")
-                        lines.append(f"  - {insight.business_rule}")
+                        lines.append(f"  - {insight.business_rule}{_grounding_suffix(insight)}")
                     else:
                         lines.append(f"- 🔴 **{business_label}**")
                         lines.append(f"  - {flag.question}")
@@ -333,7 +333,7 @@ class BusinessDocGenerator:
                     insight = insights_by_flag.get(flag.id)
                     if insight:
                         conf_pct = f"{insight.confidence:.0%}"
-                        lines.append(f"- ✅ *(confiance {conf_pct})* {insight.business_rule}")
+                        lines.append(f"- ✅ *(confiance {conf_pct})* {insight.business_rule}{_grounding_suffix(insight)}")
                     else:
                         lines.append(f"- ❓ {flag.question}")
                 lines.append("")
@@ -535,6 +535,15 @@ def _first_sentence(text: str, max_len: int = 220) -> str:
         q = text[:idx + 1].strip()
         return q if len(q) <= max_len else q[:max_len - 3] + '...'
     return text[:max_len].strip()
+
+
+def _grounding_suffix(insight) -> str:
+    """Badge à accoler à un insight LLM non ancré (#8) — signale au PO qu'il cite
+    des éléments absents du code source (hallucination probable)."""
+    if insight is None or getattr(insight, "grounded", True):
+        return ""
+    terms = ", ".join(f"`{t}`" for t in getattr(insight, "ungrounded_terms", [])[:5])
+    return f" ⚠️ *(à vérifier — cite hors source : {terms})*"
 
 
 def _translate_fragment(fragment: str) -> str:

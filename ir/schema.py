@@ -299,6 +299,11 @@ class LLMInsight(BaseModel):
     validated: bool = False
     validated_by: Optional[str] = None
 
+    # Garde anti-hallucination (#8) — False si l'insight cite des artefacts code
+    # absents du source fourni au LLM. ungrounded_terms les liste.
+    grounded: bool = True
+    ungrounded_terms: list[str] = Field(default_factory=list)
+
 
 class BugFinding(BaseModel):
     """Bug technique détecté par la grille structurée BugEnricher (source LLM, 1 appel/fichier)."""
