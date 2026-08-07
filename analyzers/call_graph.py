@@ -31,6 +31,10 @@ _PHP_LANGUAGE = Language(tsphp.language_php())
 _BODY_SNIPPET_LINES = 10   # Lignes du corps incluses dans le bundle
 _MAX_BUNDLE_METHODS  = 8   # Max de méthodes par bundle LLM
 
+# Version du schéma du cache .callgraph.json. Un bump force la réindexation au
+# chargement (le format a changé). v2 ajoute called_names (index inverse code mort).
+_CACHE_SCHEMA_VERSION = 2
+
 # Patterns d'extraction des appels de méthodes depuis un source PHP
 _RE_PROP_CALL   = re.compile(r'\$this->(\w+)->(\w+)\s*\(')   # $this->svc->method(
 _RE_SELF_CALL   = re.compile(r'\$this->(\w+)\s*\(')           # $this->method( (interne)
@@ -81,6 +85,9 @@ class CallGraphIndex:
         self._by_method: dict[str, list[MethodSignature]] = {}
         # "ClassName::methodName" → MethodSignature  (unicité)
         self._by_class_method: dict[str, MethodSignature] = {}
+        # Index inverse : noms de méthodes (lower) apparaissant comme CIBLE d'appel
+        # quelque part dans l'arbre. Base de la détection de code mort (#4).
+        self._called_names: set[str] = set()
 
     # =========================================================================
     # Construction
@@ -126,6 +133,11 @@ class CallGraphIndex:
             content = path.read_text(encoding="utf-8", errors="replace")
         except Exception:
             return
+
+        # Index inverse : accumuler les cibles d'appel de CE fichier, qu'il
+        # définisse une classe ou non (un fichier peut n'appeler que des méthodes).
+        for called_method, _hint in _extract_called_methods(content):
+            self._called_names.add(called_method.lower())
 
         class_name = _extract_class_name(content)
         if not class_name:
@@ -224,6 +236,42 @@ class CallGraphIndex:
         return len(self._by_class_method) > 0
 
     # =========================================================================
+    # Reachability — détection de code mort (#4)
+    # =========================================================================
+
+    def is_referenced(self, method_name: str) -> bool:
+        """True si method_name apparaît comme cible d'appel quelque part dans l'arbre.
+
+        Résolution par NOM (pas par type) : volontairement conservateur. Tout
+        `->method(` compte comme référence, y compris les appels polymorphes via
+        interface. On sous-signale le code mort (sûr) plutôt que de le sur-signaler.
+        """
+        return method_name.lower() in self._called_names
+
+    def dead_code_candidates(
+        self,
+        is_entrypoint=None,
+    ) -> list[MethodSignature]:
+        """Méthodes DÉFINIES mais jamais appelées dans l'arbre indexé.
+
+        is_entrypoint(sig) -> bool : prédicat optionnel pour exclure les points
+        d'entrée framework (ex : *Action appelés par le routing, magic __*) qui
+        sont invoqués hors code et ne sont donc jamais de vraies références.
+
+        Heuristique conservatrice — un candidat est « suspecté » mort, pas certain :
+        le dispatch dynamique, les templates .phtml et la DI peuvent référencer une
+        méthode sans site d'appel statique visible.
+        """
+        candidates: list[MethodSignature] = []
+        for sig in self._by_class_method.values():
+            if is_entrypoint is not None and is_entrypoint(sig):
+                continue
+            if not self.is_referenced(sig.method_name):
+                candidates.append(sig)
+        return candidates
+
+
+    # =========================================================================
     # Bundle pour injection dans le prompt LLM
     # =========================================================================
 
@@ -270,6 +318,7 @@ class CallGraphIndex:
 
     def _save(self, path: Path) -> None:
         data = {
+            "schema_version": _CACHE_SCHEMA_VERSION,
             "by_method": {
                 k: [asdict(s) for s in v]
                 for k, v in self._by_method.items()
@@ -278,17 +327,26 @@ class CallGraphIndex:
                 k: asdict(v)
                 for k, v in self._by_class_method.items()
             },
+            "called_names": sorted(self._called_names),
         }
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
     @classmethod
     def _load(cls, path: Path) -> "CallGraphIndex":
         data = json.loads(path.read_text(encoding="utf-8"))
+        # Cache d'un schéma antérieur (ex : sans called_names) → on refuse, build()
+        # rattrape en réindexant. Évite un index inverse silencieusement vide.
+        if data.get("schema_version") != _CACHE_SCHEMA_VERSION:
+            raise ValueError(
+                f"cache callgraph schéma v{data.get('schema_version')} "
+                f"≠ v{_CACHE_SCHEMA_VERSION} attendu — réindexation requise"
+            )
         idx = cls()
         for k, sigs in data["by_method"].items():
             idx._by_method[k] = [MethodSignature(**s) for s in sigs]
         for k, sig in data["by_class_method"].items():
             idx._by_class_method[k] = MethodSignature(**sig)
+        idx._called_names = set(data.get("called_names", []))
         return idx
 
 
