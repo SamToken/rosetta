@@ -113,6 +113,7 @@ class PHPExtractor:
         ir.metadata.parent_class = parent
         ir.metadata.interfaces = interfaces
         ir.metadata.traits = traits
+        ir.metadata.property_types = self._extract_property_types(root, content_bytes)
 
         ir.entry_points = self._extract_entry_points_ast(root, content_bytes, content, file_type)
         for ep in ir.entry_points:
@@ -189,6 +190,96 @@ class PHPExtractor:
                         )
 
         return parent, interfaces, traits
+
+    @staticmethod
+    def _clean_type(type_text: str) -> str:
+        """Normalise un type : retire `?`, le `\\` de tête, garde le nom court."""
+        t = type_text.strip().lstrip('?').strip().lstrip('\\')
+        if '\\' in t:
+            t = t.rsplit('\\', 1)[-1]
+        return t
+
+    def _extract_property_types(self, root_node, content_bytes: bytes) -> dict[str, str]:
+        """propriété → classe collaboratrice (#1). Sources, par priorité :
+        injection constructeur (param typé + `$this->p = $param`), `new X()`,
+        docblock `@var`. Legacy PHP 7.3 : les propriétés ne sont pas typées inline,
+        d'où le recours au constructeur et aux docblocks."""
+        types: dict[str, str] = {}
+        class_nodes = self._find_nodes(root_node, 'class_declaration')
+        if not class_nodes:
+            return types
+        class_node = class_nodes[0]
+
+        _TYPE_NODES = ('named_type', 'primitive_type', 'union_type',
+                       'optional_type', 'nullable_type')
+
+        def _prop_name(member_node) -> Optional[str]:
+            """'prop' depuis un `$this->prop`, sinon None."""
+            obj = member_node.child_by_field_name('object')
+            nm = member_node.child_by_field_name('name')
+            if obj is None:
+                obj = next((c for c in member_node.children if c.type == 'variable_name'), None)
+            if nm is None:
+                nm = next((c for c in member_node.children if c.type == 'name'), None)
+            if obj is None or nm is None:
+                return None
+            if self._node_text(obj, content_bytes) != '$this':
+                return None
+            return self._node_text(nm, content_bytes)
+
+        # 1. Injection constructeur
+        for method in self._find_nodes(class_node, 'method_declaration'):
+            nn = next((c for c in method.children if c.type == 'name'), None)
+            if nn is None or self._node_text(nn, content_bytes) != '__construct':
+                continue
+            param_types: dict[str, str] = {}
+            fp = next((c for c in method.children if c.type == 'formal_parameters'), None)
+            if fp:
+                for p in fp.children:
+                    if p.type != 'simple_parameter':
+                        continue
+                    tnode = next((c for c in p.children if c.type in _TYPE_NODES), None)
+                    vnode = next((c for c in p.children if c.type == 'variable_name'), None)
+                    if tnode is not None and vnode is not None:
+                        pname = self._node_text(vnode, content_bytes).lstrip('$')
+                        param_types[pname] = self._clean_type(self._node_text(tnode, content_bytes))
+            for assign in self._find_nodes(method, 'assignment_expression'):
+                if not assign.children:
+                    continue
+                left, right = assign.children[0], assign.children[-1]
+                if left.type != 'member_access_expression':
+                    continue
+                prop = _prop_name(left)
+                if not prop:
+                    continue
+                if right.type == 'variable_name':
+                    rname = self._node_text(right, content_bytes).lstrip('$')
+                    if rname in param_types:
+                        types.setdefault(prop, param_types[rname])
+                elif right.type == 'object_creation_expression':
+                    cls = next((c for c in right.children
+                                if c.type in ('name', 'qualified_name')), None)
+                    if cls is not None:
+                        types.setdefault(prop, self._clean_type(self._node_text(cls, content_bytes)))
+
+        # 2. Docblock @var sur les déclarations de propriété
+        for prop_decl in self._find_nodes(class_node, 'property_declaration'):
+            elem = next((c for c in prop_decl.children if c.type == 'property_element'), None)
+            if elem is None:
+                continue
+            vnode = next((c for c in elem.children if c.type == 'variable_name'), None)
+            if vnode is None:
+                continue
+            prop = self._node_text(vnode, content_bytes).lstrip('$')
+            if prop in types:
+                continue
+            prev = prop_decl.prev_sibling
+            if prev is not None and prev.type == 'comment':
+                m = re.search(r'@var\s+([\\\w]+)', self._node_text(prev, content_bytes))
+                if m:
+                    types[prop] = self._clean_type(m.group(1))
+
+        return types
 
     # =========================================================================
     # AST helpers

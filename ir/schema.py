@@ -191,6 +191,11 @@ class IRMetadata(BaseModel):
     interfaces: list[str] = Field(default_factory=list)  # implements A, B
     traits: list[str] = Field(default_factory=list)      # use TraitX; dans le corps
 
+    # Résolution de type (#1) — propriété → classe collaboratrice, déduite de
+    # l'injection constructeur, des `new X()` et des docblocks @var. Permet de
+    # résoudre $this->prop->method() vers une classe certaine (pas l'heuristique nom).
+    property_types: dict[str, str] = Field(default_factory=dict)
+
 
 class UnparsedSection(BaseModel):
     """Section que l'extracteur n'a pas pu parser."""
