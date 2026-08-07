@@ -113,6 +113,15 @@ class ControllerSummary:
 
 
 @dataclass
+class DeadCodeEntry:
+    """Méthode suspectée code mort (jamais appelée) — détection #4."""
+    controller: str
+    method: str               # original_name (ex: getFooBar)
+    source_file: str
+    source_line: Optional[int]
+
+
+@dataclass
 class AggregatedInsights:
     """Synthèse transverse de l'ensemble du périmètre analysé."""
     controllers: list[str] = field(default_factory=list)
@@ -140,6 +149,7 @@ class AggregatedInsights:
 
     critical_methods: list = field(default_factory=list)  # list[CriticalMethod]
     impact_matrix: list = field(default_factory=list)     # list[ImpactRow]
+    dead_code: list = field(default_factory=list)         # list[DeadCodeEntry]
 
     total_usage: Optional[TokenUsage] = None
 
@@ -173,6 +183,7 @@ class BusinessAggregator:
         result.controller_summaries = self._build_summaries(irs)
         result.critical_methods = self._collect_critical_methods(irs)
         result.impact_matrix = self._build_impact_matrix(irs)
+        result.dead_code = self._collect_dead_code(irs)
 
         result.risk_count = sum(
             len([f for f in ir.flags if f.type == "security_risk"]) for ir in irs
@@ -490,6 +501,22 @@ class BusinessAggregator:
                         risk_details=ep.risk_details or {},
                     ))
         return sorted(critical, key=lambda m: m.risk_score, reverse=True)
+
+    def _collect_dead_code(self, irs: list[IRSchema]) -> list[DeadCodeEntry]:
+        """Méthodes suspectées code mort (#4). N'a d'effet que si le pipeline a
+        renseigné dead_code_suspected via un call graph — sinon liste vide."""
+        dead = []
+        for ir in irs:
+            controller = ir.metadata.controller_name
+            for ep in ir.entry_points:
+                if ep.dead_code_suspected:
+                    dead.append(DeadCodeEntry(
+                        controller=controller,
+                        method=ep.original_name or ep.name,
+                        source_file=str(ir.metadata.source_file),
+                        source_line=ep.start_line,
+                    ))
+        return sorted(dead, key=lambda d: (d.controller, d.method))
 
     # -------------------------------------------------------------------------
     # 5b. Matrice de non-régression MEP

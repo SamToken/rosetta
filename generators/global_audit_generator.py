@@ -134,6 +134,8 @@ class GlobalAuditGenerator:
         lines.extend(self._section_domain_mapping(insights))
         if insights.impact_matrix:
             lines.extend(self._section_impact_matrix(insights))
+        if insights.dead_code:
+            lines.extend(self._section_dead_code(insights))
 
         if insights.total_usage and model:
             lines.extend(self._section_cost_report(insights.total_usage, model, insights))
@@ -359,6 +361,38 @@ class GlobalAuditGenerator:
             lines.append(
                 f"| `{row.method_name}()` | {row.pattern} | {corr_str} | {badge} {row.risk_label} |"
             )
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+        return lines
+
+    # =========================================================================
+    # 6. Code mort suspecté
+    # =========================================================================
+
+    def _section_dead_code(self, ins: AggregatedInsights) -> list[str]:
+        from pathlib import Path
+        n = len(ins.dead_code)
+        lines = ["## 6. Code mort suspecté", ""]
+        lines.append(
+            f"> **{n} méthode(s)** défini(es) mais qui ne semblent appelées nulle part "
+            "dans le périmètre indexé. **Candidats à ne pas migrer** — à confirmer avant suppression."
+        )
+        lines.append("")
+        lines.append(
+            "> ⚠ Heuristique conservatrice par nom. Faux positifs possibles : appels "
+            "depuis les vues `.phtml`, dispatch dynamique (`call_user_func`, `$this->$m()`), "
+            "injection de dépendances / reflection, points d'entrée cron ou event. "
+            "Les actions de contrôleur (`*Action`) et méthodes magiques sont déjà exclues."
+        )
+        lines.append("")
+        lines.append("| Classe | Méthode | Emplacement |")
+        lines.append("|--------|---------|-------------|")
+        for d in ins.dead_code:
+            loc = Path(d.source_file).name
+            if d.source_line:
+                loc = f"{loc}:{d.source_line}"
+            lines.append(f"| {d.controller} | `{d.method}()` | {loc} |")
         lines.append("")
         lines.append("---")
         lines.append("")

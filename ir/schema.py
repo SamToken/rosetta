@@ -129,6 +129,11 @@ class EntryPoint(BaseModel):
     risk_details: Optional[dict] = None
     critical_risk: bool = False
 
+    # Reachability (détection de code mort #4) — renseigné seulement si un call
+    # graph est fourni (--call-graph-root). None = non évalué (pas de verdict).
+    is_referenced: Optional[bool] = None
+    dead_code_suspected: bool = False
+
 
 class Operation(BaseModel):
     """Une opération métier extraite du code."""

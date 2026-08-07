@@ -610,6 +610,22 @@ class AuditPipeline:
         ir = extract_php(php_path)
         self._p(f"        ✓ {len(ir.entry_points)} actions, {len(ir.operations)} opérations")
 
+        # Étape 1b — Reachability : marquer le code mort suspecté (#4)
+        # Nécessite un call graph global (--call-graph-root). Heuristique
+        # conservatrice par nom ; les points d'entrée framework (routing *Action,
+        # magic __*) sont exclus car appelés hors code.
+        if self._call_graph:
+            suspects = 0
+            for ep in ir.entry_points:
+                orig = ep.original_name or ep.name
+                if orig.endswith("Action") or orig.startswith("__"):
+                    continue
+                ep.is_referenced = self._call_graph.is_referenced(orig)
+                ep.dead_code_suspected = not ep.is_referenced
+                suspects += ep.dead_code_suspected
+            if suspects:
+                self._p(f"        🧹 {suspects} méthode(s) suspectée(s) code mort (jamais appelée)")
+
         # Étape 2 — Flags (déterministe)
         self._p("  [2/4] Analyse des flags (déterministe)...")
         engine = FlagEngine()
