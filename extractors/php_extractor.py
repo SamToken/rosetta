@@ -693,3 +693,14 @@ def extract_php(
         encoding=encoding,
         include_nonpublic_methods=include_nonpublic_methods,
     ).extract(file_path)
+
+
+def extract_property_types_from_source(source: str) -> dict[str, str]:
+    """propriété → classe collaboratrice depuis un source PHP brut.
+
+    Réutilise la logique AST de PHPExtractor — partagé avec le call graph pour
+    résoudre $this->prop->method() sans dupliquer l'extraction."""
+    ex = PHPExtractor()
+    content_bytes = source.encode('utf-8')
+    tree = ex._parser.parse(content_bytes)
+    return ex._extract_property_types(tree.root_node, content_bytes)

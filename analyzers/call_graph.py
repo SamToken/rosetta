@@ -286,7 +286,14 @@ class CallGraphIndex:
 
         Retourne une chaîne vide si aucune dépendance n'est résoluble.
         """
-        calls = _extract_called_methods(php_source)
+        # Résolution de type des propriétés (#1 étape B) : $this->prop->method()
+        # devient une classe certaine plutôt que PascalCase(prop) approximatif.
+        try:
+            from extractors.php_extractor import extract_property_types_from_source
+            property_types = extract_property_types_from_source(php_source)
+        except Exception:
+            property_types = {}
+        calls = _extract_called_methods(php_source, property_types)
 
         resolved: dict[str, MethodSignature] = {}
         for method_name, class_hint in calls:
@@ -370,15 +377,20 @@ def _find_nodes(node, node_type: str) -> list:
     return results
 
 
-def _extract_called_methods(source: str) -> list[tuple[str, Optional[str]]]:
+def _extract_called_methods(
+    source: str,
+    property_types: Optional[dict[str, str]] = None,
+) -> list[tuple[str, Optional[str]]]:
     """
     Retourne une liste de (method_name, class_hint_or_None).
 
     Patterns détectés :
-    - $this->svc->method(  → heuristique : class_hint = PascalCase(svc)
+    - $this->svc->method(  → class_hint = property_types[svc] si connu (type
+                             certain, #1 étape B), sinon heuristique PascalCase(svc)
     - Class::method(       → class_hint = Class
     - $var->method(        → class_hint = None
     """
+    property_types = property_types or {}
     seen: set[str] = set()
     results: list[tuple[str, Optional[str]]] = []
 
@@ -387,12 +399,14 @@ def _extract_called_methods(source: str) -> list[tuple[str, Optional[str]]]:
             seen.add(method)
             results.append((method, hint))
 
-    # $this->propName->methodName( — PascalCase(propName) comme hint de classe
+    # $this->propName->methodName( — type résolu si connu, sinon PascalCase
     prop_names: set[str] = set()
     for m in _RE_PROP_CALL.finditer(source):
         prop, method = m.group(1), m.group(2)
         prop_names.add(prop)
-        class_hint = prop[0].upper() + prop[1:] if prop else None
+        class_hint = property_types.get(prop)
+        if not class_hint:
+            class_hint = prop[0].upper() + prop[1:] if prop else None
         _add(method, class_hint)
 
     # $this->method( — appels internes (pas une propriété two-level)
