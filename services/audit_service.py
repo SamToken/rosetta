@@ -193,6 +193,9 @@ class AuditPipeline:
         self._kb_lookup: Any = None
         self._config_crossref: Any = None  # ConfigCrossref si --oracle-config
         self._known_tokens: frozenset = frozenset()  # filtre O(1) pour RelationExtractor
+        self._schema_inventory: Any = None  # bloc inventaire Oracle (couche 1), injecté sur prompts DB
+        self._table_matcher: Any = None     # matcher tables inventaire (déclencheur DB par-flag)
+        self._schema_detail: Any = None     # SchemaDetailProvider (couche 2, détail par fichier)
 
         from telemetry.performance_logger import PerformanceLogger
         self._telemetry = PerformanceLogger()
@@ -220,11 +223,50 @@ class AuditPipeline:
         if opts.kb_root and opts.no_llm:
             self._p("⚠  kb_root ignoré — sans effet en mode --no-llm")
 
+        # KB YAML (tokens connus + inventaire Oracle) — résolu AVANT le provider
+        # pour lui passer l'inventaire résident précalculé (source unique).
+        try:
+            from rosetta_kb import DEFAULT_KB_PATH
+            from services.kb_service import KBService, SchemaInventoryOverflow
+            from analyzers.db_relevance import build_table_matcher
+            _kb_path = Path(DEFAULT_KB_PATH).expanduser().resolve()
+            if _kb_path.exists():
+                _svc = KBService(_kb_path)
+                self._known_tokens = _svc.list_known_tokens()
+                self._p(f"  [KB] {len(self._known_tokens)} token(s) indexés pour RelationExtractor")
+                self._table_matcher = build_table_matcher(_svc.schema_table_names())
+                if not opts.no_llm:
+                    try:
+                        self._schema_inventory = _svc.export_schema_inventory() or None
+                        if self._schema_inventory:
+                            self._p(
+                                f"  [KB] inventaire Oracle prêt "
+                                f"({len(_svc.schema_table_names())} tables) — injecté sur prompts DB"
+                            )
+                    except SchemaInventoryOverflow as exc:
+                        self._p(f"⚠  inventaire schéma non chargé (dépassement budget) : {exc}")
+                    # Couche 2 — détail par fichier, avec verrou de cohérence source.
+                    try:
+                        from analyzers.schema_detail import SchemaDetailProvider
+                        self._schema_detail = SchemaDetailProvider.from_kb_service(_svc)
+                        if self._schema_detail.active:
+                            self._p("  [KB] détail schéma (couche 2) actif — injecté par fichier DB")
+                        elif self._schema_detail.disabled_reason:
+                            self._p(f"⚠  couche 2 inactive : {self._schema_detail.disabled_reason}")
+                    except Exception as exc:
+                        self._p(f"⚠  détail schéma (couche 2) ignoré : {exc}")
+        except Exception:
+            pass
+
         if opts.kb_root and opts.kb_root.is_dir() and not opts.no_llm:
-            self._p(f"\n📚 KB Context — chargement depuis {opts.kb_root} …", )
+            self._p(f"\n📚 KB Context — chargement depuis {opts.kb_root} …")
             try:
                 from analyzers.kb_context import KBContextProvider
-                self._kb_provider = KBContextProvider(opts.kb_root, verbose=False)
+                self._kb_provider = KBContextProvider(
+                    opts.kb_root, verbose=False,
+                    schema_inventory=self._schema_inventory,
+                    schema_detail=self._schema_detail,
+                )
                 self._p(f"{len(self._kb_provider)} fiche(s) KB ✓")
             except ImportError as exc:
                 self._p(f"⚠ python-frontmatter manquant ({exc}) — KB ignorée")
@@ -236,16 +278,6 @@ class AuditPipeline:
                 self._p("  [KB] YAML lookup activé — tokens connus résolus sans LLM")
             except Exception:
                 pass
-
-        try:
-            from rosetta_kb import DEFAULT_KB_PATH
-            from services.kb_service import KBService
-            _kb_path = Path(DEFAULT_KB_PATH).expanduser().resolve()
-            if _kb_path.exists():
-                self._known_tokens = KBService(_kb_path).list_known_tokens()
-                self._p(f"  [KB] {len(self._known_tokens)} token(s) indexés pour RelationExtractor")
-        except Exception:
-            pass
 
         if opts.oracle_config_dir:
             try:
@@ -354,6 +386,9 @@ class AuditPipeline:
         worker._kb_provider = parent._kb_provider  # read-only après setup()
         worker._kb_lookup = parent._kb_lookup      # read-only après setup()
         worker._known_tokens = parent._known_tokens  # frozenset immuable
+        worker._schema_inventory = parent._schema_inventory  # read-only après setup()
+        worker._table_matcher = parent._table_matcher        # re.Pattern immuable
+        worker._schema_detail = parent._schema_detail        # partagé (accumule les signaux)
         worker._telemetry = parent._telemetry      # partagé, protégé par Lock
         return worker
 
@@ -414,6 +449,15 @@ class AuditPipeline:
         recipes_out = details_dir / "migration_recipes.md"
         recipes_out.write_text(RecipeBook().render_catalog(), encoding="utf-8")
         self._p(f"   ✓ {recipes_out}")
+
+        # Signaux migration schéma (couche 2) — tables mortes / noms dynamiques.
+        if self._schema_detail is not None and self._schema_detail.active:
+            rate = self._schema_detail.injected_rate()
+            self._p(f"   [KB] couche 2 : {rate:.1f} table(s) injectée(s)/fichier en moyenne")
+            if self._schema_detail.has_signals():
+                sig_out = details_dir / "schema_migration_signals.md"
+                self._schema_detail.write_migration_signals(sig_out)
+                self._p(f"   ✓ {sig_out}")
 
         # Carte de feature cross-fichier (#3) — nécessite le call graph
         if self._call_graph:
@@ -547,6 +591,7 @@ class AuditPipeline:
                     kb_provider=self._kb_provider,
                     kb_lookup=self._kb_lookup,
                     kb_trust_medium=self.options.kb_trust_medium,
+                    table_matcher=self._table_matcher,
                 )
                 method_bodies: dict[str, str] = {}
                 for ep in ir.entry_points:
@@ -716,6 +761,7 @@ class AuditPipeline:
                     kb_provider=self._kb_provider,
                     kb_lookup=self._kb_lookup,
                     kb_trust_medium=opts.kb_trust_medium,
+                    table_matcher=self._table_matcher,
                 )
                 ir = enricher.enrich(ir)
                 self._p(f"        ✓ {len(ir.llm_insights)} insights générés")
@@ -750,7 +796,10 @@ class AuditPipeline:
             self._p(f"  [3b/4] Grille bugs techniques ({opts.model})...")
             try:
                 from analyzers.bug_enricher import BugEnricher
-                bug_enricher = BugEnricher(model=opts.model, kb_provider=self._kb_provider)
+                bug_enricher = BugEnricher(
+                    model=opts.model, kb_provider=self._kb_provider,
+                    table_matcher=self._table_matcher,
+                )
                 php_source = php_path.read_text(encoding="utf-8", errors="replace")
                 ir = bug_enricher.enrich(ir, php_source, call_graph=self._call_graph)
                 bug_cost = bug_enricher.usage.total_cost(opts.model)
