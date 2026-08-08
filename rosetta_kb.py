@@ -366,7 +366,12 @@ def cmd_export_prompt(args: argparse.Namespace, svc: KBService) -> int:
     domaine = getattr(args, "domaine", None) or None
     confiance_min = getattr(args, "confiance", "medium") or "medium"
     max_chars = int(getattr(args, "max_chars", 4000) or 4000)
-    block = svc.export_prompt(domaine=domaine, confiance_min=confiance_min, max_chars=max_chars)
+    include_schema = bool(getattr(args, "include_schema", False))
+    schema_budget = int(getattr(args, "schema_token_budget", 8000) or 8000)
+    block = svc.export_prompt(
+        domaine=domaine, confiance_min=confiance_min, max_chars=max_chars,
+        include_schema=include_schema, schema_token_budget=schema_budget,
+    )
     if not block:
         print("(KB vide ou aucune entrée ne correspond aux filtres)")
         return 0
@@ -819,6 +824,14 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--max-chars", type=int, default=4000,
         help="Limite en caractères du bloc généré (défaut: 4000)",
+    )
+    p.add_argument(
+        "--include-schema", action="store_true",
+        help="Ajoute l'inventaire Oracle exhaustif (couche 1 résidente, 1 ligne/table)",
+    )
+    p.add_argument(
+        "--schema-token-budget", type=int, default=8000,
+        help="Budget tokens de l'inventaire — dépassement = erreur (jamais tronqué)",
     )
     p.add_argument("--output", help="Fichier de sortie (défaut: stdout)")
 

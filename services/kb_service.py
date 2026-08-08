@@ -6,6 +6,7 @@ Toutes les méthodes retournent des dataclasses ou des str (pour les exports tex
 """
 import copy
 import json
+import os
 import re
 from collections import Counter
 from dataclasses import dataclass, field
@@ -267,6 +268,20 @@ def _empty_domain() -> dict:
 # Renderers de texte (utilisés par les méthodes export_* du service)
 # ---------------------------------------------------------------------------
 
+class SchemaInventoryOverflow(RuntimeError):
+    """L'inventaire schéma résident dépasse son budget de tokens.
+
+    Levée exprès plutôt que tronquer : un inventaire tronqué en silence ferait
+    mentir la garantie d'exhaustivité (« cette table n'existe pas » deviendrait
+    faux sans que personne le voie).
+    """
+
+
+def _estimate_tokens(text: str) -> int:
+    """Estimation grossière (~4 chars/token) suffisante pour un garde-fou."""
+    return max(1, len(text) // 4)
+
+
 def _conf_badge(conf: str) -> str:
     return {"high": "✅ validé PO", "medium": "⚠️ inféré",
             "inferred": "🔍 non validé"}.get(conf, conf)
@@ -509,9 +524,20 @@ class KBService:
             return yaml.safe_load(f) or {}
 
     def _write_file(self, path: Path, data: dict) -> None:
+        # Écriture ATOMIQUE : tmp dans le même répertoire + fsync + os.replace.
+        # Une interruption en plein yaml.dump laissait sinon un YAML tronqué
+        # (scalaire quoté non fermé) — corruption observée sur _global.yaml lors
+        # d'un import interrompu à mi-parcours.
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("w", encoding="utf-8") as f:
-            yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+        tmp = path.with_name(f".{path.name}.tmp")
+        try:
+            with tmp.open("w", encoding="utf-8") as f:
+                yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, path)
+        finally:
+            tmp.unlink(missing_ok=True)
         self._cache = None
         self._cache_stamp = None
 
@@ -942,6 +968,116 @@ class KBService:
             success=True, code=nom, confiance=confiance,
             domain=domain, action=action, file_path=file_path,
         )
+
+    # ── API publique : Schéma Oracle (2 couches) ──────────────────────────────
+    # Couche 1 « inventaire » : section ``schema:`` d'un domaine KB → mergée par
+    #   load() → RÉSIDENTE dans le prompt (une ligne par table).
+    # Couche 2 « détail »     : sidecar hors du répertoire KB → jamais mergée →
+    #   jamais résidente → lue à la demande par table.
+    # Les DEUX sont 100 % générées et régénérables par écrasement. Ne JAMAIS y
+    # mettre de sémantique métier curée : ça vit dans ``sql_artifacts.colonnes``.
+
+    def _schema_detail_path(self) -> Path:
+        """Sidecar détail, voisin du KB mais HORS du répertoire mergé."""
+        return self.kb_path.parent / "oracle_schema" / "detail.yaml"
+
+    #: Marqueur explicite « donnée pas encore extraite » (mode dégradé). Distinct
+    #: de ``[]`` qui signifie « table confirmée SANS clé primaire ». Ne jamais
+    #: omettre le champ : l'omission rend les deux cas indiscernables et fabrique
+    #: des associations Doctrine fantômes au portage.
+    PK_UNKNOWN = "non_extrait"
+
+    def capture_schema(
+        self, *, table: str, role: Optional[str] = None,
+        pk: "Optional[list[str] | str]" = PK_UNKNOWN,
+        nb_colonnes: Optional[int] = None,
+        domain: str = "schema_oracle", source: Optional[str] = None,
+        confiance: str = "high", force: bool = False,
+    ) -> CaptureResult:
+        """Couche 1 : une entrée par table dans ``schema:`` (inventaire résident).
+
+        Structurel uniquement (nom, rôle métier court, clé primaire, nb colonnes).
+        Le détail des colonnes va dans le sidecar via ``write_schema_detail``.
+        ``pk`` : liste des colonnes PK, ``[]`` si confirmée sans PK, ou
+        ``PK_UNKNOWN`` en mode dégradé (contraintes pas encore extraites).
+        """
+        data = self._load_for_write(domain)
+        schema = data["schema"]
+
+        existing = schema.get(table, {})
+        existing_conf = CONFIDENCE_ORDER.get(existing.get("confiance", "inferred"), 0)
+        if existing and existing_conf >= CONFIDENCE_ORDER["high"] and not force:
+            return CaptureResult(
+                success=False, code=table, confiance=confiance,
+                domain=domain, action="skipped_high",
+            )
+
+        entry: dict[str, Any] = {"label": role or f"Table {table}"}
+        # Toujours présent — jamais omis (cf. PK_UNKNOWN).
+        entry["pk"] = self.PK_UNKNOWN if pk is None else (
+            list(pk) if isinstance(pk, (list, tuple)) else pk
+        )
+        if nb_colonnes is not None:
+            entry["nb_colonnes"] = nb_colonnes
+        entry["source"] = source or f"capture — {date.today()}"
+        entry["confiance"] = confiance
+
+        action = "updated" if table in schema else "created"
+        schema[table] = entry
+        self._save_for_write(data, domain)
+
+        file_path = (
+            _domain_file(self.kb_path, domain).name if self.kb_path.is_dir() else None
+        )
+        return CaptureResult(
+            success=True, code=table, confiance=confiance,
+            domain=domain, action=action, file_path=file_path,
+        )
+
+    def write_schema_detail(self, details: dict[str, Any], *, source: str) -> int:
+        """Couche 2 : réécrit le sidecar détail EN ENTIER (régen par écrasement).
+
+        ``details`` = {TABLE: {"colonnes": {COL: {type, nullable, pk?, fk?}}}}.
+        Retourne le nombre de tables écrites.
+        """
+        payload = {
+            "meta": {
+                "source": source,
+                "generated": str(date.today()),
+                "tables": len(details),
+            },
+            "tables": details,
+        }
+        self._write_file(self._schema_detail_path(), payload)
+        return len(details)
+
+    def schema_sources(self) -> frozenset[str]:
+        """Sources distinctes des entrées d'inventaire (couche 1).
+
+        Sert au verrou de cohérence : l'inventaire et le sidecar détail doivent
+        partager le MÊME timestamp source. Plusieurs sources distinctes = import
+        incohérent (à traiter comme un mismatch).
+        """
+        sch = self.load().get("schema") or {}
+        return frozenset(e.get("source", "") for e in sch.values() if isinstance(e, dict))
+
+    def schema_detail_meta(self) -> dict:
+        """Meta du sidecar détail (couche 2) : {source, generated, tables}."""
+        return self._read_file(self._schema_detail_path()).get("meta", {}) or {}
+
+    def schema_detail_all(self) -> dict:
+        """Toutes les tables du sidecar détail (couche 2) — {TABLE: {pk, fk, colonnes}}."""
+        return self._read_file(self._schema_detail_path()).get("tables", {}) or {}
+
+    def get_schema_detail(self, table: str) -> Optional[dict]:
+        """Détail d'une table (colonnes/type/nullable/pk/fk), lu à la demande."""
+        tables = self._read_file(self._schema_detail_path()).get("tables", {})
+        entry = tables.get(table)
+        if entry is None:
+            for k, v in tables.items():
+                if str(k).upper() == table.upper():
+                    return v
+        return entry
 
     # ── API publique : Pending ────────────────────────────────────────────────
 
@@ -1677,13 +1813,62 @@ class KBService:
 
         return "\n".join(lines)
 
+    def schema_table_names(self) -> frozenset[str]:
+        """Noms des tables de l'inventaire Oracle (couche 1) — pour le matcher DB."""
+        return frozenset((self.load().get("schema") or {}).keys())
+
+    def export_schema_inventory(self, schema_token_budget: int = 8_000) -> str:
+        """Bloc texte de l'inventaire Oracle (couche 1, une ligne par table).
+
+        Source UNIQUE réutilisée par ``export_prompt`` et par le pont d'injection
+        résidente (``KBContextProvider``). EXHAUSTIF ou échec bruyant : dépassement
+        du budget tokens → ``SchemaInventoryOverflow`` (jamais tronqué).
+        Retourne "" si l'inventaire est vide.
+        """
+        sch = self.load().get("schema") or {}
+        if not sch:
+            return ""
+        lines = ["## Schéma Oracle — inventaire des tables (exhaustif)"]
+        for tbl, e in sorted(sch.items()):
+            pk = e.get("pk", "non_extrait")
+            if isinstance(pk, list):
+                pk_str = ("PK " + ",".join(pk)) if pk else "sans PK"
+            else:
+                pk_str = f"PK {pk}"
+            nbc = e.get("nb_colonnes")
+            meta = pk_str + (f"; {nbc} col" if nbc is not None else "")
+            role = e.get("label", "")
+            line = f"  {tbl} [{meta}]"
+            if role and role != f"Table {tbl}":
+                line += f" — {role}"
+            lines.append(line)
+        block = "\n".join(lines)
+        tok = _estimate_tokens(block)
+        if tok > schema_token_budget:
+            raise SchemaInventoryOverflow(
+                f"Inventaire schéma résident ≈ {tok} tokens > budget "
+                f"{schema_token_budget} ({len(sch)} tables, dépassement "
+                f"≈ {tok - schema_token_budget} tokens). Raccourcir les rôles "
+                f"ou relever schema_token_budget EXPLICITEMENT — ne jamais "
+                f"tronquer un inventaire censé être exhaustif."
+            )
+        return block
+
     def export_prompt(
         self,
         domaine: Optional[str] = None,
         confiance_min: str = "medium",
         max_chars: int = 4_000,
+        include_schema: bool = False,
+        schema_token_budget: int = 8_000,
     ) -> str:
-        """Sérialise le KB en bloc texte compact injectable dans un prompt LLM."""
+        """Sérialise le KB en bloc texte compact injectable dans un prompt LLM.
+
+        ``include_schema`` : ajoute l'inventaire Oracle (couche 1 résidente, une
+        ligne par table). Rendu EXHAUSTIF hors du budget ``max_chars`` des
+        entrées sémantiques, avec son propre garde-fou en tokens — dépassement =
+        ``SchemaInventoryOverflow`` (jamais de troncature silencieuse).
+        """
         data = self.load()
         min_level = CONFIDENCE_ORDER.get(confiance_min, 1)
 
@@ -1809,10 +1994,20 @@ class KBService:
                     parts.append(sem)
                 _add("  " + ". ".join(parts).rstrip(".") + ".")
 
+        # ── Couche 1 : inventaire schéma Oracle (résident, exhaustif) ─────────
+        # Appendé HORS du budget max_chars (bypass _add) : cette couche doit être
+        # complète ou échouer bruyamment, pas rétrécir en silence.
+        schema_count = 0
+        if include_schema:
+            schema_count = len(data.get("schema") or {})
+            block = self.export_schema_inventory(schema_token_budget)
+            if block:
+                lines = block.splitlines() + [""] + lines
+
         if not lines:
             return ""
 
-        total = sum(len(d) for d in [codes, regles, regles_metier, bugs_connus, observations, cols, vues, reqs])
+        total = schema_count + sum(len(d) for d in [codes, regles, regles_metier, bugs_connus, observations, cols, vues, reqs])
         dom_label = f"domaine: {domaine} | " if domaine else ""
         header = f"════ CONTEXTE KB ({dom_label}confiance ≥ {confiance_min} | {total} entrée(s)) ════"
         footer = "════ FIN CONTEXTE KB ════"
