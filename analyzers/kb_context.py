@@ -52,16 +52,36 @@ class KBContextProvider:
     """
 
     MAX_CONTEXT_CHARS = 3_000
+    #: Budget tokens COMMUN fiches + inventaire schéma (priorité : fiches d'abord).
+    SCHEMA_TOTAL_TOKEN_BUDGET = 8_000
 
-    def __init__(self, kb_root: Path, verbose: bool = True):
+    def __init__(
+        self,
+        kb_root: Path,
+        verbose: bool = True,
+        schema_inventory: Optional[str] = None,
+        schema_detail: Optional[object] = None,
+    ):
         if not _HAS_FRONTMATTER:
             raise ImportError(
                 "python-frontmatter requis : pip install python-frontmatter"
             )
         self.kb_root = Path(kb_root)
         self._verbose = verbose
+        #: Bloc inventaire Oracle pré-calculé (couche 1), injecté à la demande par
+        #: ``context_for(include_schema=True)``. Précalculé une fois par
+        #: l'assembleur (audit_service) via ``KBService.export_schema_inventory``.
+        self._schema_inventory = schema_inventory
+        #: SchemaDetailProvider (couche 2), injecté par fichier via
+        #: ``context_for(detail_for_source=…)``. None ou inactif → couche 1 seule.
+        self._schema_detail = schema_detail
         self._entries: list[KBEntry] = []
         self._load()
+
+    @staticmethod
+    def _tok(text: str) -> int:
+        """Estimation grossière ~4 chars/token (garde-fou budget, pas de dépendance)."""
+        return max(1, len(text) // 4)
 
     def __len__(self) -> int:
         return len(self._entries)
@@ -146,6 +166,8 @@ class KBContextProvider:
         filename: str,
         domain: Optional[str] = None,
         max_chars: int = MAX_CONTEXT_CHARS,
+        include_schema: bool = False,
+        detail_for_source: Optional[str] = None,
     ) -> str:
         """
         Retourne un bloc compact de règles KB pertinentes pour `filename`.
@@ -155,12 +177,56 @@ class KBContextProvider:
           +2  nom de l'entrée contient le stem
           +2  domaine exact
           +1  domaine partiel (sous-chaîne)
+
+        ``include_schema`` : ajoute l'inventaire Oracle résident (couche 1). Ne le
+        passe à True QUE sur les prompts au footprint base (décidé par flag via
+        ``db_relevance.method_touches_db``).
+
+        ``detail_for_source`` : code du fichier à scanner pour la couche 2 (détail
+        des tables référencées). Ignoré si aucun ``schema_detail`` actif.
+
+        Priorité de budget EXPLICITE sous ``SCHEMA_TOTAL_TOKEN_BUDGET`` :
+        fiches curées > inventaire (couche 1) > détail (couche 2). Chaque couche
+        n'est ajoutée que si elle tient ENTIÈRE ; sinon elle est abandonnée en
+        bloc (warning), jamais tronquée ni partielle.
         """
         stem = Path(filename).stem.lower()
         matches = self._score_and_sort(stem, domain)
-        if not matches:
-            return ""
-        return _format_context(matches, max_chars)
+        fiche_block = _format_context(matches, max_chars) if matches else ""
+
+        if not include_schema or not self._schema_inventory:
+            return fiche_block
+
+        budget = self.SCHEMA_TOTAL_TOKEN_BUDGET
+        parts = [fiche_block] if fiche_block else []
+        used = self._tok(fiche_block)
+
+        # Couche 1 — inventaire (prioritaire après les fiches).
+        inv = self._schema_inventory
+        if used + self._tok(inv) > budget:
+            if self._verbose:
+                print(
+                    f"  [KB] ⚠ inventaire schéma non injecté ({filename}) : fiches "
+                    f"({used} tok) + inventaire ({self._tok(inv)} tok) > budget "
+                    f"{budget}. Injecté SANS inventaire (jamais partiel)."
+                )
+            return fiche_block
+        parts.append(inv)
+        used += self._tok(inv)
+
+        # Couche 2 — détail par fichier (si actif et place restante).
+        if self._schema_detail is not None and detail_for_source:
+            det = self._schema_detail.detail_block_for(detail_for_source, filename)
+            if det and used + self._tok(det) <= budget:
+                parts.append(det)
+            elif det and self._verbose:
+                print(
+                    f"  [KB] ⚠ détail schéma non injecté ({filename}) : "
+                    f"{self._tok(det)} tok ne tient pas dans le budget restant "
+                    f"{budget - used}. Couche 1 conservée."
+                )
+
+        return "\n\n".join(parts)
 
     def domain_entries(self, domain: str) -> list[KBEntry]:
         """Toutes les entrées d'un domaine donné."""

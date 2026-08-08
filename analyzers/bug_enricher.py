@@ -17,6 +17,7 @@ import re
 from typing import Optional, TYPE_CHECKING
 from ir.schema import IRSchema, BugFinding, BugCategory, BugSeverity
 from analyzers.llm_enricher import TokenUsage, PRICING
+from analyzers.db_relevance import method_touches_db
 
 if TYPE_CHECKING:
     from analyzers.kb_context import KBContextProvider
@@ -156,12 +157,15 @@ class BugEnricher:
         self,
         model: str = "claude-sonnet-4-6",
         kb_provider: Optional["KBContextProvider"] = None,
+        table_matcher: Optional["re.Pattern"] = None,
     ):
         import anthropic
         self.client = anthropic.Anthropic()
         self.model = model
         self.usage = TokenUsage()
         self.kb_provider = kb_provider
+        #: Matcher des tables de l'inventaire (même déclencheur DB que llm_enricher).
+        self._table_matcher = table_matcher
 
     def enrich(
         self,
@@ -176,10 +180,18 @@ class BugEnricher:
         """
         chunks = _chunk_source(php_source)
         bundle = call_graph.bundle_for_source(php_source) if call_graph else ""
+        # Deux variantes de contexte KB (une fois par fichier) ; le choix se fait
+        # par CHUNK selon son footprint DB — même déclencheur isolé que llm_enricher.
+        # Ici le chunk EST ce que voit le prompt (pas de troncature 2500) : fenêtre
+        # du test = fenêtre du prompt.
         kb_context = ""
+        kb_context_schema = ""
         if self.kb_provider:
-            kb_context = self.kb_provider.context_for(
-                ir.metadata.controller_name or ""
+            filename = ir.metadata.controller_name or ""
+            kb_context = self.kb_provider.context_for(filename)
+            # Couche 2 : détail des tables scannées sur le source complet du fichier.
+            kb_context_schema = self.kb_provider.context_for(
+                filename, include_schema=True, detail_for_source=php_source
             )
 
         if len(chunks) > 1:
@@ -191,7 +203,10 @@ class BugEnricher:
             label = ir.metadata.controller_name
             if len(chunks) > 1:
                 label = f"{ir.metadata.controller_name} [chunk {i + 1}/{len(chunks)}]"
-            findings = self._analyze(chunk, label, bundle, kb_context)
+            chunk_ctx = kb_context
+            if kb_context_schema and method_touches_db(chunk, self._table_matcher):
+                chunk_ctx = kb_context_schema
+            findings = self._analyze(chunk, label, bundle, chunk_ctx)
             all_findings.extend(findings)
 
         # Dédupliquer par fragment (même bug peut apparaître dans le contexte chevauchant)

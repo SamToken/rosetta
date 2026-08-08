@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Optional, TYPE_CHECKING
 from ir.schema import IRSchema, Flag, LLMInsight, KBToken
 from analyzers.constants import STOP_TOKENS
+from analyzers.db_relevance import method_touches_db
 
 if TYPE_CHECKING:
     from analyzers.kb_context import KBContextProvider
@@ -247,6 +248,7 @@ class LLMEnricher:
         kb_provider: Optional["KBContextProvider"] = None,
         kb_lookup: Optional[Callable[[str], dict]] = None,
         kb_trust_medium: bool = False,
+        table_matcher: Optional["re.Pattern"] = None,
     ):
         import anthropic
         self.client = anthropic.Anthropic()
@@ -255,9 +257,14 @@ class LLMEnricher:
         self.kb_provider = kb_provider
         self._kb_lookup = kb_lookup
         self.kb_trust_medium = kb_trust_medium
+        #: Matcher des tables de l'inventaire (signal 3 du déclencheur DB).
+        self._table_matcher = table_matcher
         self._kb_hits = 0
         self._kb_medium_hits = 0
         self._config_hits = 0
+        #: Canari troncature : corps > 2500 dont le SQL est hors fenêtre prompt
+        #: mais capté par le test sur corps complet (injection récupérée).
+        self._schema_trunc_recovered = 0
         self.coverage = KBCoverageReport()
 
     @property
@@ -277,21 +284,36 @@ class LLMEnricher:
 
     def enrich(self, ir: IRSchema) -> IRSchema:
         """Enrichit tous les flags de l'IR. Retourne l'IR modifié."""
-        # Index des corps de méthodes depuis l'IR — contexte complet pour le LLM
+        # Index des corps de méthodes depuis l'IR.
+        #  • method_bodies : tronqué à 2500 → ce que voit le PROMPT (coût tokens).
+        #  • full_bodies   : corps COMPLET → fenêtre du déclencheur DB uniquement
+        #    (regex, coût prompt nul). Mesuré : tester le déclencheur sur le corps
+        #    complet plutôt que sur 2500 fait passer le taux 4,2 % → 10,3 % —
+        #    la troncature masquait le SQL des méthodes longues (justement celles
+        #    qui le concentrent). On étend la fenêtre du TEST, pas du prompt.
         method_bodies: dict[str, str] = {}
+        full_bodies: dict[str, str] = {}
         for ep in ir.entry_points:
             if ep.raw_code:
                 body = ep.raw_code[:2500]  # ~500 lignes max
-                if ep.original_name:
-                    method_bodies[ep.original_name] = body
-                if ep.name and ep.name != ep.original_name:
-                    method_bodies[ep.name] = body
+                for key in (ep.original_name, ep.name):
+                    if key:
+                        method_bodies[key] = body
+                        full_bodies[key] = ep.raw_code
 
-        # Contexte KB une seule fois par fichier (évite N appels identiques)
+        # Contexte KB une seule fois par fichier, en DEUX variantes (évite N appels
+        # identiques) : sans inventaire (défaut) et avec inventaire Oracle résident.
+        # Le choix se fait par flag selon le footprint DB de sa méthode.
         kb_context = ""
+        kb_context_schema = ""
+        filename = ir.metadata.controller_name or ""
         if self.kb_provider:
-            kb_context = self.kb_provider.context_for(
-                ir.metadata.controller_name or ""
+            # Couche 2 : détail des tables du fichier, scanné sur l'union des corps
+            # complets (par fichier ≈ 1,8 table, cf. mesure).
+            file_source = "\n".join(full_bodies.values())
+            kb_context = self.kb_provider.context_for(filename)
+            kb_context_schema = self.kb_provider.context_for(
+                filename, include_schema=True, detail_for_source=file_source
             )
             if kb_context:
                 print(f"  [KB] Contexte injecté : {kb_context.count('[') - kb_context.count('[KB')} règle(s) KB")
@@ -331,8 +353,29 @@ class LLMEnricher:
                 method_bodies.get(flag.method_original_name or "")
                 or method_bodies.get(flag.method_name or "")
             )
+            full_body = (
+                full_bodies.get(flag.method_original_name or "")
+                or full_bodies.get(flag.method_name or "")
+            )
+            ctx_lines = getattr(flag, "context_lines", "") or ""
+
+            # Déclencheur DB par-flag (choix (a)) : inventaire Oracle injecté SEULEMENT
+            # si la méthode du flag a un footprint base. Fenêtre = corps complet,
+            # fallback context_lines si la méthode est inconnue (flag de bloc).
+            flag_ctx = kb_context
+            if kb_context_schema and method_touches_db(
+                full_body, self._table_matcher, context_lines=ctx_lines
+            ):
+                flag_ctx = kb_context_schema
+                # Canari : injection qui aurait été perdue avec la fenêtre tronquée.
+                if (
+                    full_body and len(full_body) > 2500
+                    and not method_touches_db(method_body, self._table_matcher, context_lines=ctx_lines)
+                ):
+                    self._schema_trunc_recovered += 1
+
             try:
-                insight = self._ask_llm(flag, method_body, kb_context, kb_medium_ctx)
+                insight = self._ask_llm(flag, method_body, flag_ctx, kb_medium_ctx)
                 self._apply_grounding_guard(insight, flag, method_body)
                 ir.llm_insights.append(insight)
             except Exception as e:
