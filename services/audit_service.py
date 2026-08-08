@@ -450,6 +450,12 @@ class AuditPipeline:
         recipes_out.write_text(RecipeBook().render_catalog(), encoding="utf-8")
         self._p(f"   ✓ {recipes_out}")
 
+        # Carte SQL (#7) — tables/jointures depuis les opérations, sans accès base
+        from generators.sql_map_generator import SqlMapGenerator
+        sql_out = details_dir / "sql_map.md"
+        sql_out.write_text(SqlMapGenerator().generate(all_irs), encoding="utf-8")
+        self._p(f"   ✓ {sql_out}")
+
         # Signaux migration schéma (couche 2) — tables mortes / noms dynamiques.
         if self._schema_detail is not None and self._schema_detail.active:
             rate = self._schema_detail.injected_rate()
